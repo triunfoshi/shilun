@@ -1,0 +1,37 @@
+[project]
+name = "shilun-standalone"
+version = "0.1.0"
+description = "Standalone Shilun phase 1 trading decision system"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.110.0",
+  "uvicorn>=0.30.0",
+  "pandas>=2.2.0",
+  "numpy>=1.26.0",
+  "scikit-learn>=1.5.0",
+  "lightgbm>=4.3.0",
+  "joblib>=1.4.0",
+  "pydantic>=2.6.0",
+  "apscheduler>=3.10.0",
+  "tushare>=1.4.24",
+  "pymongo>=4.16.0",
+  "requests>=2.31.0"
+]
+
+[project.scripts]
+shilun-api = "shilun.__main__:main"
+shilun-automation-push = "shilun.jobs.automation_push_job:main"
+shilun-candidate-pools = "shilun.jobs.candidate_pool_job:main"
+shilun-daily-push = "shilun.jobs.daily_push_job:main"
+shilun-sync-tushare = "shilun.jobs.tushare_sync_job:main"
+shilun-sync-scheduler = "shilun.jobs.tushare_sync_job:scheduler_main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-data]
+shilun = ["config/*.yml"]
+
+[tool.setuptools.packages.find]
+include = ["shilun*"]

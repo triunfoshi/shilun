@@ -1,0 +1,53 @@
+{
+  "version": "v0.2.0",
+  "domains": {
+    "structure": {
+      "fields": [
+        "weekly_trend",
+        "daily_state",
+        "structure_type",
+        "structure_score"
+      ],
+      "allowed_values": {
+        "weekly_trend": ["up", "down", "range"],
+        "daily_state": ["trend", "consolidation", "transition", "rebound", "exhaustion"],
+        "structure_type": [
+          "trend_continue",
+          "range_pivot",
+          "breakout_pullback",
+          "weak_rebound",
+          "exhaustion",
+          "reversal_attempt"
+        ]
+      }
+    },
+    "strength": {
+      "fields": [
+        "volume_state",
+        "breakout_quality",
+        "pullback_quality",
+        "price_action_quality",
+        "volume_score"
+      ],
+      "allowed_values": {
+        "volume_state": ["expand", "contract", "neutral", "unknown"],
+        "breakout_quality": ["valid", "suspicious", "invalid", "unknown"],
+        "pullback_quality": ["healthy", "neutral", "damaged", "unknown"],
+        "price_action_quality": ["healthy", "divergent", "exhausting", "unknown"]
+      }
+    },
+    "space": {
+      "fields": [
+        "chip_pressure",
+        "chip_support",
+        "chip_vacuum",
+        "chip_score"
+      ],
+      "allowed_values": {
+        "chip_pressure": ["low", "mid", "high", "unknown"],
+        "chip_support": ["low", "mid", "high", "unknown"],
+        "chip_vacuum": ["open", "mixed", "blocked", "unknown"]
+      }
+    }
+  }
+}

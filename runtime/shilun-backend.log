@@ -1,0 +1,343 @@
+
+[2026-06-14 21:56:06] Starting Shilun backend
+INFO:     Started server process [93698]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 1] error while attempting to bind on address ('127.0.0.1', 8000): operation not permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+
+[2026-06-14 21:56:57] Starting Shilun backend
+INFO:     Started server process [94239]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+ERROR:    [Errno 1] error while attempting to bind on address ('127.0.0.1', 8000): operation not permitted
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+
+[2026-06-14 22:06:22] Starting Shilun backend
+INFO:     Started server process [96477]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:64307 - "GET /ui HTTP/1.1" 200 OK
+
+[2026-06-14 22:09:07] Starting Shilun backend
+INFO:     Started server process [98675]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:64815 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64817 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64817 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64819 - "GET /api/v1/data/status?date=2026-06-14&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64849 - "GET /api/v1/data/status?date=2026-06-12&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64820 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64849 - "GET /api/v1/market/permission?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:64919 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64919 - "GET /api/v1/data/status?date=2026-06-12&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64937 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64955 - "GET /api/v1/market/permission?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:64955 - "GET /api/v1/market/permission?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49491 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49492 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49492 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49494 - "GET /api/v1/data/status?date=2026-06-14&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49494 - "GET /api/v1/market/permission?date=2026-06-14&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:49496 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49689 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49724 - "GET /ui HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [98675]
+
+[2026-06-14 22:15:56] Starting Shilun backend
+INFO:     Started server process [4247]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50086 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50143 - "GET /ui HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4247]
+INFO:     Started server process [20042]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55777 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55779 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55779 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55781 - "GET /api/v1/data/status?date=2026-06-12&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55925 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [20042]
+INFO:     Started server process [21310]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:56781 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56923 - "GET /api/v1/market/permission?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56927 - "GET /api/v1/market/permission?date=2026-06-14&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49432 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49432 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49434 - "GET /api/v1/data/status?date=2026-06-15&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49435 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63014 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63015 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63015 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63016 - "GET /api/v1/data/status?date=2026-06-19&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63069 - "GET /api/v1/market/permission?date=2026-06-19&benchmark_ticker=000001.SH HTTP/1.1" 500 Internal Server Error
+INFO:     127.0.0.1:63151 - "GET /api/v1/data/status?date=2027-06-18&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63223 - "GET /api/v1/market/permission?date=2027-06-18&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:63255 - "GET /api/v1/data/status?date=2027-06-18&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63255 - "GET /api/v1/data/status?date=2027-06-18&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63255 - "POST /api/v1/data/sync HTTP/1.1" 500 Internal Server Error
+ERROR:    Exception in ASGI application
+Traceback (most recent call last):
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/applications.py", line 1159, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/applications.py", line 90, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/routing.py", line 680, in app
+    await route.handle(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/routing.py", line 134, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/routing.py", line 120, in app
+    response = await f(request)
+               ^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/fastapi/routing.py", line 330, in run_endpoint_function
+    return await run_in_threadpool(dependant.call, **values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/starlette/concurrency.py", line 32, in run_in_threadpool
+    return await anyio.to_thread.run_sync(func)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/anyio/to_thread.py", line 63, in run_sync
+    return await get_async_backend().run_sync_in_worker_thread(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 2518, in run_sync_in_worker_thread
+    return await future
+           ^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1002, in run
+    result = context.run(func, *args)
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/shilun/api/__init__.py", line 568, in data_sync
+    result = TushareSyncJob(mongo_store=store).run(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/shilun/jobs/tushare_sync_job.py", line 92, in run
+    return self._run_latest_trade_date(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/shilun/jobs/tushare_sync_job.py", line 269, in _run_latest_trade_date
+    trade_calendar = self.client.fetch_trade_calendar(
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/shilun/data/providers/tushare_provider.py", line 264, in fetch_trade_calendar
+    raw_df = self._call_api(
+             ^^^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/shilun/data/providers/tushare_provider.py", line 180, in _call_api
+    return api(**kwargs)
+           ^^^^^^^^^^^^^
+  File "/Users/shibicheng/shilun_standalone/.venv312/lib/python3.12/site-packages/tushare/pro/client.py", line 46, in query
+    raise Exception(result['msg'])
+Exception: 您的token已过期，请联系续费。
+INFO:     127.0.0.1:63358 - "GET /api/v1/data/status?date=2027-06-18&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63022 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [21310]
+INFO:     Started server process [52044]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50193 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54023 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54023 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54024 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54035 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54072 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54159 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54159 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54187 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54187 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54430 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54469 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54469 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54597 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54597 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54597 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54597 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54694 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54694 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55225 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55265 - "GET /api/v1/market/permission?date=2026-06-22&benchmark_ticker=000001.SH HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:55306 - "GET /api/v1/data/status?date=2026-06-18&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55306 - "GET /api/v1/market/permission?date=2026-06-18&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for connections to close. (CTRL+C to force quit)
+INFO:     Started server process [61038]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55541 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55548 - "GET /api/v1/market/sectors?date=2026-06-18&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56016 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56016 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56020 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56021 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [61038]
+INFO:     Started server process [97502]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50754 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50846 - "GET /api/v1/data/status?date=2026-06-12 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51023 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51166 - "GET /api/v1/market/sectors?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51555 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51555 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51556 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51564 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [97502]
+INFO:     Started server process [2479]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51798 - "GET /api/v1/market/sectors?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52040 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2479]
+INFO:     Started server process [4941]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:52973 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53710 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53710 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53718 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53720 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53989 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53996 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53996 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53998 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54002 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54716 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54716 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54717 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54721 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55761 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55761 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55761 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55767 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55767 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55767 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55761 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55813 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55813 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55815 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55768 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55819 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55819 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56304 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55768 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56555 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56555 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56709 - "GET /api/v1/market/permission?date=2026-06-22&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56902 - "GET /api/v1/market/permission?date=2026-06-22&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57071 - "GET /api/v1/market/sectors?date=2026-06-22&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57071 - "GET /api/v1/market/leaders?date=2026-06-22&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57515 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57497 - "POST /api/v1/data/sync HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57497 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [4941]
+INFO:     Started server process [27591]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63135 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63135 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63140 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63283 - "GET /api/v1/data/status?date=2026-06-12&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63292 - "GET /api/v1/market/sectors?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63292 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [27591]
+INFO:     Started server process [30245]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:63934 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63934 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63938 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63939 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [30245]
+INFO:     Started server process [39065]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51304 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52314 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53248 - "GET /ui HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53248 - "GET /api/v1/push-channel/status HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53252 - "GET /api/v1/data/status?date=2026-06-22&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53253 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53441 - "GET /api/v1/data/status?date=2026-06-12&ticker=600132.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53446 - "GET /api/v1/market/sectors?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53446 - "GET /api/v1/market/leaders?date=2026-06-12&benchmark_ticker=000001.SH HTTP/1.1" 200 OK
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [39065]
+INFO:     Started server process [47671]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     127.0.0.1:55037 - "GET /api/v1/tushare/health HTTP/1.1" 200 OK

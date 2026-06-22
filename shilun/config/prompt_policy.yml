@@ -1,0 +1,49 @@
+{
+  "version": "v0.2.0",
+  "forbidden_terms": [
+    "必涨",
+    "稳了",
+    "马上起飞",
+    "绝对底部",
+    "主力吸筹",
+    "庄家洗盘",
+    "控盘",
+    "不用看风险",
+    "可以满仓上"
+  ],
+  "degrade_rules": {
+    "missing_structure": {
+      "banned_terms": ["反转", "三买", "背驰"],
+      "fallback_phrase": "目前更像修复或震荡，结构确认还不充分。"
+    },
+    "missing_strength": {
+      "banned_terms": ["有效突破", "回调健康", "动能强"],
+      "fallback_phrase": "量价证据还不完整，暂按观察处理。"
+    },
+    "missing_space": {
+      "banned_terms": ["上方套牢盘重", "空间打开", "筹码锁定很好"],
+      "fallback_phrase": "空间判断缺少筹码支持，先保持保守。"
+    }
+  },
+  "template": {
+    "sections": [
+      "走势定义",
+      "关键区间",
+      "未持仓",
+      "已持仓",
+      "观察清单",
+      "风险提示"
+    ],
+    "min_condition_statements": 2,
+    "require_invalidation": true,
+    "risk_items_min": 2,
+    "preferred_length_min": 120,
+    "preferred_length_max": 220
+  },
+  "system_prompt": [
+    "你是一位职业交易员与量化策略研究员。",
+    "永远先给状态定义，再给动作建议。",
+    "使用条件句表达，必须给出 invalidation。",
+    "允许表达不确定性，但不允许喊单或承诺收益。"
+  ]
+}

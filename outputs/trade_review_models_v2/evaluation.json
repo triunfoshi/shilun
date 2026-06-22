@@ -1,0 +1,689 @@
+{
+  "sample_counts": {
+    "train": 147,
+    "validation": 31,
+    "test": 32
+  },
+  "regime": {
+    "accuracy": 0.25,
+    "sample_count": 32
+  },
+  "event": {
+    "continue_10d": {
+      "mean_score": 0.407,
+      "positive_rate": 0.375,
+      "auc": 0.5667,
+      "brier": 0.2727,
+      "accuracy_at_0_5": 0.5625,
+      "deciles": [
+        {
+          "bucket": 0,
+          "count": 4,
+          "mean_score": 0.7428,
+          "positive_rate": 0.5
+        },
+        {
+          "bucket": 1,
+          "count": 3,
+          "mean_score": 0.7135,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 2,
+          "count": 3,
+          "mean_score": 0.6473,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 3,
+          "count": 3,
+          "mean_score": 0.532,
+          "positive_rate": 0.6667
+        },
+        {
+          "bucket": 4,
+          "count": 3,
+          "mean_score": 0.3986,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 5,
+          "count": 3,
+          "mean_score": 0.3291,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 6,
+          "count": 3,
+          "mean_score": 0.2352,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 7,
+          "count": 3,
+          "mean_score": 0.2075,
+          "positive_rate": 0.6667
+        },
+        {
+          "bucket": 8,
+          "count": 3,
+          "mean_score": 0.1678,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 9,
+          "count": 4,
+          "mean_score": 0.0898,
+          "positive_rate": 0.25
+        }
+      ]
+    },
+    "breakout_success": {
+      "mean_score": 0.0321,
+      "positive_rate": 0.125,
+      "auc": 0.558,
+      "brier": 0.1203,
+      "accuracy_at_0_5": 0.875,
+      "deciles": [
+        {
+          "bucket": 0,
+          "count": 4,
+          "mean_score": 0.1916,
+          "positive_rate": 0.25
+        },
+        {
+          "bucket": 1,
+          "count": 3,
+          "mean_score": 0.046,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 2,
+          "count": 3,
+          "mean_score": 0.0211,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 3,
+          "count": 3,
+          "mean_score": 0.0085,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 4,
+          "count": 3,
+          "mean_score": 0.0042,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 5,
+          "count": 3,
+          "mean_score": 0.0027,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 6,
+          "count": 3,
+          "mean_score": 0.0019,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 7,
+          "count": 3,
+          "mean_score": 0.0013,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 8,
+          "count": 3,
+          "mean_score": 0.0006,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 9,
+          "count": 4,
+          "mean_score": 0.0002,
+          "positive_rate": 0.25
+        }
+      ]
+    },
+    "fail_5d": {
+      "mean_score": 0.4556,
+      "positive_rate": 0.4688,
+      "auc": 0.6627,
+      "brier": 0.2424,
+      "accuracy_at_0_5": 0.6562,
+      "deciles": [
+        {
+          "bucket": 0,
+          "count": 4,
+          "mean_score": 0.8853,
+          "positive_rate": 0.75
+        },
+        {
+          "bucket": 1,
+          "count": 3,
+          "mean_score": 0.7431,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 2,
+          "count": 3,
+          "mean_score": 0.6337,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 3,
+          "count": 3,
+          "mean_score": 0.5727,
+          "positive_rate": 1.0
+        },
+        {
+          "bucket": 4,
+          "count": 3,
+          "mean_score": 0.4998,
+          "positive_rate": 0.6667
+        },
+        {
+          "bucket": 5,
+          "count": 3,
+          "mean_score": 0.4307,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 6,
+          "count": 3,
+          "mean_score": 0.3415,
+          "positive_rate": 0.6667
+        },
+        {
+          "bucket": 7,
+          "count": 3,
+          "mean_score": 0.2573,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 8,
+          "count": 3,
+          "mean_score": 0.1367,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 9,
+          "count": 4,
+          "mean_score": 0.0474,
+          "positive_rate": 0.25
+        }
+      ]
+    },
+    "acceptance_1d": {
+      "mean_score": 0.2969,
+      "positive_rate": 0.3438,
+      "auc": 0.5281,
+      "brier": 0.2865,
+      "accuracy_at_0_5": 0.6562,
+      "deciles": [
+        {
+          "bucket": 0,
+          "count": 4,
+          "mean_score": 0.8665,
+          "positive_rate": 0.25
+        },
+        {
+          "bucket": 1,
+          "count": 3,
+          "mean_score": 0.6037,
+          "positive_rate": 1.0
+        },
+        {
+          "bucket": 2,
+          "count": 3,
+          "mean_score": 0.4503,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 3,
+          "count": 3,
+          "mean_score": 0.2939,
+          "positive_rate": 0.6667
+        },
+        {
+          "bucket": 4,
+          "count": 3,
+          "mean_score": 0.2324,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 5,
+          "count": 3,
+          "mean_score": 0.1572,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 6,
+          "count": 3,
+          "mean_score": 0.1026,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 7,
+          "count": 3,
+          "mean_score": 0.0713,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 8,
+          "count": 3,
+          "mean_score": 0.0615,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 9,
+          "count": 4,
+          "mean_score": 0.0287,
+          "positive_rate": 0.5
+        }
+      ]
+    },
+    "fail_fast_3d": {
+      "mean_score": 0.4963,
+      "positive_rate": 0.4688,
+      "auc": 0.6863,
+      "brier": 0.2551,
+      "accuracy_at_0_5": 0.5312,
+      "deciles": [
+        {
+          "bucket": 0,
+          "count": 4,
+          "mean_score": 0.9509,
+          "positive_rate": 1.0
+        },
+        {
+          "bucket": 1,
+          "count": 3,
+          "mean_score": 0.8823,
+          "positive_rate": 1.0
+        },
+        {
+          "bucket": 2,
+          "count": 3,
+          "mean_score": 0.7547,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 3,
+          "count": 3,
+          "mean_score": 0.6818,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 4,
+          "count": 3,
+          "mean_score": 0.5516,
+          "positive_rate": 0.0
+        },
+        {
+          "bucket": 5,
+          "count": 3,
+          "mean_score": 0.4058,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 6,
+          "count": 3,
+          "mean_score": 0.3379,
+          "positive_rate": 1.0
+        },
+        {
+          "bucket": 7,
+          "count": 3,
+          "mean_score": 0.2172,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 8,
+          "count": 3,
+          "mean_score": 0.1185,
+          "positive_rate": 0.3333
+        },
+        {
+          "bucket": 9,
+          "count": 4,
+          "mean_score": 0.0568,
+          "positive_rate": 0.25
+        }
+      ]
+    }
+  },
+  "risk": {
+    "expected_return_10d": {
+      "mae": 0.094809,
+      "rmse": 0.162007,
+      "pred_mean": -0.0021,
+      "true_mean": 0.030081
+    },
+    "expected_drawdown_10d": {
+      "mae": 0.042544,
+      "rmse": 0.057829,
+      "pred_mean": 0.053397,
+      "true_mean": 0.076796
+    }
+  },
+  "feature_importance": {
+    "regime": [
+      {
+        "feature": "benchmark_return_20d",
+        "importance": 153
+      },
+      {
+        "feature": "atr_pct",
+        "importance": 120
+      },
+      {
+        "feature": "efficiency_ratio_20",
+        "importance": 120
+      },
+      {
+        "feature": "fail_fast_3d",
+        "importance": 120
+      },
+      {
+        "feature": "exhaustion_5d",
+        "importance": 120
+      },
+      {
+        "feature": "obv_slope_10",
+        "importance": 119
+      },
+      {
+        "feature": "trend_r2_20",
+        "importance": 96
+      },
+      {
+        "feature": "realized_vol_20",
+        "importance": 89
+      },
+      {
+        "feature": "return_10d",
+        "importance": 85
+      },
+      {
+        "feature": "close_near_high_pct",
+        "importance": 85
+      },
+      {
+        "feature": "benchmark_return_5d",
+        "importance": 75
+      },
+      {
+        "feature": "return_test_depth",
+        "importance": 73
+      },
+      {
+        "feature": "entry_success_3d",
+        "importance": 73
+      },
+      {
+        "feature": "ma20_slope_delta",
+        "importance": 70
+      },
+      {
+        "feature": "trend_r2_60",
+        "importance": 69
+      },
+      {
+        "feature": "buy_readiness_score",
+        "importance": 68
+      },
+      {
+        "feature": "distance_to_center_upper",
+        "importance": 68
+      },
+      {
+        "feature": "structure_confirmation_score",
+        "importance": 67
+      },
+      {
+        "feature": "center_shift_pct",
+        "importance": 66
+      },
+      {
+        "feature": "acceptance_strength",
+        "importance": 61
+      }
+    ],
+    "event": [
+      {
+        "feature": "price_vs_ma20_z",
+        "importance": 187
+      },
+      {
+        "feature": "distance_to_center_upper",
+        "importance": 160
+      },
+      {
+        "feature": "trend_r2_20",
+        "importance": 151
+      },
+      {
+        "feature": "price_vs_ma60_z",
+        "importance": 147
+      },
+      {
+        "feature": "body_ratio",
+        "importance": 147
+      },
+      {
+        "feature": "benchmark_return_5d",
+        "importance": 146
+      },
+      {
+        "feature": "excess_return_5d",
+        "importance": 141
+      },
+      {
+        "feature": "benchmark_return_20d",
+        "importance": 139
+      },
+      {
+        "feature": "ma20_slope_delta",
+        "importance": 127
+      },
+      {
+        "feature": "efficiency_ratio_20",
+        "importance": 111
+      },
+      {
+        "feature": "center_width_pct",
+        "importance": 106
+      },
+      {
+        "feature": "return_test_depth",
+        "importance": 106
+      },
+      {
+        "feature": "realized_vol_20",
+        "importance": 104
+      },
+      {
+        "feature": "return_3d",
+        "importance": 101
+      },
+      {
+        "feature": "pivot_count",
+        "importance": 100
+      },
+      {
+        "feature": "return_10d",
+        "importance": 96
+      },
+      {
+        "feature": "acceptance_strength",
+        "importance": 92
+      },
+      {
+        "feature": "obv_slope_10",
+        "importance": 90
+      },
+      {
+        "feature": "lower_shadow_ratio",
+        "importance": 87
+      },
+      {
+        "feature": "gap_pct",
+        "importance": 87
+      }
+    ],
+    "risk": [
+      {
+        "feature": "ma60_slope",
+        "importance": 69
+      },
+      {
+        "feature": "exhaustion_5d",
+        "importance": 64
+      },
+      {
+        "feature": "center_width_pct",
+        "importance": 55
+      },
+      {
+        "feature": "efficiency_ratio_60",
+        "importance": 53
+      },
+      {
+        "feature": "last_bi_amplitude_pct",
+        "importance": 53
+      },
+      {
+        "feature": "return_3d",
+        "importance": 52
+      },
+      {
+        "feature": "excess_return_5d",
+        "importance": 51
+      },
+      {
+        "feature": "active_center_lower",
+        "importance": 45
+      },
+      {
+        "feature": "price_vs_ma60_z",
+        "importance": 43
+      },
+      {
+        "feature": "pivot_count",
+        "importance": 43
+      },
+      {
+        "feature": "realized_vol_20",
+        "importance": 42
+      },
+      {
+        "feature": "benchmark_return_5d",
+        "importance": 41
+      },
+      {
+        "feature": "entry_success_3d",
+        "importance": 41
+      },
+      {
+        "feature": "atr_pct",
+        "importance": 40
+      },
+      {
+        "feature": "bi_count",
+        "importance": 40
+      },
+      {
+        "feature": "distance_to_center_lower",
+        "importance": 40
+      },
+      {
+        "feature": "atr_14",
+        "importance": 39
+      },
+      {
+        "feature": "ma20_slope",
+        "importance": 38
+      },
+      {
+        "feature": "trend_r2_60",
+        "importance": 37
+      },
+      {
+        "feature": "price_center_shift_5",
+        "importance": 37
+      }
+    ]
+  },
+  "entry": {
+    "mean_score": 0.4789,
+    "positive_rate": 0.2812,
+    "auc": 0.5266,
+    "brier": 0.2469,
+    "accuracy_at_0_5": 0.625,
+    "deciles": [
+      {
+        "bucket": 0,
+        "count": 4,
+        "mean_score": 0.6783,
+        "positive_rate": 0.5
+      },
+      {
+        "bucket": 1,
+        "count": 3,
+        "mean_score": 0.6209,
+        "positive_rate": 0.0
+      },
+      {
+        "bucket": 2,
+        "count": 3,
+        "mean_score": 0.5611,
+        "positive_rate": 0.3333
+      },
+      {
+        "bucket": 3,
+        "count": 3,
+        "mean_score": 0.551,
+        "positive_rate": 0.6667
+      },
+      {
+        "bucket": 4,
+        "count": 3,
+        "mean_score": 0.4773,
+        "positive_rate": 0.0
+      },
+      {
+        "bucket": 5,
+        "count": 3,
+        "mean_score": 0.4462,
+        "positive_rate": 0.0
+      },
+      {
+        "bucket": 6,
+        "count": 3,
+        "mean_score": 0.4189,
+        "positive_rate": 0.3333
+      },
+      {
+        "bucket": 7,
+        "count": 3,
+        "mean_score": 0.3909,
+        "positive_rate": 0.3333
+      },
+      {
+        "bucket": 8,
+        "count": 3,
+        "mean_score": 0.3524,
+        "positive_rate": 0.0
+      },
+      {
+        "bucket": 9,
+        "count": 4,
+        "mean_score": 0.2886,
+        "positive_rate": 0.5
+      }
+    ]
+  }
+}

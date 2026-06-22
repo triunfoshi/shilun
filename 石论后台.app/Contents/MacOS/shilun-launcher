@@ -1,0 +1,75 @@
+#!/bin/zsh
+
+set -u
+unsetopt BG_NICE
+
+PROJECT_ROOT="/Users/shibicheng/shilun_standalone"
+PYTHON="$PROJECT_ROOT/.venv312/bin/python"
+RUNTIME_DIR="$PROJECT_ROOT/runtime"
+LOG_FILE="$RUNTIME_DIR/shilun-backend.log"
+AGENT_LABEL="cn.shilun.backend"
+AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$AGENT_LABEL.plist"
+AGENT_DOMAIN="gui/$(/usr/bin/id -u)"
+URL="http://127.0.0.1:8000/ui"
+
+show_error() {
+  local message="$1"
+  /usr/bin/osascript -e "display alert \"石论后台启动失败\" message \"$message\" as critical" >/dev/null 2>&1
+}
+
+open_console() {
+  if [[ "${SHILUN_SKIP_OPEN:-0}" != "1" ]]; then
+    /usr/bin/open "$URL"
+  fi
+}
+
+is_ready() {
+  /usr/bin/curl --fail --silent --show-error --max-time 2 "$URL" >/dev/null 2>&1
+}
+
+if [[ ! -x "$PYTHON" ]]; then
+  show_error "未找到 Python 环境：$PYTHON"
+  exit 1
+fi
+
+if [[ ! -f "$AGENT_PLIST" ]]; then
+  show_error "未找到后台服务配置：$AGENT_PLIST"
+  exit 1
+fi
+
+/bin/mkdir -p "$RUNTIME_DIR"
+
+if is_ready; then
+  open_console
+  exit 0
+fi
+
+if /usr/sbin/lsof -nP -iTCP:8000 -sTCP:LISTEN >/dev/null 2>&1; then
+  show_error "端口 8000 已被其他程序占用。请关闭占用程序后重试。日志：$LOG_FILE"
+  exit 1
+fi
+
+{
+  echo ""
+  echo "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] Starting Shilun backend"
+} >> "$LOG_FILE"
+
+if /bin/launchctl print "$AGENT_DOMAIN/$AGENT_LABEL" >/dev/null 2>&1; then
+  /bin/launchctl kickstart -k "$AGENT_DOMAIN/$AGENT_LABEL" >/dev/null 2>&1
+else
+  if ! /bin/launchctl bootstrap "$AGENT_DOMAIN" "$AGENT_PLIST" >/dev/null 2>&1; then
+    show_error "macOS 后台服务注册失败。请查看日志：$LOG_FILE"
+    exit 1
+  fi
+fi
+
+for _attempt in {1..80}; do
+  if is_ready; then
+    open_console
+    exit 0
+  fi
+  /bin/sleep 0.5
+done
+
+show_error "服务未能在 40 秒内启动。请查看日志：$LOG_FILE"
+exit 1

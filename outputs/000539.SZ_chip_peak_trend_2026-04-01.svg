@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720">
+<rect width="1200" height="720" fill="#fbfaf7"/>
+<rect x="24" y="24" width="1152" height="672" rx="24" fill="#ffffff" stroke="#ece4d8"/>
+<text x="88" y="54" font-size="28" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#2f2a24" font-weight="700">粤电力Ａ(000539.SZ)近90天主筹码峰占比趋势</text>
+<text x="88" y="82" font-size="14" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#7a7268">口径：每个交易日 cyq_chips 中 percent 最大值；区间 2026-01-14 至 2026-04-01，共 50 个交易日</text>
+<rect x="88" y="90" width="1072" height="540" rx="16" fill="#dff3ea" opacity="0.35"/>
+<line x1="88" y1="630.00" x2="1160" y2="630.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="635.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">0%</text>
+<line x1="88" y1="540.00" x2="1160" y2="540.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="545.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">5%</text>
+<line x1="88" y1="450.00" x2="1160" y2="450.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="455.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">9%</text>
+<line x1="88" y1="360.00" x2="1160" y2="360.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="365.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">14%</text>
+<line x1="88" y1="270.00" x2="1160" y2="270.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="275.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">19%</text>
+<line x1="88" y1="180.00" x2="1160" y2="180.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="185.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">23%</text>
+<line x1="88" y1="90.00" x2="1160" y2="90.00" stroke="#d9d2c3" stroke-dasharray="4 6"/>
+<text x="76" y="95.00" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">28%</text>
+<line x1="88" y1="630" x2="1160" y2="630" stroke="#6b6258" stroke-width="1.5"/>
+<line x1="88" y1="90" x2="88" y2="630" stroke="#6b6258" stroke-width="1.5"/>
+<line x1="88.00" y1="630" x2="88.00" y2="636" stroke="#6b6258"/>
+<text x="88.00" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">01-14</text>
+<line x1="263.02" y1="630" x2="263.02" y2="636" stroke="#6b6258"/>
+<text x="263.02" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">01-26</text>
+<line x1="438.04" y1="630" x2="438.04" y2="636" stroke="#6b6258"/>
+<text x="438.04" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">02-05</text>
+<line x1="613.06" y1="630" x2="613.06" y2="636" stroke="#6b6258"/>
+<text x="613.06" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">02-25</text>
+<line x1="788.08" y1="630" x2="788.08" y2="636" stroke="#6b6258"/>
+<text x="788.08" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">03-09</text>
+<line x1="963.10" y1="630" x2="963.10" y2="636" stroke="#6b6258"/>
+<text x="963.10" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">03-19</text>
+<line x1="1138.12" y1="630" x2="1138.12" y2="636" stroke="#6b6258"/>
+<text x="1138.12" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">03-31</text>
+<line x1="1160.00" y1="630" x2="1160.00" y2="636" stroke="#6b6258"/>
+<text x="1160.00" y="656" text-anchor="middle" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#6b6258">04-01</text>
+<polyline fill="none" stroke="#0b6e4f" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" points="88.00,200.70 109.88,200.31 131.76,178.14 153.63,161.94 175.51,168.88 197.39,178.14 219.27,186.04 241.14,194.34 263.02,209.38 284.90,218.25 306.78,228.86 328.65,235.99 350.53,243.71 372.41,255.66 394.29,252.00 416.16,238.50 438.04,227.70 459.92,212.46 481.80,206.68 503.67,195.49 525.55,190.29 547.43,194.53 569.31,181.22 591.18,167.72 613.06,171.96 634.94,184.50 656.82,200.51 678.69,217.29 700.57,229.82 722.45,240.81 744.33,251.61 766.20,263.19 788.08,276.30 809.96,287.68 831.84,300.02 853.71,317.76 875.59,336.28 897.47,348.24 919.35,357.30 941.22,363.09 963.10,392.59 984.98,457.39 1006.86,446.21 1028.73,430.39 1050.61,466.65 1072.49,515.44 1094.37,476.87 1116.24,475.71 1138.12,474.94 1160.00,491.34"/>
+<circle cx="1160.00" cy="491.34" r="6.5" fill="#157a5b" stroke="#ffffff" stroke-width="2"/>
+<text x="1150.00" y="477.34" text-anchor="end" font-size="12" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#0b6e4f">7.19%</text>
+<text x="600.00" y="696" text-anchor="middle" font-size="14" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#2f2a24">日期</text>
+<text x="26" y="360.00" text-anchor="middle" font-size="14" font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#2f2a24" transform="rotate(-90 26 360.00)">筹码分布占比</text>
+</svg>

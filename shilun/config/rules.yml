@@ -1,0 +1,63 @@
+{
+  "version": "v0.2.0",
+  "weights": {
+    "structure_score": 0.35,
+    "volume_score": 0.3,
+    "chip_score": 0.2,
+    "risk_penalty": 0.15
+  },
+  "reason_codes": {
+    "STRUCTURE_TREND_CONTINUE": "趋势结构延续，未破坏关键确认区。",
+    "STRUCTURE_CONFIRMATION_MISSING": "结构形态存在，但关键确认尚未补齐。",
+    "BREAKOUT_VALID": "突破动作有量价配合。",
+    "BREAKOUT_SUSPICIOUS": "突破后确认不足或存在快速回落风险。",
+    "PULLBACK_HEALTHY": "回踩缩量且未失守结构确认位。",
+    "SPACE_OPEN": "上方筹码压力较轻，路径相对顺畅。",
+    "SPACE_HEAVY": "上方筹码压力较重，需要降低收益预期。",
+    "RISK_INVALIDATION_NEAR": "失效位距离较近，需优先执行防守。",
+    "RISK_SCORE_HIGH": "综合风险偏高，动作需要保守。",
+    "PROMPT_DEGRADED_STRUCTURE": "结构证据不足，文本必须降级表达。",
+    "PROMPT_DEGRADED_STRENGTH": "量价证据不足，文本必须降级表达。",
+    "PROMPT_DEGRADED_SPACE": "筹码证据不足，文本必须降级表达。"
+  },
+  "conclusion_matrix": [
+    {
+      "name": "high_quality_continuation",
+      "if": {
+        "structure_type_in": ["trend_continue", "breakout_pullback"],
+        "structure_score_gte": 70,
+        "breakout_quality_in": ["valid"],
+        "price_action_quality_in": ["healthy"],
+        "chip_vacuum_in": ["open"],
+        "risk_score_lte": 45
+      },
+      "watching_action": "buy_on_confirmation",
+      "holding_action": "hold_above_support"
+    },
+    {
+      "name": "confirmation_needed",
+      "if": {
+        "structure_score_gte": 55,
+        "breakout_quality_in": ["suspicious", "unknown"],
+        "risk_score_lte": 65
+      },
+      "watching_action": "wait_for_confirmation",
+      "holding_action": "trim_on_failed_confirmation"
+    },
+    {
+      "name": "momentum_but_heavy_overhead",
+      "if": {
+        "volume_score_gte": 60,
+        "chip_pressure_in": ["high"],
+        "risk_score_lte": 70
+      },
+      "watching_action": "avoid_chasing",
+      "holding_action": "scale_out_into_strength"
+    }
+  ],
+  "fallback": {
+    "conclusion_label": "defense_first",
+    "watching_action": "stand_aside",
+    "holding_action": "exit_on_invalidation"
+  }
+}

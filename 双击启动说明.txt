@@ -1,0 +1,11 @@
+双击“石论后台.app”即可启动后台并打开：
+http://127.0.0.1:8000/ui
+
+运行日志：
+/Users/shibicheng/shilun_standalone/runtime/shilun-backend.log
+
+说明：
+1. 如果后台已经运行，应用只会打开页面，不会重复启动。
+2. 后台由 macOS launchd 托管，启动器关闭后仍会持续运行。
+3. 应用可以拖到 Dock，后续直接点击启动。
+4. 这是 macOS 应用；Windows 才使用 .exe 文件。

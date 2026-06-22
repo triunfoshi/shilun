@@ -1,0 +1,197 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://shilun.local/contracts/market_part1.schema.json",
+  "title": "Shilun Market Part1 Permission Result",
+  "type": "object",
+  "required": [
+    "engine_version",
+    "analysis_date",
+    "benchmark_ticker",
+    "market_permission",
+    "permission_label",
+    "total_score",
+    "scores",
+    "metrics",
+    "levels",
+    "hard_triggers",
+    "evidence",
+    "state_machine",
+    "data_quality"
+  ],
+  "properties": {
+    "engine_version": {
+      "type": "string",
+      "const": "market_part1_v1"
+    },
+    "analysis_date": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "benchmark_ticker": {
+      "type": "string"
+    },
+    "benchmark_name": {
+      "type": "string"
+    },
+    "benchmark_meta": {
+      "type": "object",
+      "required": ["ticker", "name", "source", "meaning"],
+      "additionalProperties": true
+    },
+    "benchmark_options": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ticker", "name", "source", "meaning"],
+        "additionalProperties": true
+      }
+    },
+    "market_permission": {
+      "type": "string",
+      "enum": ["attack", "hold", "defense", "empty"]
+    },
+    "permission_label": {
+      "type": "string",
+      "enum": ["进攻", "持有", "防守", "空仓"]
+    },
+    "permission_summary": {
+      "type": "string"
+    },
+    "action_permission": {
+      "type": "object",
+      "required": ["can_open", "max_new_position", "text"],
+      "properties": {
+        "can_open": {"type": "string"},
+        "max_new_position": {"type": "string"},
+        "text": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "total_score": {
+      "type": "number"
+    },
+    "scores": {
+      "type": "object",
+      "required": ["trend_score", "volume_score", "breadth_score", "theme_score", "risk_score"],
+      "properties": {
+        "trend_score": {"type": "number"},
+        "volume_score": {"type": "number"},
+        "breadth_score": {"type": "number"},
+        "theme_score": {"type": "number"},
+        "risk_score": {"type": "number"}
+      },
+      "additionalProperties": false
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Numeric indicators used by the state machine. Consumers should tolerate null values when data is pending."
+    },
+    "levels": {
+      "type": "object",
+      "required": ["support_1", "support_2", "pressure_1", "definition"],
+      "properties": {
+        "support_1": {"type": ["number", "null"]},
+        "support_1_source": {"type": "string"},
+        "support_2": {"type": ["number", "null"]},
+        "support_2_source": {"type": "string"},
+        "pressure_1": {"type": ["number", "null"]},
+        "pressure_1_source": {"type": "string"},
+        "definition": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "hard_triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target_state", "reason"],
+        "properties": {
+          "target_state": {"type": "string", "enum": ["defense", "empty"]},
+          "reason": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "theme_candidates": {
+      "type": "array",
+      "description": "Top industry proxy candidates ranked by return, breadth and market share.",
+      "items": {
+        "type": "object",
+        "required": ["industry", "return", "up_ratio", "market_share", "stock_count", "status"],
+        "properties": {
+          "industry": {"type": "string"},
+          "return": {"type": ["number", "null"]},
+          "up_ratio": {"type": ["number", "null"]},
+          "market_share": {"type": ["number", "null"]},
+          "stock_count": {"type": "number"},
+          "rank_score": {"type": ["number", "null"]},
+          "status": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "theme_method": {
+      "type": "object",
+      "description": "Current board/theme classification method.",
+      "required": ["source", "method", "not_sw_index", "not_concept_index"],
+      "additionalProperties": true
+    },
+    "interpretation": {
+      "type": "object",
+      "description": "Human-readable replay of all state-machine indicators, grouped like a daily market review.",
+      "required": ["headline", "conclusion", "sections", "scorecard"],
+      "properties": {
+        "headline": {"type": "string"},
+        "conclusion": {"type": "string"},
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title", "conclusion", "rows"],
+            "properties": {
+              "title": {"type": "string"},
+              "conclusion": {"type": "string"},
+              "rows": {"type": "array"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "scorecard": {"type": "array"},
+        "key_evidence": {"type": "array", "items": {"type": "string"}},
+        "usage_note": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "state_machine": {
+      "type": "object",
+      "required": ["formula", "hard_veto", "states"],
+      "properties": {
+        "formula": {"type": "string"},
+        "hard_veto": {"type": "string"},
+        "states": {"type": "object"}
+      },
+      "additionalProperties": true
+    },
+    "data_quality": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["field", "status", "note"],
+        "properties": {
+          "field": {"type": "string"},
+          "status": {
+            "type": "string",
+            "enum": ["implemented", "data_pending", "manual_only", "proxy_only", "manual_only/proxy_pending"]
+          },
+          "note": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}
