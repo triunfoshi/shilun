@@ -111,6 +111,11 @@ class MarketPart1Tests(unittest.TestCase):
         self.assertIn("板块划分依据", [row["indicator"] for row in theme_rows])
         self.assertIn("standard", result["interpretation"]["scorecard"][0])
         self.assertIn("meaning", result["interpretation"]["scorecard"][0])
+        self.assertEqual("daily", result["chart_data"]["data_frequency"])
+        self.assertEqual(10, len(result["chart_data"]["return_distribution"]))
+        self.assertTrue(result["chart_data"]["benchmark_series"])
+        self.assertTrue(result["chart_data"]["breadth_series"])
+        self.assertIn("score", result["chart_data"]["temperature"])
 
     def test_empty_permission_when_hard_risk_triggers_fire(self) -> None:
         index_bars = _index_bars(

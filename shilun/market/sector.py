@@ -259,6 +259,13 @@ def evaluate_sector_trends(
         analysis_date=analysis_date,
         top_n=max(6, int(top_n)),
     )
+    from shilun.market.candidates import build_candidates
+
+    candidates = build_candidates(
+        top_sectors=top_sectors,
+        stock_frame=stock_frame,
+        analysis_date=analysis_date,
+    )
     return {
         "engine_version": SECTOR_ENGINE_VERSION,
         "analysis_date": analysis_date,
@@ -269,6 +276,7 @@ def evaluate_sector_trends(
         "summary": _build_summary(top_sectors),
         "top_sectors": top_sectors,
         "trend_sectors": trend_sectors,
+        "candidates": candidates,
         "all_sectors": sector_items if include_all_sectors else [],
         "daily_leaders": (
             _build_daily_leaders(

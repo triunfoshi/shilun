@@ -186,6 +186,16 @@ def evaluate_market_permission(
     }
     action_permission = _action_permission(market_permission)
     evidence = trend["evidence"] + volume["evidence"] + breadth_score["evidence"] + theme["evidence"] + risk["evidence"]
+    chart_data = _build_market_chart_data(
+        analysis_date=analysis_date,
+        index_frame=index_frame,
+        stock_frame=stock_frame,
+        breadth=breadth,
+        total_score=total_score,
+        risk_score=risk["score"],
+    )
+    trend_summary = _market_trend_summary(latest_index)
+    pattern_forecast = _build_pattern_forecast(index_frame, levels, trend_summary=trend_summary)
 
     return {
         "engine_version": PART1_ENGINE_VERSION,
@@ -205,6 +215,7 @@ def evaluate_market_permission(
         "hard_triggers": hard_triggers,
         "theme_method": theme.get("method", _theme_method()),
         "theme_candidates": theme.get("candidates", []),
+        "chart_data": chart_data,
         "evidence": evidence,
         "interpretation": _build_interpretation(
             benchmark_ticker=benchmark_ticker,
@@ -218,7 +229,10 @@ def evaluate_market_permission(
             hard_triggers=hard_triggers,
             evidence=evidence,
             theme_candidates=theme.get("candidates", []),
+            pattern_forecast=pattern_forecast,
         ),
+        "trend_summary": trend_summary,
+        "pattern_forecast": pattern_forecast,
         "implementation_status": _implementation_status(),
         "state_machine": _state_machine_spec(),
         "data_quality": _data_quality(index_frame=index_frame, stock_frame=stock_frame, stock_basic=stock_basic),
@@ -234,10 +248,15 @@ def _prepare_index_frame(index_bars: pd.DataFrame, analysis_date: str) -> pd.Dat
     if frame.empty:
         return frame
     frame["pct_chg"] = frame["close"].pct_change().fillna((frame["close"] / frame["open"]) - 1.0)
-    for window in (5, 10, 20):
-        frame[f"ma{window}"] = frame["close"].rolling(window, min_periods=1).mean()
+    for window in (5, 10, 20, 50, 120, 250):
+        # 历史不够长时 min_periods=1 会算"伪 MA"，所以 MA50+ 用更严格的最小样本
+        min_p = 1 if window <= 20 else max(int(window * 0.6), 30)
+        frame[f"ma{window}"] = frame["close"].rolling(window, min_periods=min_p).mean()
     frame["ma5_slope"] = frame["ma5"].diff().fillna(0.0)
     frame["ma10_slope"] = frame["ma10"].diff().fillna(0.0)
+    frame["ma20_slope"] = frame["ma20"].diff().fillna(0.0)
+    frame["ma50_slope_5d"] = frame["ma50"].diff(5).fillna(0.0)  # MA50 五日斜率
+    frame["ma120_slope_5d"] = frame["ma120"].diff(5).fillna(0.0)  # MA120 五日斜率
     frame["amount_ma5"] = frame["amount"].rolling(5, min_periods=1).mean()
     frame["amount_ma20"] = frame["amount"].rolling(20, min_periods=1).mean()
     frame["amount_ratio_5"] = _safe_div_series(frame["amount"], frame["amount_ma5"])
@@ -322,6 +341,12 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
             }
         )
     breadth = pd.DataFrame(grouped).sort_values("date").reset_index(drop=True)
+    breadth["up_ratio"] = breadth["up_count"] / breadth["total_count"].clip(lower=1)
+    breadth["market_amount_ma5"] = breadth["market_amount"].rolling(5, min_periods=1).mean()
+    breadth["market_amount_ratio_ma5"] = _safe_div_series(
+        breadth["market_amount"],
+        breadth["market_amount_ma5"],
+    )
     current_rows = breadth.loc[breadth["date"] == target]
     if current_rows.empty:
         raise ValueError(f"No market breadth rows found for {analysis_date}.")
@@ -333,6 +358,7 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
     limit_down_ma5 = float(previous["limit_down_count"].mean()) if not previous.empty else float(current["limit_down_count"])
     market_amount_ma5 = float(previous["market_amount"].mean()) if not previous.empty else float(current["market_amount"])
     total_count = max(1, int(current["total_count"]))
+    history = breadth.iloc[max(0, idx - 19) : idx + 1]
     return {
         "metrics": {
             "up_count": int(current["up_count"]),
@@ -352,7 +378,91 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
                 4,
             ),
             "market_amount_ratio_ma5": _round(_safe_div(float(current["market_amount"]), market_amount_ma5), 4),
+        },
+        "series": [
+            {
+                "date": _date_text(row["date"]),
+                "up_count": int(row["up_count"]),
+                "down_count": int(row["down_count"]),
+                "flat_count": int(row["flat_count"]),
+                "up_ratio": _round(row["up_ratio"], 4),
+                "limit_up_count": int(row["limit_up_count"]),
+                "limit_down_count": int(row["limit_down_count"]),
+                "market_amount": _round(row["market_amount"]),
+                "market_amount_ratio_ma5": _round(row["market_amount_ratio_ma5"], 4),
+            }
+            for _, row in history.iterrows()
+        ],
+    }
+
+
+def _build_market_chart_data(
+    *,
+    analysis_date: str,
+    index_frame: pd.DataFrame,
+    stock_frame: pd.DataFrame,
+    breadth: dict[str, Any],
+    total_score: int,
+    risk_score: int,
+) -> dict[str, Any]:
+    index_history = index_frame.tail(20).copy()
+    first_close = _float(index_history.iloc[0].get("close"), 0.0) if not index_history.empty else 0.0
+    benchmark_series = [
+        {
+            "date": _date_text(row["date"]),
+            "close": _round(row.get("close")),
+            "normalized_close": _round(_safe_div(_float(row.get("close"), 0.0), first_close) * 100.0, 4),
+            "pct_chg": _round(row.get("pct_chg"), 4),
+            "ma5": _round(row.get("ma5")),
+            "ma10": _round(row.get("ma10")),
+            "amount": _round(row.get("amount")),
+            "amount_ratio_5": _round(row.get("amount_ratio_5"), 4),
         }
+        for _, row in index_history.iterrows()
+    ]
+
+    target_rows = stock_frame.loc[stock_frame["date"] == pd.Timestamp(analysis_date)].copy()
+    pct = pd.to_numeric(target_rows.get("pct_chg"), errors="coerce").fillna(0.0)
+    distribution_specs = (
+        ("跌停", pct <= -0.095),
+        ("-9.5~-7%", (pct > -0.095) & (pct <= -0.07)),
+        ("-7~-5%", (pct > -0.07) & (pct <= -0.05)),
+        ("-5~-3%", (pct > -0.05) & (pct <= -0.03)),
+        ("-3~0%", (pct > -0.03) & (pct <= 0.0)),
+        ("0~3%", (pct > 0.0) & (pct < 0.03)),
+        ("3~5%", (pct >= 0.03) & (pct < 0.05)),
+        ("5~7%", (pct >= 0.05) & (pct < 0.07)),
+        ("7~9.5%", (pct >= 0.07) & (pct < 0.095)),
+        ("涨停", pct >= 0.095),
+    )
+    return_distribution = [
+        {
+            "label": label,
+            "count": int(mask.sum()),
+            "direction": "down" if index < 5 else "up",
+        }
+        for index, (label, mask) in enumerate(distribution_specs)
+    ]
+    temperature_score = int(max(0, min(100, round(50 + total_score * 6 - risk_score * 4))))
+    if temperature_score >= 75:
+        temperature_label = "偏强，可按权限参与"
+    elif temperature_score >= 55:
+        temperature_label = "中性偏暖，等待共振"
+    elif temperature_score >= 35:
+        temperature_label = "偏弱，优先控制仓位"
+    else:
+        temperature_label = "风险区，等待止跌"
+    return {
+        "data_frequency": "daily",
+        "frequency_note": "当前图表基于日线复盘，不是盘中分钟走势；接入 minute_bars 后再升级为分时曲线。",
+        "benchmark_series": benchmark_series,
+        "breadth_series": breadth.get("series", []),
+        "return_distribution": return_distribution,
+        "temperature": {
+            "score": temperature_score,
+            "label": temperature_label,
+            "formula": "clip(50 + total_score*6 - risk_score*4, 0, 100)",
+        },
     }
 
 
@@ -540,6 +650,7 @@ def _build_interpretation(
     hard_triggers: list[dict[str, str]],
     evidence: list[str],
     theme_candidates: list[dict[str, Any]],
+    pattern_forecast: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     index_conclusion = _index_state_conclusion(metrics, levels)
     breadth_conclusion = _breadth_state_conclusion(metrics)
@@ -550,7 +661,9 @@ def _build_interpretation(
         total_score=total_score,
         hard_triggers=hard_triggers,
     )
+    pattern_section = _pattern_forecast_section(pattern_forecast) if pattern_forecast else None
     sections = [
+        *([pattern_section] if pattern_section else []),
         _index_state_section(benchmark_ticker, benchmark_name, metrics, levels, index_conclusion),
         _breadth_state_section(metrics, breadth_conclusion),
         _theme_state_section(metrics, theme_candidates, theme_conclusion),
@@ -989,23 +1102,1067 @@ def _amount_yi_text(value: Any) -> str:
     return f"{_float(value, 0.0) / 100000:.2f}亿"
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 形态识别 + 明日关键点位预判
+# 参考结构：volume_breakout 战法 YAML；每种形态产出2-3个明日关键价位 + 一句指引
+# ─────────────────────────────────────────────────────────────────────────────
+
+_PATTERN_META: dict[str, dict[str, str]] = {
+    "volume_breakout":       {"display_name": "放量突破",   "signal_type": "bullish"},
+    "volume_breakdown":      {"display_name": "放量破位",   "signal_type": "bearish"},
+    "high_shadow_warning":   {"display_name": "爆量上影",   "signal_type": "warning"},
+    "support_recovery":      {"display_name": "回踩守支撑", "signal_type": "neutral"},
+    "strong_bullish":        {"display_name": "强势大阳",   "signal_type": "bullish"},
+    "low_vol_consolidation": {"display_name": "缩量整理",   "signal_type": "neutral"},
+    "weak_decline":          {"display_name": "弱势回落",   "signal_type": "bearish"},
+    "support_breakdown":     {"display_name": "跌破支撑",   "signal_type": "bearish"},
+    "mild_recovery":         {"display_name": "小阳修复",   "signal_type": "neutral"},
+    "neutral_oscillation":   {"display_name": "震荡整理",   "signal_type": "neutral"},
+}
+
+# 当前可用数据 vs 波浪理论精确预判所需数据的缺口说明
+_PATTERN_DATA_GAPS: list[dict[str, str]] = [
+    {
+        "field": "MA50 / MA120 / Swing High/Low",
+        "status": "integrated",
+        "impact": "high",
+        "note": "✅ 已接入。MA50/MA120 已加入支撑压力候选；近 120 日 Swing High/Low 已识别为关键位；趋势方向由 MA50/MA120 五日斜率推导。",
+    },
+    {
+        "field": "外部波浪理论文档（人工标注位）",
+        "status": "missing",
+        "impact": "high",
+        "note": "黑兔量化等外部文档里的推动浪/调整浪、A/B/C 浪关键位。导入接口已规划，待实现。",
+    },
+    {
+        "field": "价格密集成交区（VPOC / 筹码峰）",
+        "status": "missing",
+        "impact": "high",
+        "note": "真正的支撑往往是筹码密集区，而非简单的均线。需要成交额加权的价格分布（Volume Profile）。",
+    },
+    {
+        "field": "MA250 / 跨年级关键位",
+        "status": "partial",
+        "impact": "medium",
+        "note": "当前指数同步 1 年（243 根），刚好够算 MA250。下一步可同步 2 年历史以稳定计算更长周期均线。",
+    },
+    {
+        "field": "北向资金净流入（akshare）",
+        "status": "integrated",
+        "impact": "medium",
+        "note": "✅ 已存到 Mongo。下一步把 north_capital_flow 拉入 PART1 评分维度。",
+    },
+    {
+        "field": "涨停板开板比例 / 连板梯队（akshare）",
+        "status": "integrated",
+        "impact": "medium",
+        "note": "✅ 已存到 Mongo。下一步把 limit_up_pool 的炸板率/连板分布拉入 PART1 情绪分。",
+    },
+    {
+        "field": "股指期货升贴水（IF/IH/IC）",
+        "status": "missing",
+        "impact": "low",
+        "note": "期货升贴水反映机构对明日预期。优先级低。",
+    },
+]
+
+
+def _detect_index_pattern(latest: pd.Series, levels: dict[str, Any]) -> str:
+    """根据最新一根日线的量价结构识别今日大盘形态。"""
+    close        = _float(latest.get("close"), 0.0)
+    high         = _float(latest.get("high"), close)
+    low          = _float(latest.get("low"), close)
+    pct_chg      = _float(latest.get("pct_chg"), 0.0)
+    amount_ratio = _float(latest.get("amount_ratio_5"), 1.0)
+    upper_shadow = _float(latest.get("upper_shadow_ratio"), 0.0)
+
+    pressure_1 = _float(levels.get("pressure_1"), close * 1.05)
+    support_1  = _float(levels.get("support_1"),  close * 0.97)
+
+    rng = high - low
+    close_pos = (close - low) / rng if rng > 0 else 0.5  # 0=最低, 1=最高
+
+    # 1. 放量突破：收盘站上压力位 + 量比≥1.5 + 强势收盘（振幅上方70%）
+    if close > pressure_1 and amount_ratio >= 1.5 and close_pos >= 0.70:
+        return "volume_breakout"
+
+    # 2. 放量破位：收盘跌破支撑 + 量比≥1.3 + 跌幅≥0.5%
+    if close < support_1 and amount_ratio >= 1.3 and pct_chg < -0.005:
+        return "volume_breakdown"
+
+    # 3. 爆量上影：上影比>40% + 量比≥1.3（优先于强势大阳判断）
+    if upper_shadow > 0.40 and amount_ratio >= 1.3:
+        return "high_shadow_warning"
+
+    # 4. 回踩守支撑：盘中探至支撑附近后收回（日内价格测试支撑）
+    if low <= support_1 * 1.005 and close > support_1 and pct_chg >= -0.005:
+        return "support_recovery"
+
+    # 5. 强势大阳：涨幅≥1.5% + 收盘在振幅上方75% + 量能正常
+    if pct_chg >= 0.015 and close_pos >= 0.75 and amount_ratio >= 1.0:
+        return "strong_bullish"
+
+    # 6. 跌破支撑（量不足以构成放量破位）
+    if close < support_1:
+        return "support_breakdown"
+
+    # 7. 缩量整理：量比<0.85 + 振幅小于0.5%
+    if amount_ratio < 0.85 and abs(pct_chg) < 0.005:
+        return "low_vol_consolidation"
+
+    # 8. 弱势回落：收跌但未破支撑
+    if pct_chg < -0.003:
+        return "weak_decline"
+
+    # 9. 小阳修复：涨幅0.1%~1.5%
+    if 0.001 <= pct_chg < 0.015:
+        return "mild_recovery"
+
+    return "neutral_oscillation"
+
+
+def _build_pattern_forecast(
+    index_frame: pd.DataFrame,
+    levels: dict[str, Any],
+    trend_summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    基于今日指数日线形态，输出明日关键点位预判。
+
+    v2 升级：
+    - 候选位包含 MA50/MA120（已接入，足够算 MA120）
+    - 加入近 120 日 Swing High/Low 关键位
+    - 输出中长期趋势方向（MA50/MA120 斜率）+ 与之相关的"结构性研判"
+    - 仍欠缺：波浪结构（A/B/C 浪、推动浪/调整浪），需人工文档叠加
+    """
+    if index_frame.empty or len(index_frame) < 2:
+        return {
+            "primary_pattern": None,
+            "key_levels_tomorrow": [],
+            "tomorrow_guide": "数据不足，无法预判。",
+            "data_gaps": _PATTERN_DATA_GAPS,
+        }
+
+    trend_summary = trend_summary or {}
+
+    latest = index_frame.iloc[-1]
+    close  = _float(latest.get("close"), 0.0)
+    open_  = _float(latest.get("open"), close)
+    high   = _float(latest.get("high"), close)
+    low    = _float(latest.get("low"), close)
+    pct_chg      = _float(latest.get("pct_chg"), 0.0)
+    amount_ratio = _float(latest.get("amount_ratio_5"), 1.0)
+    ma5   = _float(latest.get("ma5"), close)
+    ma10  = _float(latest.get("ma10"), close)
+    ma20  = _float(latest.get("ma20"), close)
+
+    pressure_1   = _float(levels.get("pressure_1"), close * 1.05)
+    support_1    = _float(levels.get("support_1"),  close * 0.97)
+    support_2    = _float(levels.get("support_2"),  close * 0.94)
+    p1_src       = str(levels.get("pressure_1_source", "上方阻力"))
+    s1_src       = str(levels.get("support_1_source", "下方支撑"))
+    s2_src       = str(levels.get("support_2_source", "第二支撑"))
+
+    rng = high - low
+    close_pos = (close - low) / rng if rng > 0 else 0.5
+
+    pattern = _detect_index_pattern(latest, levels)
+    meta = _PATTERN_META.get(pattern, {"display_name": pattern, "signal_type": "neutral"})
+
+    # 趋势上下文：用于补强每种形态的描述
+    ma50 = trend_summary.get("ma50") or 0
+    ma120 = trend_summary.get("ma120") or 0
+    mid_label = trend_summary.get("mid_label", "")
+    long_label = trend_summary.get("long_label", "")
+    structure_note = ""
+    if ma50 and ma120:
+        if close > ma50 and close > ma120:
+            structure_note = f"中长期结构：{mid_label}、{long_label}（MA50={ma50}、MA120={ma120} 均在收盘下方，构成中长期支撑）。"
+        elif close < ma50 and close < ma120:
+            structure_note = f"中长期结构：{mid_label}、{long_label}（MA50={ma50}、MA120={ma120} 均在收盘上方，构成中长期压力）。"
+        elif close > ma50 and close < ma120:
+            structure_note = f"中长期结构：{mid_label}但{long_label}（已站上 MA50={ma50}，仍在 MA120={ma120} 之下，处于中长期分歧区）。"
+        else:
+            structure_note = f"中长期结构：{mid_label}、{long_label}（MA50={ma50}、MA120={ma120}）。"
+    elif ma50:
+        structure_note = f"中期结构：{mid_label}（MA50={ma50}）；MA120 历史不足无法判断长期趋势。"
+
+    key_levels: list[dict[str, Any]] = []
+    description = ""
+    guide = ""
+
+    if pattern == "volume_breakout":
+        description = (
+            f"指数放量（量比 {amount_ratio:.1f}x）上穿{p1_src}（{pressure_1:.2f}），"
+            f"收盘 {close:.2f} 站稳于振幅上方 {close_pos*100:.0f}%，满足放量突破三要素：\n"
+            f"① 收盘站上阻力位；② 量比≥1.5；③ 强势收盘（振幅上方70%）。\n"
+            f"参考 volume_breakout 战法：次日开盘守住突破位是区分真/假突破的核心验证。"
+        )
+        key_levels = [
+            {"label": f"突破确认位（{p1_src}，核心）",
+             "level": _round(pressure_1), "direction": "support", "significance": "high",
+             "note": f"突破后压力转支撑。明日若守住此位（{pressure_1:.2f}）开盘，真突破概率高；"
+                     f"若跌回此位下方，视为假突破，volume_breakout 战法要求止损撤退。"},
+            {"label": f"{s1_src}（备用支撑）",
+             "level": _round(support_1), "direction": "support", "significance": "medium",
+             "note": "若明日出现快速回落测试，此位为第二档承接；若破则突破完全失败。"},
+            {"label": "延伸目标参考（+3%）",
+             "level": _round(pressure_1 * 1.03), "direction": "resistance", "significance": "low",
+             "note": "无明确前高数据时，暂以突破位+3%作为短线参考目标（缺口：需历史关键高点数据）。"},
+        ]
+        guide = (
+            f"明日核心验证：开盘是否守住 {pressure_1:.2f}。"
+            f"缩量回踩此位不破可继续持仓；若放量跌破，执行假突破止损。"
+        )
+
+    elif pattern == "volume_breakdown":
+        description = (
+            f"指数放量（量比 {amount_ratio:.1f}x）跌破{s1_src}（{support_1:.2f}），"
+            f"收盘 {close:.2f}，跌幅 {pct_chg*100:+.2f}%。\n"
+            f"放量破位表明卖盘主动，与 volume_breakout 战法逻辑对应的空头版本：\n"
+            f"支撑位在量能配合下被有效击穿，不宜在反弹初期抄底。"
+        )
+        key_levels = [
+            {"label": f"破位压力（{s1_src}，已破转压）",
+             "level": _round(support_1), "direction": "resistance", "significance": "high",
+             "note": f"已破支撑变压力。明日若反弹至 {support_1:.2f} 下方受阻，确认破位有效；"
+                     f"若放量收回此位上方，可能是假破位，需重新评估。"},
+            {"label": "今日收盘（弱势延续参考）",
+             "level": _round(close), "direction": "resistance", "significance": "medium",
+             "note": "若明日反弹但收盘低于今日收盘，弱势延续；若超过则有修复迹象。"},
+            {"label": f"{s2_src}（下一档支撑）",
+             "level": _round(support_2), "direction": "support", "significance": "high",
+             "note": f"关键下方支撑 {support_2:.2f}；若有效放量守住，可能是二次确认机会。"},
+        ]
+        guide = (
+            f"明日若反弹至 {support_1:.2f} 下方承压，弱势延续；"
+            f"只有放量收回 {support_1:.2f} 以上才能讨论修复，否则下一档看 {support_2:.2f}。"
+        )
+
+    elif pattern == "high_shadow_warning":
+        upper_body = max(open_, close)
+        description = (
+            f"指数放量（量比 {amount_ratio:.1f}x）冲高后回落，"
+            f"上影线占振幅 {_float(latest.get('upper_shadow_ratio'))*100:.0f}%，收盘 {close:.2f}。\n"
+            f"这是压力区卖盘较重的信号。参考 volume_breakout 战法中的'风险过滤'：\n"
+            f"收盘应在振幅上方30%，而当日收盘偏弱，说明突破动能被压制。"
+        )
+        key_levels = [
+            {"label": "今日高点（上影压力区上沿）",
+             "level": _round(high), "direction": "resistance", "significance": "high",
+             "note": f"上影代表抛压区。明日若放量有效站上 {high:.2f}，说明抛压被消化；"
+                     f"若缩量在此区域反复，震荡整理；若放量阴线，则是顶部确认。"},
+            {"label": f"实体上沿 {upper_body:.2f}（日内承接位）",
+             "level": _round(upper_body), "direction": "support", "significance": "medium",
+             "note": "实体支撑。守住此位且明日能再次向上，上影是单日分歧；若实体跌破，转入警惕。"},
+            {"label": f"{s1_src}（关键支撑）",
+             "level": _round(support_1), "direction": "support", "significance": "medium",
+             "note": "若今日实体支撑失守，此为关键下方支撑。"},
+        ]
+        guide = (
+            f"明日观察能否放量站上今日高点 {high:.2f}（消化抛压）；"
+            f"若守住实体 {upper_body:.2f} 但未突破高点，是正常整理；"
+            f"若主动跌破实体，需降权看待当前行情。"
+        )
+
+    elif pattern == "support_recovery":
+        description = (
+            f"指数盘中低探至{s1_src}（{support_1:.2f}）附近，最低至 {low:.2f}，"
+            f"但尾盘收回 {close:.2f}。\n"
+            f"回踩守支撑：支撑位经过价格测试后仍然有效，尾盘承接说明多方未放弃。\n"
+            f"真正的确认点是明日能否离开支撑区域向上走，而不是今天的修复。"
+        )
+        key_levels = [
+            {"label": f"{s1_src}（今日确认支撑）",
+             "level": _round(support_1), "direction": "support", "significance": "high",
+             "note": f"今日已测试并守住。明日若再回踩 {support_1:.2f} 附近但不破，二次确认支撑有效；"
+                     f"若放量跌破，之前的守支撑是诱多。"},
+            {"label": "今日收盘（修复延续基准）",
+             "level": _round(close), "direction": "support", "significance": "medium",
+             "note": "明日若能在此位上方开盘并向上走，修复延续；若跌回支撑区，原地震荡。"},
+            {"label": f"{p1_src}（短期修复目标）",
+             "level": _round(pressure_1), "direction": "resistance", "significance": "medium",
+             "note": "守支撑成功后的短线修复参考目标；需要量能配合才能触及。"},
+        ]
+        guide = (
+            f"核心看明日能否离开支撑 {support_1:.2f} 向上走；"
+            f"缩量守支撑健康；若再次快速跌破，支撑失效，需降仓。"
+        )
+
+    elif pattern == "strong_bullish":
+        body_low = min(open_, close)
+        description = (
+            f"指数收涨 {pct_chg*100:+.2f}%，量比 {amount_ratio:.1f}x，"
+            f"收盘位于振幅上方 {close_pos*100:.0f}%，强势大阳形态。\n"
+            f"{'收盘站上' + p1_src + f'（{pressure_1:.2f}）' if close > pressure_1 else '收盘在关键压力位下方，强势但尚未突破。'}"
+        )
+        key_levels = [
+            {"label": f"大阳实体低部 {body_low:.2f}（保护位）",
+             "level": _round(body_low), "direction": "support", "significance": "high",
+             "note": f"明日若缩量整理不破实体低部 {body_low:.2f}，形态健康；"
+                     f"若主动放量阴包阳跌破此位，大阳线失效，需减仓。"},
+            {"label": "今日收盘（持续性验证）",
+             "level": _round(close), "direction": "support", "significance": "medium",
+             "note": "次日高开后守住今日收盘位，趋势延续；若跌回实体低部附近，更谨慎。"},
+            {"label": f"{p1_src}（上方目标参考）",
+             "level": _round(pressure_1), "direction": "resistance", "significance": "medium",
+             "note": "若大阳已突破压力位，此位不再适用；若未突破，此为上方参考阻力。"},
+        ]
+        guide = (
+            f"保护位 {body_low:.2f}，跌破需警惕；"
+            f"明日若缩量整理为正常；若放量继续，可向 {pressure_1:.2f} 进发。"
+        )
+
+    elif pattern == "low_vol_consolidation":
+        description = (
+            f"指数缩量整理（量比 {amount_ratio:.1f}x），"
+            f"{'收涨' if pct_chg > 0 else '微跌'} {abs(pct_chg)*100:.2f}%，振幅收窄。\n"
+            f"缩量说明主动抛压不大，多空双方都在等待；"
+            f"方向需要放量突破来确认，当前是'蓄力'阶段。"
+        )
+        key_levels = [
+            {"label": f"整理上沿（今日高点 {high:.2f}）",
+             "level": _round(high), "direction": "resistance", "significance": "high",
+             "note": f"明日若放量站上 {high:.2f}，是向上突破确认；"
+                     f"若缩量在此附近反复，继续整理。"},
+            {"label": f"整理下沿（今日低点 {low:.2f}）",
+             "level": _round(low), "direction": "support", "significance": "high",
+             "note": f"明日若放量跌破 {low:.2f}，可能向下突破；若缩量回踩，仍在整理区间内。"},
+            {"label": f"{s1_src}（整理区间下方关键位）",
+             "level": _round(support_1), "direction": "support", "significance": "medium",
+             "note": "若整理下沿跌破，此为关键支撑；破则整理结束、转为弱势。"},
+        ]
+        guide = (
+            f"方向待放量确认：明日放量站上 {high:.2f} 偏多；"
+            f"放量跌破 {low:.2f} 偏空；缩量继续等待。"
+        )
+
+    elif pattern == "weak_decline":
+        description = (
+            f"指数收跌 {abs(pct_chg)*100:.2f}%，未破{s1_src}（{support_1:.2f}），"
+            f"属于支撑上方的弱势回落。\n"
+            f"MA5（{ma5:.2f}）{'在收盘上方，构成短期均线压力' if ma5 > close else '已被跌破，均线不再是支撑'}。\n"
+            f"不需要立刻防守，但需要监控是否进一步破支撑。"
+        )
+        key_levels = [
+            {"label": f"{s1_src}（关键支撑，勿破）",
+             "level": _round(support_1), "direction": "support", "significance": "high",
+             "note": f"守住 {support_1:.2f} 弱势延续但结构未破；若放量跌破，需降仓，下看 {support_2:.2f}。"},
+            {"label": f"MA5 {ma5:.2f}（均线压力）",
+             "level": _round(ma5), "direction": "resistance", "significance": "medium",
+             "note": f"收复 MA5（{ma5:.2f}）是弱势转修复的第一步；若量能配合，可积极一些。"},
+            {"label": f"{s2_src}（备用支撑）",
+             "level": _round(support_2), "direction": "support", "significance": "low",
+             "note": "若支撑 1 失守，此为下一档关键位。"},
+        ]
+        guide = (
+            f"关注明日能否守住 {support_1:.2f}；"
+            f"若收复 MA5（{ma5:.2f}），弱势修复；若跌破 {support_1:.2f}，减仓为先。"
+        )
+
+    elif pattern == "support_breakdown":
+        description = (
+            f"指数收盘 {close:.2f} 跌破{s1_src}（{support_1:.2f}），"
+            f"量比 {amount_ratio:.1f}x（{'量不足，试探性破位，需观察' if amount_ratio < 1.3 else '放量破位，有效性较高'}）。\n"
+            f"需区分是缩量的虚假破位还是有效破位，明日的行为是关键判断依据。"
+        )
+        key_levels = [
+            {"label": f"{s1_src}（已破，转压力）",
+             "level": _round(support_1), "direction": "resistance", "significance": "high",
+             "note": f"若明日反弹在 {support_1:.2f} 下方受阻，确认破位有效；"
+                     f"若放量收回此位上方，可能是假破位（量不足时尤其注意）。"},
+            {"label": "今日收盘（弱势延续参考）",
+             "level": _round(close), "direction": "support", "significance": "medium",
+             "note": "若明日继续跌破今日收盘，弱势加速。"},
+            {"label": f"{s2_src}（下一档关键支撑）",
+             "level": _round(support_2), "direction": "support", "significance": "high",
+             "note": f"关键下方支撑 {support_2:.2f}；若有效守住，可能出现二次确认机会。"},
+        ]
+        guide = (
+            f"关键看明日反弹能否放量收回 {support_1:.2f}；"
+            f"若不能，下方关注 {support_2:.2f} 是否有承接。"
+        )
+
+    elif pattern == "mild_recovery":
+        description = (
+            f"指数小幅修复（+{pct_chg*100:.2f}%），量比 {amount_ratio:.1f}x，"
+            f"均线结构{'较好，MA5/MA10/MA20 有序' if ma5 > ma10 > ma20 else '尚待改善'}。\n"
+            f"力度有限，不能视为强突破，但结构无破坏；需等待量能配合才能升级判断。"
+        )
+        key_levels = [
+            {"label": f"{p1_src}（上方参考阻力）",
+             "level": _round(pressure_1), "direction": "resistance", "significance": "medium",
+             "note": "短线修复的参考目标；若明日放量突破此位，升级为突破处理。"},
+            {"label": f"{s1_src}（支撑）",
+             "level": _round(support_1), "direction": "support", "significance": "high",
+             "note": f"若明日回踩至 {support_1:.2f} 附近且守住，修复结构不破。"},
+        ]
+        guide = (
+            f"观察修复是否延续：守住 {support_1:.2f} 是前提；"
+            f"若明日放量突破 {pressure_1:.2f}，升级为突破处理。"
+        )
+
+    else:  # neutral_oscillation
+        description = (
+            f"指数震荡整理，收盘 {close:.2f}（{pct_chg*100:+.2f}%），"
+            f"量比 {amount_ratio:.1f}x，无明显量价异常。\n"
+            f"关注支撑和压力方向是否有有效突破；突破需量能配合才能确认方向。"
+        )
+        key_levels = [
+            {"label": f"{p1_src}（上方阻力）",
+             "level": _round(pressure_1), "direction": "resistance", "significance": "medium",
+             "note": "明日若放量站上此位，方向偏多。"},
+            {"label": f"{s1_src}（下方支撑）",
+             "level": _round(support_1), "direction": "support", "significance": "medium",
+             "note": "明日若放量跌破此位，方向偏空；守住则继续震荡。"},
+        ]
+        guide = (
+            f"无明确信号，等待突破方向；"
+            f"关注是否放量站上 {pressure_1:.2f} 或跌破 {support_1:.2f}。"
+        )
+
+    # 把结构性补充注入到 description 尾部
+    if structure_note and description:
+        description = f"{description}\n{structure_note}"
+
+    # 艾略特波浪分析（最小可用版）
+    wave_analysis = _build_wave_analysis(index_frame, levels, trend_summary)
+
+    return {
+        "wave_analysis": wave_analysis,
+        "primary_pattern": {
+            "name": pattern,
+            "display_name": meta["display_name"],
+            "signal_type": meta["signal_type"],
+            "description": description,
+        },
+        "key_levels_tomorrow": key_levels,
+        "tomorrow_guide": guide,
+        "structure_context": {
+            "mid_trend": trend_summary.get("mid_trend"),
+            "mid_label": trend_summary.get("mid_label"),
+            "long_trend": trend_summary.get("long_trend"),
+            "long_label": trend_summary.get("long_label"),
+            "ma50": trend_summary.get("ma50"),
+            "ma120": trend_summary.get("ma120"),
+            "ma50_slope_5d": trend_summary.get("ma50_slope_5d"),
+            "ma120_slope_5d": trend_summary.get("ma120_slope_5d"),
+            "swing_highs": levels.get("swing_highs", []),
+            "swing_lows": levels.get("swing_lows", []),
+        },
+        "data_gaps": _PATTERN_DATA_GAPS,
+    }
+
+
+_WAVE_ACTION_LABELS = {
+    "buy_on_pullback": "🟢 买入信号",
+    "hold": "🟡 持有",
+    "wait": "⚪ 等待",
+    "exit_at_target": "🟠 止盈区",
+    "avoid": "🔴 规避",
+}
+
+_WAVE_CONFIDENCE_CN = {"high": "高", "medium": "中", "low": "低"}
+
+
+def _pattern_forecast_section(pattern_forecast: dict[str, Any]) -> dict[str, Any]:
+    """波浪理论分析 + 短期 K 线形态 + 明日关键位，统一展示为 PART1 第一个 section。"""
+    wave = pattern_forecast.get("wave_analysis") or {}
+    pf = pattern_forecast.get("primary_pattern") or {}
+    guide = pattern_forecast.get("tomorrow_guide", "")
+    levels = pattern_forecast.get("key_levels_tomorrow", [])
+
+    wave_label = wave.get("current_wave_label", "波浪结构不清晰")
+    wave_phase = wave.get("wave_phase", "unknown")
+    wave_confidence = wave.get("confidence", "low")
+    wave_action = wave.get("action", "wait")
+    wave_action_label_full = wave.get("action_label", "等待信号")
+    wave_action_icon = _WAVE_ACTION_LABELS.get(wave_action, "⚪ 等待")
+    wave_score_adj = wave.get("score_adjustment", 0)
+    wave_reasoning = wave.get("reasoning", "")
+    fib_levels = wave.get("fibonacci_levels", [])
+    violations = wave.get("wave_rule_violations", [])
+    wave_points = wave.get("wave_points", [])
+
+    # 顶部结论（合并波浪建议 + 明日指引）
+    conclusion_parts = [
+        f"{wave_action_icon} | {wave_action_label_full}",
+    ]
+    if guide:
+        conclusion_parts.append(f"明日：{guide}")
+    conclusion = " ｜ ".join(conclusion_parts)
+
+    # row 1：波浪当前位置
+    wave_value_chips = [
+        f"置信度 {_WAVE_CONFIDENCE_CN.get(wave_confidence, wave_confidence)}",
+        "推动浪" if wave_phase == "impulse" else ("调整浪" if wave_phase == "corrective" else "结构不明"),
+        f"评分调整 {wave_score_adj:+d}",
+    ]
+    rows: list[dict[str, Any]] = [
+        {
+            "indicator": "🌊 波浪结构",
+            "value": f"{wave_label}，{'、'.join(wave_value_chips)}",
+            "judgement": wave_reasoning or "无法识别当前浪型，建议人工分析。",
+        },
+    ]
+
+    # 波浪端点序列
+    if wave_points:
+        points_text = " → ".join(f"{p['label']}: {p['price']}" for p in wave_points)
+        rows.append({
+            "indicator": "📍 波浪端点序列",
+            "value": points_text,
+            "judgement": "从 Swing High/Low 推导出的关键端点。计数置信度受 Swing 窗口和样本数影响。",
+        })
+
+    # 斐波那契关键位（作为 row）
+    for lv in fib_levels:
+        kind = lv.get("kind", "support")
+        kind_label = {"support": "支撑", "resistance": "压力", "target": "目标"}.get(kind, kind)
+        rows.append({
+            "indicator": f"{kind_label} {lv.get('level', 0):.2f}",
+            "value": lv.get("label", ""),
+            "judgement": f"波浪理论 / 斐波那契推导出的{kind_label}位。",
+        })
+
+    # 波浪规则违反提示
+    if violations:
+        rows.append({
+            "indicator": "⚠️ 波浪规则违反",
+            "value": "需重新归数",
+            "judgement": "；".join(violations) + "。建议结合人工分析文档校正波浪计数。",
+        })
+
+    # K 线短期形态（作为补充）
+    if pf and pf.get("display_name"):
+        rows.append({
+            "indicator": f"🕯 短期 K 线：{pf['display_name']}",
+            "value": f"信号性质：{pf.get('signal_type', '-')}",
+            "judgement": pf.get("description", ""),
+        })
+
+    # 明日关键位（来自原 K 线形态）
+    for lv in levels:
+        rows.append({
+            "indicator": f"{'支撑' if lv['direction'] == 'support' else '压力'} {_round(lv['level']):.2f}（{lv.get('significance', 'medium')}）",
+            "value": lv.get("label", ""),
+            "judgement": lv.get("note", ""),
+        })
+
+    # 数据缺口
+    data_gap_names = "、".join(g["field"] for g in _PATTERN_DATA_GAPS if g["impact"] == "high" and g.get("status") != "integrated")
+    if data_gap_names:
+        rows.append({
+            "indicator": "📋 仍待补充",
+            "value": "高影响数据缺口",
+            "judgement": f"以下数据接入后可显著提升精度：{data_gap_names}。",
+        })
+
+    return {
+        "title": "0. 波浪结构 + 明日关键位",
+        "conclusion": conclusion,
+        "rows": rows,
+    }
+
+
+def _detect_swing_points(index_frame: pd.DataFrame, window: int = 5, lookback: int = 120) -> dict[str, list[dict[str, Any]]]:
+    """识别近 lookback 根日线里的 Swing High/Low。
+
+    定义：某根 K 的 high 严格大于左右 window 根 K 的 high 即为 Swing High（对称 Swing Low）。
+    """
+    if index_frame.empty or len(index_frame) < window * 2 + 1:
+        return {"swing_highs": [], "swing_lows": []}
+    tail = index_frame.tail(lookback).reset_index(drop=True)
+    highs = tail["high"].astype(float).tolist()
+    lows = tail["low"].astype(float).tolist()
+    dates = [_date_text(d) for d in tail["date"].tolist()]
+    swing_highs: list[dict[str, Any]] = []
+    swing_lows: list[dict[str, Any]] = []
+    for i in range(window, len(tail) - window):
+        h_window = highs[i - window : i + window + 1]
+        l_window = lows[i - window : i + window + 1]
+        if highs[i] == max(h_window) and h_window.count(highs[i]) == 1:
+            swing_highs.append({"date": dates[i], "price": _round(highs[i])})
+        if lows[i] == min(l_window) and l_window.count(lows[i]) == 1:
+            swing_lows.append({"date": dates[i], "price": _round(lows[i])})
+    # 保留最近 8 个（够波浪计数 1-2-3-4-5 + ABC = 8 个交替端点）
+    return {"swing_highs": swing_highs[-8:], "swing_lows": swing_lows[-8:]}
+
+
+def _alternating_pivots(swing_highs: list[dict], swing_lows: list[dict]) -> list[dict[str, Any]]:
+    """把 Swing 高低点合并为时间序列，并过滤连续同向（保留更极端的）。"""
+    all_pivots: list[dict[str, Any]] = []
+    for h in swing_highs:
+        all_pivots.append({"date": str(h.get("date", "")), "price": float(h.get("price", 0.0)), "kind": "H"})
+    for l in swing_lows:
+        all_pivots.append({"date": str(l.get("date", "")), "price": float(l.get("price", 0.0)), "kind": "L"})
+    all_pivots.sort(key=lambda x: x["date"])
+
+    alternated: list[dict[str, Any]] = []
+    for p in all_pivots:
+        if not alternated:
+            alternated.append(p)
+            continue
+        last = alternated[-1]
+        if p["kind"] == last["kind"]:
+            # 同向：保留更极端的
+            if p["kind"] == "H" and p["price"] > last["price"]:
+                alternated[-1] = p
+            elif p["kind"] == "L" and p["price"] < last["price"]:
+                alternated[-1] = p
+        else:
+            alternated.append(p)
+    return alternated
+
+
+def _wave_unclear(reason: str) -> dict[str, Any]:
+    """波浪结构不清晰时的默认返回。"""
+    return {
+        "current_wave": "unclear",
+        "current_wave_label": "波浪结构不清晰",
+        "wave_phase": "unknown",
+        "confidence": "low",
+        "reasoning": reason,
+        "fibonacci_levels": [],
+        "wave_rule_violations": [],
+        "action": "wait",
+        "action_label": "等待信号",
+        "score_adjustment": 0,
+        "wave_points": [],
+    }
+
+
+def _build_wave_analysis(
+    index_frame: pd.DataFrame,
+    levels: dict[str, Any],
+    trend_summary: dict[str, Any],
+) -> dict[str, Any]:
+    """艾略特波浪理论分析（最小可用版）。
+
+    基于近 120 日 Swing High/Low 识别当前所处浪型。
+    不做严格波浪计数，只识别最常见的 6 种情况：
+    第2浪回调（黄金坑）/ 第3浪推动 / 第4浪回调 / 第5浪末端 /
+    ABC 调整中 / 调整结束新推动。
+    """
+    if index_frame.empty:
+        return _wave_unclear("数据不足。")
+
+    latest = index_frame.iloc[-1]
+    close = _float(latest.get("close"), 0.0)
+    amount_ratio = _float(latest.get("amount_ratio_5"), 1.0)
+
+    swing_highs = levels.get("swing_highs", [])
+    swing_lows = levels.get("swing_lows", [])
+    if len(swing_highs) < 2 or len(swing_lows) < 2:
+        return _wave_unclear("近 120 日 Swing 点不足以推导波浪结构，建议结合外部分析文档。")
+
+    pivots = _alternating_pivots(swing_highs, swing_lows)
+    if len(pivots) < 4:
+        return _wave_unclear(f"交替端点仅 {len(pivots)} 个，至少需要 4 个端点。")
+
+    # 取最近 5 个交替端点
+    recent = pivots[-5:] if len(pivots) >= 5 else pivots
+    if len(recent) == 5:
+        p1, p2, p3, p4, p5 = recent
+    else:  # 4 个
+        p1, p2, p3, p4 = recent
+        p5 = None
+
+    # ── 上行序列：L → H → L → H → (L)，可能是 1-2-3-4 或 1-2-3-4-5 ──
+    if p1["kind"] == "L" and p2["kind"] == "H" and p3["kind"] == "L" and p4["kind"] == "H":
+        w1_start, w1_end = p1["price"], p2["price"]
+        w2_end, w3_end = p3["price"], p4["price"]
+        w1_len = w1_end - w1_start
+        w3_len = w3_end - w2_end
+
+        if w1_len <= 0 or w3_len <= 0:
+            return _wave_unclear("Swing 端点价差异常，波浪结构无效。")
+
+        violations: list[str] = []
+        if w2_end < w1_start:
+            violations.append(f"第2浪低点 {w2_end:.2f} 跌破第1浪起点 {w1_start:.2f}，违反波浪规则")
+
+        # 第3浪不是最短浪（与第1浪比）：A股波浪常见情况
+        wave1_shorter_than_wave3 = w1_len <= w3_len
+
+        # case A: 已识别 4 个端点 + 第5个（low）→ 在第4浪或第5浪
+        if p5 is not None and p5["kind"] == "L":
+            w4_end = p5["price"]
+            w4_pullback = (w3_end - w4_end) / w3_len if w3_len > 0 else 0
+
+            if w4_end < w1_end:
+                violations.append(f"第4浪低点 {w4_end:.2f} 侵入第1浪高点 {w1_end:.2f}，疑似 ABC 调整而非推动浪")
+
+            if close > w4_end:
+                # 第5浪上行中
+                # 第5浪目标：常见 = 第1浪长度，或第1-3浪总幅 0.618
+                w5_target_a = w3_end + w1_len * 0.618
+                w5_target_b = w3_end + w1_len * 1.0
+                # 量能减弱判定（第5浪 vs 第3浪平均量）
+                wave_phase_note = "量能配合不足" if amount_ratio < 1.0 else "量能尚可"
+                current_wave = "wave_5"
+                current_wave_label = "第5浪上行（末端，警惕顶背离）"
+                action = "exit_at_target"
+                action_label = "止盈区，避免追高"
+                score_adjustment = -10
+                confidence = "medium" if not violations else "low"
+                reasoning = (
+                    f"识别到完整 1-2-3-4 浪结构（{w1_start:.0f} → {w1_end:.0f} → {w2_end:.0f} → "
+                    f"{w3_end:.0f} → {w4_end:.0f}），当前 {close:.2f} 已突破第4浪低点，进入第5浪。"
+                    f"第3浪长 {w3_len:.0f}（{'>' if wave1_shorter_than_wave3 else '<='}第1浪 {w1_len:.0f}）。{wave_phase_note}。"
+                )
+                fib_levels = [
+                    {"label": "第5浪 0.618 目标位", "level": _round(w5_target_a), "kind": "target"},
+                    {"label": "第5浪 1.0 目标位（与第1浪等长）", "level": _round(w5_target_b), "kind": "target"},
+                    {"label": f"第4浪低点（破位 = 第5浪失败）", "level": _round(w4_end), "kind": "support"},
+                    {"label": f"第1浪高点（核心保护位）", "level": _round(w1_end), "kind": "support"},
+                ]
+                return _wave_result(
+                    current_wave, current_wave_label, "impulse", confidence, reasoning,
+                    fib_levels, violations, action, action_label, score_adjustment,
+                    [p1, p2, p3, p4, p5], ["wave_1_start", "wave_1_end", "wave_2_end", "wave_3_end", "wave_4_end"],
+                )
+            else:
+                # 还在第4浪回调中
+                current_wave = "wave_4"
+                current_wave_label = f"第4浪调整中（回撤 {w4_pullback*100:.0f}%）"
+                if 0.236 <= w4_pullback <= 0.382:
+                    action, action_label = "buy_on_pullback", "第4浪买点（次优）"
+                    score_adjustment = 8
+                    confidence = "medium" if not violations else "low"
+                elif w4_pullback > 0.618:
+                    action, action_label = "wait", "第4浪回撤过深，疑似计数失效"
+                    score_adjustment = -5
+                    confidence = "low"
+                else:
+                    action, action_label = "wait", "等待第4浪企稳"
+                    score_adjustment = 0
+                    confidence = "low"
+                reasoning = (
+                    f"识别到 1-2-3 推动浪（{w1_start:.0f} → {w1_end:.0f} → {w2_end:.0f} → {w3_end:.0f}），"
+                    f"第3浪长 {w3_len:.0f}。当前回踩至 {w4_end:.0f}，回撤 {w4_pullback*100:.0f}%。"
+                )
+                fib_0382 = w3_end - w3_len * 0.382
+                fib_0500 = w3_end - w3_len * 0.500
+                fib_0618 = w3_end - w3_len * 0.618
+                fib_levels = [
+                    {"label": "第3浪 0.382 回撤（理想买点）", "level": _round(fib_0382), "kind": "support"},
+                    {"label": "第3浪 0.500 回撤", "level": _round(fib_0500), "kind": "support"},
+                    {"label": "第3浪 0.618 回撤（极限）", "level": _round(fib_0618), "kind": "support"},
+                    {"label": "第1浪高点（不得跌破）", "level": _round(w1_end), "kind": "support"},
+                    {"label": "第3浪高点（突破 = 第5浪开始）", "level": _round(w3_end), "kind": "resistance"},
+                ]
+                return _wave_result(
+                    current_wave, current_wave_label, "corrective", confidence, reasoning,
+                    fib_levels, violations, action, action_label, score_adjustment,
+                    [p1, p2, p3, p4, p5], ["wave_1_start", "wave_1_end", "wave_2_end", "wave_3_end", "wave_4_end (current)"],
+                )
+
+        # case B: 只识别到 4 个端点（没有 p5），在第3浪或第4浪初期
+        else:
+            # 当前位置判断
+            w3_target_1618 = w1_end + w1_len * 1.618
+            if close >= w3_end:
+                # 第3浪进行中（在 wave3 end 之上）或刚结束开始第4浪
+                w3_progress = (close - w2_end) / w3_len if w3_len > 0 else 0
+                if w3_progress < 0.5:
+                    current_wave = "wave_3_early"
+                    current_wave_label = "第3浪初期"
+                    action, action_label = "buy_on_pullback", "第3浪放量突破买点"
+                    score_adjustment = 12
+                    confidence = "medium" if amount_ratio >= 1.2 else "low"
+                elif w3_progress < 1.0:
+                    current_wave = "wave_3_mid"
+                    current_wave_label = "第3浪中段"
+                    action, action_label = "hold", "持有，等待第3浪末或第4浪回调"
+                    score_adjustment = 5
+                    confidence = "medium"
+                else:
+                    current_wave = "wave_3_late"
+                    current_wave_label = "第3浪末段（警惕第4浪开始）"
+                    action, action_label = "wait", "止盈或减仓"
+                    score_adjustment = 0
+                    confidence = "low"
+                reasoning = (
+                    f"识别到 1-2-3 浪推动结构（{w1_start:.0f} → {w1_end:.0f} → {w2_end:.0f} → {w3_end:.0f}），"
+                    f"第3浪长 {w3_len:.0f}（vs 第1浪 {w1_len:.0f}）。"
+                    f"量比 {amount_ratio:.1f}x。"
+                )
+                fib_levels = [
+                    {"label": "第3浪 1.618 目标位", "level": _round(w3_target_1618), "kind": "target"},
+                    {"label": "第3浪高点", "level": _round(w3_end), "kind": "resistance"},
+                    {"label": "第1浪高点（核心保护）", "level": _round(w1_end), "kind": "support"},
+                    {"label": "第2浪低点（破位则计数失效）", "level": _round(w2_end), "kind": "support"},
+                ]
+                return _wave_result(
+                    current_wave, current_wave_label, "impulse", confidence, reasoning,
+                    fib_levels, violations, action, action_label, score_adjustment,
+                    [p1, p2, p3, p4], ["wave_1_start", "wave_1_end", "wave_2_end", "wave_3_end"],
+                )
+            elif close < w2_end:
+                violations.append(f"当前价 {close:.2f} 已跌破第2浪低点 {w2_end:.2f}，原计数失效")
+                return _wave_unclear(
+                    f"原计数 1-2 浪（{w1_start:.0f} → {w1_end:.0f} → {w2_end:.0f}）已失效，"
+                    f"当前 {close:.2f} 跌破第2浪低点，可能是 ABC 调整或下行结构。"
+                )
+            else:
+                # 在 wave1_end ~ wave3_end 之间，向下回看，可能是第4浪初期
+                w4_pullback = (w3_end - close) / w3_len if w3_len > 0 else 0
+                current_wave = "wave_4"
+                current_wave_label = f"第4浪初期回调（已回撤 {w4_pullback*100:.0f}%）"
+                if 0.236 <= w4_pullback <= 0.382:
+                    action, action_label = "buy_on_pullback", "第4浪买点（次优）"
+                    score_adjustment = 8
+                    confidence = "medium"
+                else:
+                    action, action_label = "wait", "等待第4浪企稳到 0.382 黄金回撤"
+                    score_adjustment = 0
+                    confidence = "low"
+                reasoning = (
+                    f"识别到 1-2-3 推动浪（{w1_start:.0f} → {w1_end:.0f} → {w2_end:.0f} → {w3_end:.0f}），"
+                    f"当前 {close:.2f} 在第3浪高点下方，进入第4浪初期回调。"
+                )
+                fib_0382 = w3_end - w3_len * 0.382
+                fib_0500 = w3_end - w3_len * 0.500
+                fib_0618 = w3_end - w3_len * 0.618
+                fib_levels = [
+                    {"label": "第3浪 0.382 回撤（理想买点）", "level": _round(fib_0382), "kind": "support"},
+                    {"label": "第3浪 0.500 回撤", "level": _round(fib_0500), "kind": "support"},
+                    {"label": "第3浪 0.618 回撤（极限）", "level": _round(fib_0618), "kind": "support"},
+                    {"label": "第1浪高点（不得跌破）", "level": _round(w1_end), "kind": "support"},
+                    {"label": "第3浪高点（突破 = 第5浪开始）", "level": _round(w3_end), "kind": "resistance"},
+                ]
+                return _wave_result(
+                    current_wave, current_wave_label, "corrective", confidence, reasoning,
+                    fib_levels, violations, action, action_label, score_adjustment,
+                    [p1, p2, p3, p4], ["wave_1_start", "wave_1_end", "wave_2_end", "wave_3_end"],
+                )
+
+    # ── 部分序列：L → H → L（仅3 个端点，可能在第2浪回调）──
+    # 这个分支用 alternated 序列里最后 3 个端点判断
+    if len(pivots) >= 3:
+        q1, q2, q3 = pivots[-3:]
+        if q1["kind"] == "L" and q2["kind"] == "H" and q3["kind"] == "L":
+            w1_start, w1_end, w2_end = q1["price"], q2["price"], q3["price"]
+            w1_len = w1_end - w1_start
+            if w1_len > 0:
+                violations: list[str] = []
+                if w2_end < w1_start:
+                    violations.append(f"第2浪低点 {w2_end:.2f} 跌破第1浪起点，违反波浪规则")
+                if close >= w1_end:
+                    # 已突破第1浪高点 → 进入第3浪
+                    pass  # 这种情况会被上面 4 端点分支吸收，此处不会到达
+                elif close > w2_end:
+                    # 在第2浪回调中（close 在 w2_end ~ w1_end 之间）
+                    w2_pullback = (w1_end - close) / w1_len if w1_len > 0 else 0
+                    current_wave = "wave_2"
+                    current_wave_label = f"第2浪回调中（回撤 {w2_pullback*100:.0f}%）"
+                    if 0.382 <= w2_pullback <= 0.618:
+                        action, action_label = "buy_on_pullback", "黄金坑！第2浪最优买点"
+                        score_adjustment = 15
+                        confidence = "medium"
+                    elif 0.618 < w2_pullback < 1.0:
+                        action, action_label = "buy_on_pullback", "深度回调买点（接近 1.0 极限）"
+                        score_adjustment = 8
+                        confidence = "low"
+                    else:
+                        action, action_label = "wait", "等待第2浪回撤到 0.382 以下"
+                        score_adjustment = 0
+                        confidence = "low"
+                    reasoning = (
+                        f"识别到第1浪（{w1_start:.0f} → {w1_end:.0f}），第2浪正在回调，"
+                        f"当前 {close:.2f}，回撤 {w2_pullback*100:.0f}%。"
+                    )
+                    fib_0382 = w1_end - w1_len * 0.382
+                    fib_0500 = w1_end - w1_len * 0.500
+                    fib_0618 = w1_end - w1_len * 0.618
+                    fib_levels = [
+                        {"label": "0.382 回撤（理想买点）", "level": _round(fib_0382), "kind": "support"},
+                        {"label": "0.500 回撤", "level": _round(fib_0500), "kind": "support"},
+                        {"label": "0.618 回撤（黄金极限）", "level": _round(fib_0618), "kind": "support"},
+                        {"label": "第1浪起点（破位 = 计数失效）", "level": _round(w1_start), "kind": "support"},
+                        {"label": "第1浪高点（突破 = 第3浪开始）", "level": _round(w1_end), "kind": "resistance"},
+                    ]
+                    return _wave_result(
+                        "wave_2", current_wave_label, "corrective", confidence, reasoning,
+                        fib_levels, violations, action, action_label, score_adjustment,
+                        [q1, q2, q3], ["wave_1_start", "wave_1_end", "wave_2_end (current)"],
+                    )
+
+    # ── 下行序列：H → L → H → L，可能是 A-B-C 调整 ──
+    if p1["kind"] == "H" and p2["kind"] == "L" and p3["kind"] == "H" and p4["kind"] == "L":
+        wa_start, wa_end = p1["price"], p2["price"]
+        wb_end, wc_end = p3["price"], p4["price"]
+        wa_len = wa_start - wa_end
+        if wa_len <= 0:
+            return _wave_unclear("ABC 波形端点价差异常。")
+        violations: list[str] = []
+        if wb_end > wa_start:
+            violations.append(f"B浪高点 {wb_end:.2f} 超过 A浪起点 {wa_start:.2f}，可能是新一轮推动")
+        wc_target_equal_a = wb_end - wa_len  # C浪目标 = A浪长度
+        if close < wc_end:
+            current_wave = "wave_c"
+            current_wave_label = "C浪延伸下跌中"
+            action, action_label = "avoid", "避免抄底"
+            score_adjustment = -12
+            confidence = "medium" if not violations else "low"
+            reasoning = (
+                f"识别到 A-B 调整结构（A：{wa_start:.0f} → {wa_end:.0f}，B：→ {wb_end:.0f}），"
+                f"当前 {close:.2f} 已跌破 C浪低点 {wc_end:.0f}，C浪延伸下跌。"
+            )
+        elif close > wb_end:
+            current_wave = "wave_1_new"
+            current_wave_label = "调整结束，新一轮推动浪开始（需确认）"
+            action, action_label = "buy_on_pullback", "新推动浪可能开始"
+            score_adjustment = 10
+            confidence = "low"
+            reasoning = (
+                f"识别到 A-B-C 调整可能完成（{wa_start:.0f} → {wa_end:.0f} → {wb_end:.0f} → {wc_end:.0f}），"
+                f"当前 {close:.2f} 已突破 B浪高点，疑似新推动浪。"
+            )
+        else:
+            current_wave = "wave_c"
+            current_wave_label = "C浪反弹中（陷阱风险）"
+            action, action_label = "wait", "等待 C浪完成或突破 B浪高点"
+            score_adjustment = -5
+            confidence = "low"
+            reasoning = (
+                f"识别到 A-B-C 调整（{wa_start:.0f} → {wa_end:.0f} → {wb_end:.0f} → {wc_end:.0f}），"
+                f"当前 {close:.2f} 在 C浪反弹区。"
+            )
+        fib_levels = [
+            {"label": "C浪目标位（= A浪长度）", "level": _round(wc_target_equal_a), "kind": "support"},
+            {"label": "C浪低点", "level": _round(wc_end), "kind": "support"},
+            {"label": "B浪高点（突破 = 调整结束）", "level": _round(wb_end), "kind": "resistance"},
+            {"label": "A浪起点（不得超过）", "level": _round(wa_start), "kind": "resistance"},
+        ]
+        return _wave_result(
+            current_wave, current_wave_label, "corrective", confidence, reasoning,
+            fib_levels, violations, action, action_label, score_adjustment,
+            [p1, p2, p3, p4], ["A浪起点", "A浪低点", "B浪高点", "C浪低点"],
+        )
+
+    return _wave_unclear("当前 Swing 序列方向不明（既非完整推动 1-4 也非 ABC 调整）。")
+
+
+def _wave_result(
+    current_wave: str,
+    current_wave_label: str,
+    wave_phase: str,
+    confidence: str,
+    reasoning: str,
+    fibonacci_levels: list[dict[str, Any]],
+    violations: list[str],
+    action: str,
+    action_label: str,
+    score_adjustment: int,
+    pivots: list[dict[str, Any]],
+    pivot_labels: list[str],
+) -> dict[str, Any]:
+    """构造统一的波浪分析返回值。"""
+    wave_points = [
+        {"label": pivot_labels[i] if i < len(pivot_labels) else f"point_{i}",
+         "price": _round(p["price"]),
+         "date": p["date"],
+         "kind": p["kind"]}
+        for i, p in enumerate(pivots)
+    ]
+    return {
+        "current_wave": current_wave,
+        "current_wave_label": current_wave_label,
+        "wave_phase": wave_phase,
+        "confidence": confidence,
+        "reasoning": reasoning,
+        "fibonacci_levels": fibonacci_levels,
+        "wave_rule_violations": violations,
+        "action": action,
+        "action_label": action_label,
+        "score_adjustment": score_adjustment,
+        "wave_points": wave_points,
+    }
+
+
+def _market_trend_summary(latest: pd.Series) -> dict[str, Any]:
+    """根据 MA50/MA120 斜率判断中长期趋势方向。"""
+    ma50_slope = _float(latest.get("ma50_slope_5d"), 0.0)
+    ma120_slope = _float(latest.get("ma120_slope_5d"), 0.0)
+    close = _float(latest.get("close"), 0.0)
+    ma50 = _float(latest.get("ma50"), 0.0)
+    ma120 = _float(latest.get("ma120"), 0.0)
+
+    # 中期趋势：用 MA50 斜率和位置
+    if ma50 > 0 and close > ma50 and ma50_slope > 0:
+        mid_trend = "up"
+        mid_label = "中期上行"
+    elif ma50 > 0 and close < ma50 and ma50_slope < 0:
+        mid_trend = "down"
+        mid_label = "中期下行"
+    else:
+        mid_trend = "range"
+        mid_label = "中期震荡"
+
+    # 长期趋势：用 MA120 斜率和位置
+    if ma120 > 0 and close > ma120 and ma120_slope > 0:
+        long_trend = "up"
+        long_label = "长期上行"
+    elif ma120 > 0 and close < ma120 and ma120_slope < 0:
+        long_trend = "down"
+        long_label = "长期下行"
+    elif ma120 == 0:
+        long_trend = "unknown"
+        long_label = "长期数据不足"
+    else:
+        long_trend = "range"
+        long_label = "长期震荡"
+
+    return {
+        "mid_trend": mid_trend,
+        "mid_label": mid_label,
+        "long_trend": long_trend,
+        "long_label": long_label,
+        "ma50": _round(ma50),
+        "ma120": _round(ma120),
+        "ma50_slope_5d": _round(ma50_slope, 4),
+        "ma120_slope_5d": _round(ma120_slope, 4),
+    }
+
+
 def _build_support_pressure(index_frame: pd.DataFrame) -> dict[str, Any]:
     latest = index_frame.iloc[-1]
     previous = index_frame.iloc[-2] if len(index_frame) >= 2 else latest
     close = _float(latest.get("close"), 0.0)
-    candidates = [
-        ("MA5", _float(previous.get("ma5"), close)),
-        ("MA10", _float(previous.get("ma10"), close)),
-        ("MA20", _float(previous.get("ma20"), close)),
-        ("20日低点", _float(previous.get("rolling_low_20"), close)),
+
+    # 基础均线候选
+    ma_candidates = [
+        ("MA5", _float(previous.get("ma5"), 0.0)),
+        ("MA10", _float(previous.get("ma10"), 0.0)),
+        ("MA20", _float(previous.get("ma20"), 0.0)),
+        ("MA50", _float(previous.get("ma50"), 0.0)),
+        ("MA120", _float(previous.get("ma120"), 0.0)),
     ]
-    below = [(name, value) for name, value in candidates if value <= close and value > 0]
-    above = [(name, value) for name, value in candidates + [("20日高点", _float(previous.get("rolling_high_20"), close))] if value > close]
-    below = sorted(below, key=lambda item: item[1], reverse=True)
-    above = sorted(above, key=lambda item: item[1])
-    support_1 = below[0] if below else min(candidates, key=lambda item: item[1])
-    support_2 = below[1] if len(below) >= 2 else min(candidates, key=lambda item: item[1])
+    # 区间高低点
+    range_candidates = [
+        ("20日低点", _float(previous.get("rolling_low_20"), 0.0)),
+        ("20日高点", _float(previous.get("rolling_high_20"), 0.0)),
+    ]
+    # Swing 高低点（近 120 日识别）
+    swings = _detect_swing_points(index_frame, window=5, lookback=120)
+    swing_candidates: list[tuple[str, float]] = []
+    for sh in swings["swing_highs"]:
+        swing_candidates.append((f"Swing高({sh['date']})", _float(sh["price"], 0.0)))
+    for sl in swings["swing_lows"]:
+        swing_candidates.append((f"Swing低({sl['date']})", _float(sl["price"], 0.0)))
+
+    all_candidates = [c for c in ma_candidates + range_candidates + swing_candidates if c[1] > 0]
+    below = sorted([c for c in all_candidates if c[1] <= close], key=lambda x: x[1], reverse=True)
+    above = sorted([c for c in all_candidates if c[1] > close], key=lambda x: x[1])
+
+    # 选取：第一支撑（最近下方）、第二支撑（其次）、压力（最近上方）
+    fallback = ("MA5", _float(previous.get("ma5"), close))
+    support_1 = below[0] if below else fallback
+    support_2 = below[1] if len(below) >= 2 else (below[0] if below else fallback)
     pressure_1 = above[0] if above else ("20日高点", _float(previous.get("rolling_high_20"), close))
+
     return {
         "support_1": _round(support_1[1]),
         "support_1_source": support_1[0],
@@ -1013,7 +2170,14 @@ def _build_support_pressure(index_frame: pd.DataFrame) -> dict[str, Any]:
         "support_2_source": support_2[0],
         "pressure_1": _round(pressure_1[1]),
         "pressure_1_source": pressure_1[0],
-        "definition": "v1 自动位：从上一交易日 MA5/MA10/MA20/20日低点中选取低于当前价的最近两档为支撑，最近上方位为压力；允许人工覆盖。",
+        "all_levels_below": [{"source": n, "level": _round(v)} for n, v in below[:5]],
+        "all_levels_above": [{"source": n, "level": _round(v)} for n, v in above[:5]],
+        "swing_highs": swings["swing_highs"],
+        "swing_lows": swings["swing_lows"],
+        "definition": (
+            "v2 自动位：候选包含 MA5/MA10/MA20/MA50/MA120 + 20日高低点 + 近120日 Swing High/Low；"
+            "选取低于当前价最近的两档为支撑、上方最近为压力。允许人工覆盖。"
+        ),
     }
 
 

@@ -4,6 +4,7 @@ from shilun.market.part1 import (
     BENCHMARK_INDEX_OPTIONS,
     DEFAULT_BENCHMARK_TICKER,
     MarketPart1Request,
+    PART1_ENGINE_VERSION,
     benchmark_index_meta,
     evaluate_market_permission,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "BENCHMARK_INDEX_OPTIONS",
     "DEFAULT_BENCHMARK_TICKER",
     "MarketPart1Request",
+    "PART1_ENGINE_VERSION",
     "SECTOR_ENGINE_VERSION",
     "SectorTrendRequest",
     "benchmark_index_meta",

@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>石论控制台</title>
+  <link rel="stylesheet" href="/static/app.css?v=20260625-data-colors-v1" />
+</head>
+<body>
+  <div class="workbench">
+    <aside class="app-sidebar" aria-label="石论研究导航">
+      <div class="brand-lockup">
+        <div class="brand-mark">石</div>
+        <div><strong>石论</strong><span>SHILUN RESEARCH</span></div>
+      </div>
+      <nav class="sidebar-nav">
+        <p class="nav-group-label">研究主流程</p>
+        <div class="tab-bar" role="tablist" aria-label="石论控制台功能分区">
+          <button class="tab-button active" type="button" data-tab="permission" onclick="switchTab('permission')"><span>01</span>权限确认</button>
+          <button class="tab-button" type="button" data-tab="market" onclick="switchTab('market')"><span>02</span>大盘计算</button>
+          <button class="tab-button" type="button" data-tab="sectors" onclick="switchTab('sectors')"><span>03</span>板块动向</button>
+          <button class="tab-button" type="button" data-tab="analysis" onclick="switchTab('analysis')"><span>04</span>单票分析</button>
+        </div>
+        <p class="nav-group-label">系统与交付</p>
+        <div class="tab-bar tab-bar-secondary" role="tablist" aria-label="石论系统功能分区">
+          <button class="tab-button" type="button" data-tab="push" onclick="switchTab('push')"><span>05</span>日报推送</button>
+          <button class="tab-button" type="button" data-tab="data" onclick="switchTab('data')"><span>06</span>数据同步</button>
+          <button class="tab-button" type="button" data-tab="system" onclick="switchTab('system')"><span>07</span>系统状态</button>
+        </div>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="sidebar-avatar">石</span>
+        <div><strong>研究工作台</strong><small>Mongo-first · 本地运行</small></div>
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <div class="topbar-context"><strong id="pageTitle">权限确认</strong><span id="pageSubtitle">交易前先确认风险边界</span></div>
+        <section class="global-toolbar" aria-label="全局参数">
+          <div class="toolbar-field">
+            <label for="globalDate">分析日期</label>
+            <input id="globalDate" type="date" value="__DEFAULT_DATE__" class="date-input" />
+          </div>
+          <div class="toolbar-field">
+            <label for="globalBenchmark">基准指数</label>
+            <select id="globalBenchmark">
+              __BENCHMARK_OPTIONS__
+            </select>
+          </div>
+          <button class="topbar-refresh" type="button" onclick="refreshCurrentTab()">刷新</button>
+        </section>
+      </header>
+      <main class="shell">
+        <section class="page-heading">
+          <div><p id="pageKicker">研究主流程</p><h1 id="pageHeading">权限确认</h1></div>
+          <p id="pageDescription">先确认今天可做什么、不能做什么，再进入大盘和板块推演。</p>
+        </section>
+        <section class="tabs">
+
+      <section id="tab-permission" class="tab-panel active" role="tabpanel">
+        <div class="grid">
+          <div class="card wide">
+            <h2>权限确认</h2>
+            <div class="hint">使用顶部全局日期与基准指数。第一步只确认交易权限和动作边界。详细评分和证据链在「大盘计算」Tab。</div>
+            <button id="permissionQueryButton" onclick="runMarketPermission()">确认今日权限</button>
+            <button class="secondary" onclick="switchTab('market')">查看大盘计算</button>
+            <div id="marketPermissionSummary" class="permission-summary"></div>
+            <pre id="marketPermissionConfirmResult">等待确认...</pre>
+          </div>
+
+        </div>
+      </section>
+
+      <section id="tab-data" class="tab-panel" role="tabpanel">
+        <div class="grid">
+
+      <!-- 数据源子 Tab 切换器 -->
+      <div class="card wide">
+        <div class="data-source-tabs">
+          <button class="data-source-tab active" type="button" data-source-tab="status" onclick="switchDataSourceTab('status')">总览 · 数据状态</button>
+          <button class="data-source-tab" type="button" data-source-tab="tushare" onclick="switchDataSourceTab('tushare')">Tushare（核心）</button>
+          <button class="data-source-tab" type="button" data-source-tab="akshare" onclick="switchDataSourceTab('akshare')">AkShare（增强）</button>
+        </div>
+      </div>
+
+      <!-- 子 Tab 1：总览 · 数据状态 -->
+      <div class="card wide data-source-panel" data-source-panel="status">
+        <h2>全部数据源状态</h2>
+        <div id="dataStatus" class="hint">正在检查所有数据源...</div>
+        <button class="secondary" onclick="loadDataStatus()">刷新数据状态</button>
+        <button class="secondary" onclick="useLatestHistoryDate()">使用最近历史日期分析</button>
+        <div id="dataStatusGrid" class="data-status-grid"></div>
+        <pre id="syncResult" style="display:none">链路规则：核心数据缺失阻断 PART1/2/3；增强数据缺失自动降级，相关维度按 0 计算。</pre>
+      </div>
+
+      <!-- 子 Tab 2：Tushare 核心数据 -->
+      <div class="card wide data-source-panel" data-source-panel="tushare" style="display:none">
+        <h2>Tushare 核心数据同步</h2>
+        <div class="hint">同步个股日线、基准指数、股票基础信息、资金流向。</div>
+        <div class="sync-button-grid">
+          <button onclick="syncLatestData()" title="同步当日个股日线 + 基准指数 + 资金流向">① 同步最新交易日</button>
+          <button onclick="syncIncrementalData()" title="检查最近 N 天缺口，按缺口同步">② 增量同步缺口</button>
+          <button onclick="syncIndexHistoryYear()" title="只同步 4 个基准指数 1 年历史（约 5 秒）">③ 补齐指数 1 年历史</button>
+          <button class="secondary" onclick="syncHistoryYear()" title="全市场 1 年历史，耗时较长">④ 导入全市场 1 年历史</button>
+        </div>
+        <pre id="tushareSyncResult">先看"总览"判断缺什么，再选对应按钮同步。补齐指数 1 年历史可解决 MA120 计算缺口。</pre>
+
+        <h3 style="margin-top:18px">Tushare 网关健康</h3>
+        <div id="tushareHealthSummary" class="hint">点击下方按钮检查 Tushare 网关与关键接口。</div>
+        <button onclick="loadTushareHealth()">检查网关健康</button>
+        <a class="link-button secondary" href="/api/v1/tushare/health" target="_blank">查看健康 JSON</a>
+        <pre id="tushareHealthResult">健康检查会固定测试 stock_basic、trade_cal、daily、daily_basic，避免把"已配置"误认为"可用"。</pre>
+      </div>
+
+      <!-- 子 Tab 3：AkShare 增强数据 -->
+      <div class="card wide data-source-panel" data-source-panel="akshare" style="display:none">
+        <h2>AkShare 增强数据同步</h2>
+        <div class="hint">免费、不需要 token。涨停池/概念板块/北向资金。任一接口失败会直接报错，不做多源回退。</div>
+        <div class="sync-button-grid">
+          <button onclick="syncAkshare('limit_up_pool')" title="东方财富涨停池：连板数/封板时间/炸板次数">① 同步涨停池</button>
+          <button onclick="syncAkshare('concept_boards')" title="东方财富概念板块当日快照">② 同步概念板块</button>
+          <button onclick="syncAkshare('north_capital_flow')" title="北向资金历史净流入">③ 同步北向资金</button>
+          <button class="secondary" onclick="syncAkshare('all')" title="一次性同步上述全部">④ 一键全部同步</button>
+        </div>
+        <pre id="akshareSyncResult">单一来源策略：每类数据只对应一个最稳定的 akshare 接口，失败直接报错。</pre>
+      </div>
+
+        </div>
+      </section>
+
+      <section id="tab-market" class="tab-panel" role="tabpanel">
+        <div class="grid">
+
+      <div class="card wide">
+        <h2>PART1 大盘计算和解读</h2>
+        <div class="hint">使用顶部全局日期与基准指数。输出五维评分、硬否决项、支撑压力、证据链和状态机规则。板块口径当前是 Tushare stock_basic.industry 行业聚合 proxy，不是申万行业指数。</div>
+        <button id="marketQueryButton" onclick="runMarketPermission()">查询并更新解读</button>
+        <button class="secondary" onclick="forceRunMarketPermission()" title="跳过缓存，重新计算（约 20-30 秒）">强制重算</button>
+        <a class="link-button secondary" href="/api/v1/market/permission?date=__DEFAULT_DATE__" target="_blank">查看 PART1 JSON</a>
+        <div id="marketProgress" class="task-progress" hidden aria-live="polite">
+          <div class="task-progress-head">
+            <strong id="marketProgressLabel">准备计算</strong>
+            <span id="marketProgressPercent" class="task-progress-percent">0%</span>
+          </div>
+          <div class="task-progress-track"><span id="marketProgressBar" class="task-progress-bar"></span></div>
+          <div class="task-progress-meta">
+            <span id="marketProgressElapsed">已等待 0 秒</span>
+            <span id="marketProgressRemaining">预计剩余约 12 秒</span>
+          </div>
+        </div>
+        <div id="marketPermissionResult" class="market-output">等待计算...</div>
+      </div>
+
+      <div class="card wide">
+        <h2>波浪/外部分析文档导入</h2>
+        <div class="hint">
+          上传黑兔量化等外部分析文档（.docx / .pdf / .txt / .md），系统会用正则提取
+          "支撑/压力/波浪位 + 价位" 组合，并叠加到当前日期的 PART1 关键位上。可选 AI 解读（需配置 ANTHROPIC_API_KEY）。
+        </div>
+        <div class="wave-upload-row">
+          <input type="file" id="waveDocFile" accept=".docx,.pdf,.txt,.md" />
+          <label class="check"><input id="waveUseAi" type="checkbox" /> 启用 AI 解读（Claude Haiku）</label>
+          <button onclick="uploadWaveDoc()">上传并解析</button>
+          <button class="secondary" onclick="loadWaveDocs()">查看已上传</button>
+          <button class="secondary" onclick="deleteWaveDocs()" style="color:#d97706">清空今日文档</button>
+        </div>
+        <div id="waveDocResult" class="wave-doc-output">等待上传... 上传后会在下次 PART1 计算时自动叠加到关键位上。</div>
+      </div>
+        </div>
+      </section>
+
+      <section id="tab-sectors" class="tab-panel" role="tabpanel">
+        <div class="grid">
+
+      <div class="card wide">
+        <h2>PART2 板块动向</h2>
+        <div class="hint">使用顶部全局日期与基准指数。用日线数据落地板块生命周期、资金流向、龙头/中军候选、分歧与修复。Tushare moneyflow 已接入；分钟启动时间和封板质量仍会明确标记为待接入。</div>
+        <button id="sectorQueryButton" onclick="runSectorTrends()">查询板块动向</button>
+        <a class="link-button secondary" href="/api/v1/market/sectors?date=__DEFAULT_DATE__" target="_blank">查看板块 JSON</a>
+        <div id="sectorProgress" class="task-progress" hidden aria-live="polite">
+          <div class="task-progress-head">
+            <strong id="sectorProgressLabel">准备计算</strong>
+            <span id="sectorProgressPercent" class="task-progress-percent">0%</span>
+          </div>
+          <div class="task-progress-track"><span id="sectorProgressBar" class="task-progress-bar"></span></div>
+          <div class="task-progress-meta">
+            <span id="sectorProgressElapsed">已等待 0 秒</span>
+            <span id="sectorProgressRemaining">预计完整结果剩余约 65 秒</span>
+          </div>
+        </div>
+        <div id="sectorTrendResult" class="market-output">等待计算...</div>
+      </div>
+
+      <div class="card wide story-aligned-card" id="candidatesCard" style="display:none">
+        <h2>PART3 · MA5 趋势战法候选</h2>
+        <div class="hint">从 PART2 龙头/中军候选里，筛出符合 MA5 趋势战法的多头排列与入场形态。点击股票代码可直接跳转单票分析。</div>
+        <div id="candidatesResult" class="candidates-output">等待板块动向计算完成...</div>
+      </div>
+        </div>
+      </section>
+
+      <section id="tab-analysis" class="tab-panel" role="tabpanel">
+        <div class="grid">
+
+      <div class="card wide">
+        <h2>单票分析</h2>
+        <div class="hint">使用顶部全局日期。下方只输入股票代码即可。</div>
+        <div class="row">
+          <div>
+            <label>股票代码</label>
+            <input id="analyzeTicker" value="600132.SH" />
+          </div>
+          <div>
+            <label class="check"><input id="allowFallback" type="checkbox" /> 允许显式 Tushare fallback</label>
+          </div>
+        </div>
+        <div id="analyzeHint" class="hint"></div>
+        <button onclick="runAnalyze()">运行分析</button>
+        <button class="secondary" onclick="runTelegramText()">生成 Telegram 文本</button>
+        <div id="analyzeResult" class="stock-output">等待操作...</div>
+      </div>
+        </div>
+      </section>
+
+      <section id="tab-push" class="tab-panel" role="tabpanel">
+        <div class="grid">
+
+      <div class="card wide">
+        <h2>每日日报 / 飞书</h2>
+        <div class="hint">使用顶部全局日期。下方只设置消息 Top K。</div>
+        <div class="row">
+          <div>
+            <label>消息 Top K</label>
+            <input id="messageTopK" type="number" min="1" max="100" value="20" />
+          </div>
+          <div></div>
+        </div>
+        <div class="checks">
+          <label class="check"><input id="dryRun" type="checkbox" checked /> 只预览，不发送</label>
+          <label class="check"><input id="includePool" type="checkbox" checked /> 包含候选池</label>
+          <label class="check"><input id="allowSnapshotFallback" type="checkbox" /> 允许快照 fallback</label>
+        </div>
+        <button onclick="runDailyPush()">执行日报</button>
+        <pre id="pushResult">建议先保持“只预览”，确认内容后再取消勾选发送飞书。</pre>
+      </div>
+
+      <div class="card wide">
+        <h2>快捷入口</h2>
+        <a class="link-button" href="/api/v1/telegram/get-me" target="_blank">Telegram getMe</a>
+        <a class="link-button" href="/openapi.json" target="_blank">OpenAPI JSON</a>
+        <a class="link-button secondary" href="/api/v1/analyze?ticker=600132.SH&date=__DEFAULT_DATE__" target="_blank">示例单票 JSON</a>
+      </div>
+        </div>
+      </section>
+
+      <section id="tab-system" class="tab-panel" role="tabpanel">
+        <div class="grid">
+          <div class="card wide">
+            <h2>系统状态</h2>
+            <div class="hint">集中检查后台依赖：Mongo、飞书、Telegram Bot 和日报推送配置，不混在业务判断 TAB 里。</div>
+            <div id="status" class="status"></div>
+          </div>
+        </div>
+      </section>
+    </section>
+  </main>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=20260625-storyline-dock-v2" defer></script>
+</body>
+</html>

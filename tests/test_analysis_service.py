@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from shilun.services import AnalyzeRequest, MongoFirstAnalysisService
+from shilun.common.config import AppConfig
 
 
 class FakeAnalysisProvider:
@@ -73,9 +74,16 @@ class AnalysisServiceTests(unittest.TestCase):
         self.assertEqual(10.0, pipeline.calls[0]["daily_basic_context"]["pe"])
         self.assertFalse(pipeline.calls[0]["benchmark_bars"].empty)
         self.assertIn(("stock_basic", "ts_code,name,industry,market"), provider.calls)
+        self.assertEqual("甲公司", result["market_overview"]["name"])
+        self.assertEqual(10.4, result["market_overview"]["close"])
+        self.assertEqual(2, len(result["market_overview"]["price_series"]))
 
     def test_analyze_requires_mongo_data_unless_fallback_enabled(self) -> None:
-        service = MongoFirstAnalysisService(pipeline=FakeAnalysisPipeline(), market_data_provider=None)
+        service = MongoFirstAnalysisService(
+            config=AppConfig(mongo_uri=None),
+            pipeline=FakeAnalysisPipeline(),
+            market_data_provider=None,
+        )
 
         with self.assertRaisesRegex(ValueError, "Mongo market data is required"):
             service.analyze(AnalyzeRequest(ticker="000001.SZ", analysis_date="2026-03-30"))

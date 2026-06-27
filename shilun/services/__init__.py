@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+import math
 from typing import Any
 
 import pandas as pd
@@ -36,7 +37,13 @@ class MongoFirstAnalysisService:
     ) -> None:
         self.config = config or load_config()
         self.pipeline = pipeline or ShilunPipeline(importer=_MongoOnlyImporter())
-        self.mongo_store = mongo_store if mongo_store is not None else self._build_mongo_store()
+        self.mongo_store = (
+            mongo_store
+            if mongo_store is not None
+            else self._build_mongo_store()
+            if market_data_provider is None
+            else None
+        )
         self.market_data_provider = market_data_provider or (
             MongoMarketDataProvider(getattr(self.mongo_store, "raw_market", self.mongo_store)) if self.mongo_store is not None else None
         )
@@ -83,8 +90,87 @@ class MongoFirstAnalysisService:
             daily_basic_context=daily_basic,
             metadata_context=metadata,
         )
+        result["market_overview"] = self._build_market_overview(
+            bars=bars,
+            analysis_date=analysis_date,
+            metadata=metadata,
+            daily_basic=daily_basic,
+        )
         result["data_source"] = "mongo"
         return result
+
+    @staticmethod
+    def _build_market_overview(
+        *,
+        bars: pd.DataFrame,
+        analysis_date: str,
+        metadata: dict[str, Any],
+        daily_basic: dict[str, Any],
+    ) -> dict[str, Any]:
+        frame = bars.copy()
+        rename_map = {}
+        if "trade_date" in frame.columns and "date" not in frame.columns:
+            rename_map["trade_date"] = "date"
+        if "vol" in frame.columns and "volume" not in frame.columns:
+            rename_map["vol"] = "volume"
+        if rename_map:
+            frame = frame.rename(columns=rename_map)
+        frame["date"] = pd.to_datetime(frame.get("date"), errors="coerce")
+        for column in ("open", "high", "low", "close", "volume", "amount"):
+            if column not in frame.columns:
+                frame[column] = 0.0
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
+        frame = frame.loc[frame["date"] <= pd.Timestamp(analysis_date)].sort_values("date").reset_index(drop=True)
+        if frame.empty:
+            return {}
+        frame["ma5"] = frame["close"].rolling(5, min_periods=1).mean()
+        frame["ma10"] = frame["close"].rolling(10, min_periods=1).mean()
+        frame["ma20"] = frame["close"].rolling(20, min_periods=1).mean()
+        frame["pct_chg"] = frame["close"].pct_change().fillna((frame["close"] / frame["open"]) - 1.0)
+        latest = frame.iloc[-1]
+        previous = frame.iloc[-2] if len(frame) >= 2 else latest
+
+        def number(value: Any, digits: int = 4) -> float | None:
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                return None
+            return round(parsed, digits) if math.isfinite(parsed) else None
+
+        series = [
+            {
+                "date": row["date"].strftime("%Y-%m-%d"),
+                "close": number(row.get("close")),
+                "pct_chg": number(row.get("pct_chg"), 6),
+                "ma5": number(row.get("ma5")),
+                "ma10": number(row.get("ma10")),
+                "ma20": number(row.get("ma20")),
+                "amount": number(row.get("amount"), 2),
+            }
+            for _, row in frame.tail(60).iterrows()
+        ]
+        return {
+            "name": metadata.get("name"),
+            "industry": metadata.get("industry"),
+            "market": metadata.get("market"),
+            "analysis_date": latest["date"].strftime("%Y-%m-%d"),
+            "open": number(latest.get("open")),
+            "high": number(latest.get("high")),
+            "low": number(latest.get("low")),
+            "close": number(latest.get("close")),
+            "previous_close": number(previous.get("close")),
+            "pct_chg": number(latest.get("pct_chg"), 6),
+            "volume": number(latest.get("volume"), 2),
+            "amount": number(latest.get("amount"), 2),
+            "turnover_rate": number(daily_basic.get("turnover_rate_f") or daily_basic.get("turnover_rate")),
+            "total_mv": number(daily_basic.get("total_mv"), 2),
+            "circ_mv": number(daily_basic.get("circ_mv"), 2),
+            "pe": number(daily_basic.get("pe_ttm") or daily_basic.get("pe")),
+            "pb": number(daily_basic.get("pb")),
+            "ps": number(daily_basic.get("ps_ttm") or daily_basic.get("ps")),
+            "price_series": series,
+            "data_frequency": "daily",
+        }
 
     def _analyze_with_tushare_fallback(self, *, ticker: str, analysis_date: str) -> dict[str, Any]:
         if self._fallback_pipeline is None:

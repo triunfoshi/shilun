@@ -30,6 +30,7 @@ class TushareSyncRequest:
     benchmark_lookback_days: int = 120
     sync_moneyflow: bool = True
     sync_all_benchmarks: bool = False
+    index_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -90,7 +91,49 @@ class TushareSyncJob:
             return self._run_incremental(request)
         if request.latest_only:
             return self._run_latest_trade_date(request)
+        if getattr(request, "index_only", False):
+            return self._run_index_history(request)
         return self._run_history_window(request)
+
+    def _run_index_history(self, request: TushareSyncRequest) -> TushareSyncResult:
+        """只补基准指数的历史日线（不跑全市场个股、不跑资金流）。"""
+        target_dt = datetime.strptime(request.target_date, "%Y-%m-%d")
+        start_date = request.start_date or (target_dt - timedelta(days=request.lookback_days)).strftime("%Y%m%d")
+        end_date = request.end_date or target_dt.strftime("%Y%m%d")
+        benchmark_tickers = self._benchmark_tickers(request)
+        benchmark_bar_count = 0
+        failed: list[str] = []
+        for benchmark_ticker in benchmark_tickers:
+            try:
+                if request.progress:
+                    print(f"[index-history] {benchmark_ticker} {start_date}~{end_date}", flush=True)
+                benchmark_bars = self.client.fetch_index_daily(
+                    benchmark_ticker,
+                    start_date=start_date,
+                    end_date=end_date,
+                )
+                benchmark_bar_count += self.raw_market_store.upsert_daily_bars(benchmark_bars)
+            except Exception as error:
+                failed.append(f"{benchmark_ticker}:{error}")
+                if not request.continue_on_error:
+                    raise
+        return TushareSyncResult(
+            target_date=request.target_date,
+            sync_trade_date=self._display_date(end_date),
+            start_date=start_date,
+            end_date=end_date,
+            stock_basic_count=0,
+            trade_calendar_count=0,
+            daily_bar_count=0,
+            daily_basic_count=0,
+            moneyflow_count=0,
+            benchmark_bar_count=benchmark_bar_count,
+            message=(
+                f"Index history sync {start_date}~{end_date} for {len(benchmark_tickers)} indices; "
+                f"failed={len(failed)}."
+            ),
+            failed_trade_dates=tuple(failed),
+        )
 
     def _run_incremental(self, request: TushareSyncRequest) -> TushareSyncResult:
         """Poll Tushare for only locally-missing trade dates.
