@@ -1,0 +1,955 @@
+# 一、版本目标：从规则语言升级为指标系统
+
+本页是 **石论 MA5 短线趋势模型 v0.2 指标化版**。
+
+v0.1 的重点是确定交易系统框架：
+
+- MA5 是核心短线趋势线；
+- MA10 是缓冲确认线；
+- MA20 是趋势背景和破坏线；
+- 大盘、板块、个股、买卖点、持仓、破窗状态共同决定交易。
+
+v0.2 的目标是把这些规则拆成 **可计算、可回测、可排序、可解释** 的指标。
+
+核心原则：
+
+> 不再只说“回踩 MA5”“突破有效”“量价健康”，而是把每个信号转化为参考指标、对应量值、历史相对比例、分位数或拟合得分。
+>
+
+指标化不要求第一版就给出绝对正确的阈值。第一版先建立字段，后续用历史样本拟合阈值、系数和分位数。
+
+---
+
+# 二、指标化方法
+
+系统采用三类量化方式。
+
+## 1. 固定阈值
+
+适合非常明确的结构判断。
+
+例子：
+
+```
+close > MA5
+close < MA5
+close_position > 0.65
+volume_ratio > 1.2
+```
+
+## 2. 历史相对值
+
+适合不同股票波动和成交活跃度差异较大的情况。
+
+例子：
+
+```
+volume_ratio_20 = volume / median(volume, 20)
+amount_ratio_60 = amount / median(amount, 60)
+range_ratio_20 = today_range / median(range, 20)
+```
+
+## 3. 分位数 / 标准化分
+
+适合后续拟合和排序。
+
+例子：
+
+```
+volume_percentile_120 = 当前成交量在过去120日中的分位数
+return_percentile_120 = 今日涨幅在过去120日中的分位数
+extension_percentile_120 = 当前偏离MA5幅度在过去120日中的分位数
+```
+
+## 4. 动态阈值
+
+对于不同波动率的股票，不能用同一个绝对阈值。
+
+建议用 ATR 或历史中位波动做调整：
+
+```
+tolerance = max(1%, 0.3 * atr_pct_14)
+normal_pullback_range = [0.5 * median_abs_return_20d, 2.5 * median_abs_return_20d]
+```
+
+解释：
+
+- 波动小的股票，回踩 2% 可能已经很深；
+- 波动大的股票，回踩 2% 可能只是正常波动；
+- 所以部分阈值要用历史波动率适配。
+
+---
+
+# 三、需要指标化的信号总览
+
+本模型需要指标化的信号分成 9 类：
+
+1. 大盘权限信号；
+2. 板块主线信号；
+3. MA5 趋势结构信号；
+4. MA5 回踩确认信号；
+5. MA5 突破确认信号；
+6. 真假突破信号；
+7. 量价健康信号；
+8. 卖出与持仓信号；
+9. 账户破窗信号。
+
+第一版不要一次做完。优先完成：
+
+```
+MA5 趋势结构 → MA5 回踩确认 → MA5 突破确认 → 真假突破 → 卖出信号
+```
+
+---
+
+# 四、第一层：大盘权限信号指标化
+
+大盘不是个股买点，但它决定：
+
+- 能不能开新仓；
+- 能不能加仓；
+- 个股信号是否降权；
+- 是否进入 defense / empty。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 指数是否站上 MA5 | index_close_ma5_ratio | index_close / index_ma5 - 1 | 判断短线大盘是否转强 |
+| 指数 MA5 斜率 | index_ma5_slope_3d | index_ma5 / index_ma5.shift(3) - 1 | 判断短线趋势方向 |
+| 指数 MA20 背景 | index_close_ma20_ratio | index_close / index_ma20 - 1 | 判断是否有趋势背景 |
+| 市场广度 | up_ratio | up_count / total_count | 判断指数上涨是否真实 |
+| 下跌扩散 | down_ratio | down_count / total_count | 判断亏钱效应 |
+| 跌停扩散 | limit_down_ratio | limit_down_count / limit_down_ma5 | 判断恐慌程度 |
+| 成交温度 | market_amount_ratio_20 | market_amount / median(market_amount, 20) | 判断资金是否活跃 |
+| 权重护盘 | index_up_breadth_weak_flag | index_return > 0 且 up_ratio < 0.4 | 识别指数虚强 |
+
+## 2. 输出字段
+
+```
+market_gate = {
+  permission: attack / hold / defense / empty,
+  market_multiplier: 1.2 / 1.0 / 0.7 / 0.0,
+  allow_new_position: true / false,
+  allow_add_position: true / false,
+  risk_reason: []
+}
+```
+
+## 3. 执行思路
+
+大盘权限不用于预测指数涨跌，而是用于约束交易行为。
+
+建议第一版规则：
+
+```
+attack:
+- index_close_ma5_ratio > 0
+- index_ma5_slope_3d > 0
+- up_ratio > 0.55
+- market_amount_ratio_20 >= 0.9
+
+defense:
+- index_close_ma5_ratio < 0
+- up_ratio < 0.4
+- limit_down_ratio > 1.3
+
+empty:
+- 指数放量跌破 MA20
+- 或大盘广度极差
+- 或系统性风险触发
+```
+
+---
+
+# 五、第二层：板块主线信号指标化
+
+板块信号决定个股是否加权。它要回答：
+
+> 这个票所在方向是不是主线？板块是否仍在趋势里？龙头和中军是否仍然有效？
+>
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 板块 5 日相对强度 | sector_excess_return_5d | sector_return_5d - index_return_5d | 短线强弱 |
+| 板块 20 日相对强度 | sector_excess_return_20d | sector_return_20d - index_return_20d | 中短期主线 |
+| 板块 60 日相对强度 | sector_excess_return_60d | sector_return_60d - index_return_60d | 中期主线背景 |
+| 板块持续性 | outperform_days_5 | 最近5日跑赢指数天数 | 判断是否连续强 |
+| 板块扩散 | sector_up_ratio | 板块上涨家数 / 板块总数 | 判断是不是集体行情 |
+| 板块成交活跃 | sector_amount_ratio_20 | sector_amount / median(sector_amount, 20) | 资金是否介入 |
+| 龙头强度 | leader_score | 龙头涨幅、MA5、创新高、承接综合 | 判断板块核心 |
+| 中军强度 | zhongjun_score | 中军是否站上 MA5/MA10，量价是否健康 | 判断机构资金状态 |
+| 板块退潮 | sector_retreat_flag | 龙头破 MA5/MA10 或板块放量下跌 | 风险降权 |
+
+## 2. 输出字段
+
+```
+sector_state = mainline / hot / neutral / retreat
+sector_multiplier = 1.30 / 1.10 / 1.00 / 0.85 / 0.60
+sector_mainline_score = 0-100
+```
+
+## 3. 执行思路
+
+第一版 sector_mainline_score 可以这样构造：
+
+```
+sector_mainline_score =
+  35% * sector_excess_return_20d_score
++ 25% * sector_excess_return_60d_score
++ 15% * outperform_days_5_score
++ 15% * sector_amount_ratio_score
++ 10% * leader_zhongjun_score
+```
+
+建议规则：
+
+```
+mainline_top3: sector_mainline_score >= 75，sector_rank <= 3
+mainline_top8: sector_mainline_score >= 60，sector_rank <= 8
+short_hot: 5日强但20/60日不强
+retreat: 龙头破位或板块放量下跌
+```
+
+---
+
+# 六、第三层：MA5 趋势结构信号指标化
+
+这是 PART3 的核心。系统仍然沿 MA5 做，不改成 MA10/MA20。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 是否站上 MA5 | close_ma5_ratio | close / ma5 - 1 | 核心短线趋势 |
+| MA5 斜率 | ma5_slope_3d | ma5 / ma5.shift(3) - 1 | 判断 MA5 是否上行 |
+| MA5 5日斜率 | ma5_slope_5d | ma5 / ma5.shift(5) - 1 | 判断趋势持续性 |
+| MA5 偏离 | ma5_distance | close / ma5 - 1 | 判断是否过热或贴线 |
+| MA5 偏离分位 | ma5_extension_percentile_120 | 当前 ma5_distance 在120日分位 | 动态判断过热 |
+| 均线结构 | ma_alignment_score | MA5 > MA10 > MA20 得分 | 判断趋势层级 |
+| MA10 缓冲 | close_ma10_ratio | close / ma10 - 1 | 判断 MA5 失守后的缓冲 |
+| MA20 背景 | close_ma20_ratio | close / ma20 - 1 | 判断主升背景 |
+| MA20 斜率 | ma20_slope_5d | ma20 / ma20.shift(5) - 1 | 判断趋势是否仍向上 |
+
+## 2. MA5 趋势状态
+
+```
+strong_uptrend:
+- close_ma5_ratio > 0
+- ma5_slope_3d > 0
+- MA5 > MA10 > MA20
+- close_ma20_ratio > 0
+
+early_uptrend:
+- close 刚站上 MA5
+- MA5 走平转上
+- MA10/MA20 未明显向下
+
+weaken_trend:
+- close < MA5
+- 但 close > MA10 或 close > MA20
+
+downtrend:
+- close < MA20
+- MA5/MA10/MA20 空头排列或 MA20 向下
+```
+
+## 3. MA5 趋势分
+
+```
+ma5_trend_score =
+  30% * close_above_ma5_score
++ 25% * ma5_slope_score
++ 20% * ma_alignment_score
++ 15% * ma10_buffer_score
++ 10% * ma20_background_score
+```
+
+核心解释：
+
+- close < MA5 但 close > MA10：短线弱化，不一定趋势失效；
+- close < MA10 但 close > MA20：结构明显弱化，降仓观察；
+- close < MA20：主升结构失效。
+
+---
+
+# 七、第四层：MA5 回踩确认信号指标化
+
+MA5 回踩确认是当前系统最重要的 A 类买点。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 前期是否有上涨动能 | prior_extension_from_ma5 | recent_high_N / ma5_at_high - 1 | 判断是否真的有趋势 |
+| 回撤深度 | pullback_depth | 1 - low / recent_high_N | 判断回调是否合理 |
+| 回踩 MA5 距离 | pullback_to_ma5_distance | low / ma5 - 1 | 判断是否贴近 MA5 |
+| 收盘是否收回 MA5 | close_ma5_ratio | close / ma5 - 1 | 判断承接 |
+| 回踩是否缩量 | pullback_volume_ratio | volume / median(volume,20) | 判断抛压是否衰减 |
+| 回踩量相对前量 | pullback_vs_breakout_volume | pullback_volume / breakout_volume | 判断是否健康回踩 |
+| MA5 是否守住 | ma5_hold_flag | low 接近 MA5 且 close >= MA5 | 回踩确认 |
+| 次日重新站回 | ma5_reclaim_flag | close > MA5 且 prev_close <= prev_ma5 | 修复确认 |
+| 阳克阴 | bullish_engulf_flag | 今日实体反包昨日实体 | 短线转强 |
+
+## 2. A 类 MA5 回踩确认规则
+
+```
+ma5_pullback_confirm:
+1. prior_extension_from_ma5 >= 3%-5%
+2. pullback_depth 在 3%-12% 之间
+3. pullback_to_ma5_distance 在 -2% 到 +2% 附近
+4. pullback_volume_ratio < 0.8 或低于20日中位量
+5. 次日重新站上 MA5，或出现阳克阴
+6. 大盘至少 hold，板块不是 retreat
+```
+
+## 3. 动态回踩阈值
+
+不要固定所有股票都回踩 3%-12%。建议用历史波动做适配：
+
+```
+median_abs_return_20d = median(abs(daily_return), 20)
+normal_pullback_min = 0.5 * median_abs_return_20d
+normal_pullback_max = 2.5 * median_abs_return_20d
+```
+
+如果股票波动大，允许更深回踩；如果股票波动小，回踩太深就是异常。
+
+## 4. MA5 回踩分
+
+```
+ma5_pullback_score =
+  25% * prior_extension_score
++ 25% * pullback_depth_score
++ 20% * pullback_to_ma5_score
++ 20% * shrink_volume_score
++ 10% * reclaim_or_engulf_score
+```
+
+---
+
+# 八、第五层：MA5 突破确认信号指标化
+
+MA5 突破确认是 B 类核心买点，适合刚启动或平台突破。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 突破 MA5 | ma5_breakout_flag | close > ma5 且 prev_close <= prev_ma5 | 识别站回 MA5 |
+| 突破距离 | ma5_breakout_distance | close / ma5 - 1 | 判断突破幅度 |
+| 突破放量 | breakout_volume_ratio | volume / median(volume,20) | 判断资金确认 |
+| 收盘位置 | close_position | (close-low)/(high-low) | 判断承接强弱 |
+| 实体强度 | real_body_ratio | abs(close-open)/(high-low) | 判断阳线质量 |
+| 是否突破前高 | previous_high_break_flag | close > recent_high_N | 判断空间打开 |
+| 是否突破箱体 | box_break_flag | close > box_upper | 判断结构突破 |
+| 是否突破后未跌回 | next_day_hold_flag | next_close >= breakout_level | 次日确认 |
+
+## 2. 有效 MA5 突破规则
+
+```
+valid_ma5_breakout:
+1. close > MA5
+2. ma5_breakout_flag = true
+3. breakout_volume_ratio > 1.2 或高于20日中位数
+4. close_position > 0.65
+5. real_body_ratio > 0.45
+6. 若同时突破前高/箱体上沿，加分
+```
+
+强突破：
+
+```
+strong_breakout:
+- breakout_volume_ratio > 1.5
+- close_position > 0.75
+- real_body_ratio > 0.55
+- previous_high_break_flag 或 box_break_flag = true
+```
+
+## 3. MA5 突破分
+
+```
+ma5_breakout_score =
+  25% * ma5_breakout_flag_score
++ 20% * breakout_volume_score
++ 20% * close_position_score
++ 15% * real_body_score
++ 20% * structure_break_score
+```
+
+---
+
+# 九、第六层：真假突破信号指标化
+
+真假突破是减少追高亏损的关键。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 前高是否守住 | previous_high_hold_ratio | low_after_breakout / previous_high - 1 | 判断突破可信度 |
+| 是否跌回箱体 | fall_back_into_box_flag | close < box_upper | 判断突破失败 |
+| 突破后回撤 | post_breakout_drawdown_n | 1 - min(low_n) / breakout_close | 判断承接 |
+| 回踩是否缩量 | post_breakout_shrink_ratio | pullback_volume / breakout_volume | 判断是否健康 |
+| 次日承接失败 | next_day_failure_flag | 次日跌回突破位或收盘弱 | 判断假突破 |
+| 突破质量 | breakout_quality | valid / pending / suspicious / failed | 综合标签 |
+
+## 2. previous_high_hold_ratio 解释
+
+```
+>= 0：前高完全守住，突破可信度高
+-1% 到 0：轻微跌破，可接受，但需要二次确认
+-2% 到 -1%：可疑，降低评分
+< -2%：明显跌破，突破可信度大幅下降
+```
+
+动态容忍度：
+
+```
+tolerance = max(1%, 0.3 * atr_pct_14)
+```
+
+## 3. breakout_quality 规则
+
+```
+valid:
+- 突破后回踩不跌破前高/箱体上沿/MA5
+- 回踩缩量
+- 再次转强
+
+pending_confirmation:
+- 刚突破，还未回踩确认
+
+suspicious:
+- 轻微跌破前高，但快速收回
+- 或突破量价不够强
+
+failed:
+- 放量跌回箱体
+- 大幅跌破前高
+- 跌破 MA5 后不能收回
+- 次日承接失败
+```
+
+## 4. 真假突破分
+
+```
+breakout_quality_score =
+  35% * previous_high_hold_score
++ 25% * fall_back_into_box_score
++ 20% * post_breakout_shrink_score
++ 20% * next_day_hold_score
+```
+
+---
+
+# 十、第七层：量价健康信号指标化
+
+MA5 战法不能只看均线，必须看量价。
+
+## 1. 需要指标化的信号
+
+| 信号 | 指标字段 | 计算方式 | 用途 |
+| --- | --- | --- | --- |
+| 温和放量上涨 | mild_volume_up_flag | return > 0 且 volume_ratio_20 1.1-1.8 | 健康上涨 |
+| 缩量回踩 | shrink_pullback_flag | return < 0 且 volume_ratio_20 < 0.8 | 健康回踩 |
+| 放量滞涨 | high_volume_stall_flag | volume_ratio 高但涨幅低、收盘弱 | 高位风险 |
+| 放量下跌 | volume_down_risk_flag | return < 0 且 volume_ratio > 1.3 | 风险信号 |
+| 新高无量 | new_high_without_volume_flag | price 新高但 volume 未同步 | 假突破风险 |
+| 长上影 | upper_shadow_ratio | (high - max(open,close))/(high-low) | 抛压信号 |
+| 实体强度 | real_body_ratio | abs(close-open)/(high-low) | K线质量 |
+| 量价背离 | volume_price_divergence_flag | 价格新高但量能下降 | 动能衰减 |
+
+## 2. 量价风险规则
+
+```
+健康：
+- 温和放量上涨
+- 缩量回踩
+- 放量突破后缩量确认
+
+风险：
+- 高位放量滞涨
+- 放量长上影
+- 新高无量
+- 放量跌破 MA5
+- 价格新高但成交量连续下降
+```
+
+## 3. volume_price_score
+
+```
+volume_price_score =
+  +20 if mild_volume_up_flag
+  +20 if shrink_pullback_flag
+  -25 if high_volume_stall_flag
+  -30 if volume_down_risk_flag
+  -20 if new_high_without_volume_flag
+  -15 if upper_shadow_ratio > 0.4
+```
+
+量价信号不一定直接决定买卖，但必须进入 risk_adjustment。
+
+---
+
+# 十一、第八层：卖出与持仓信号指标化
+
+卖出比买入更需要规则化。
+
+## 1. 需要指标化的卖出信号
+
+| 卖出信号 | 指标字段 | 计算方式 | 动作 |
+| --- | --- | --- | --- |
+| MA5 失守 | close_below_ma5 | close < MA5 | 警惕 / 减仓 |
+| MA5 次日不能收回 | ma5_lost_2d | 连续2日 close < MA5 | 减仓 |
+| 放量跌破 MA5 | volume_break_ma5_flag | close < MA5 且 volume_ratio > 1.3 | 减仓/清仓 |
+| MA10 缓冲失守 | close_below_ma10 | close < MA10 | 大幅降仓 |
+| MA20 趋势破坏 | volume_break_ma20_flag | close < MA20 且 volume_ratio > 1.3 | 清仓 |
+| 突破失败 | breakout_failed_flag | close < breakout_level | 清仓/退出 |
+| 前高失守 | previous_high_lost_flag | close < previous_high | 降权/退出 |
+| 买入K线开盘价失守 | signal_candle_open_lost | close < signal_candle_open | 逻辑失效 |
+| 止平触发 | breakeven_stop_triggered | 曾浮盈后回到成本线 | 保护账户 |
+
+## 2. 卖出执行分层
+
+减仓：
+
+```
+- 收盘跌破 MA5
+- MA5 次日不能收回
+- 高位放量滞涨
+- 大盘从 attack 转 hold/defense
+```
+
+清仓：
+
+```
+- 放量跌破 MA5
+- 跌破 MA10 后不能收回
+- 放量跌破 MA20
+- 跌破突破阳线开盘价
+- 跌回箱体
+- 大盘 empty
+- 板块退潮
+```
+
+## 3. 持仓状态指标化
+
+```
+strong_hold:
+- close > MA5
+- ma5_slope_3d > 0
+- volume_price_score 不为负
+- market_permission in attack/hold
+- sector_state != retreat
+
+normal_pullback:
+- close 接近 MA5
+- shrink_pullback_flag = true
+- close > MA10 或 close > MA20
+
+weaken_reduce:
+- close < MA5
+- ma5_lost_2d 或 sector_strength 下降
+
+invalid_exit:
+- volume_break_ma5_flag
+- close_below_ma10 且不能收回
+- volume_break_ma20_flag
+- breakout_failed_flag
+```
+
+---
+
+# 十二、第九层：账户破窗信号指标化
+
+破窗理论不属于技术指标，但必须指标化，否则系统管不住人。
+
+## 1. 需要指标化的账户信号
+
+| 信号 | 指标字段 | 计算方式 | 含义 |
+| --- | --- | --- | --- |
+| 单笔亏损比例 | single_trade_loss_pct | 单笔亏损 / 账户资产 | 风险暴露 |
+| 单笔亏损金额 | single_trade_loss_amount | 当前亏损金额 | 是否超规则 |
+| 连续亏损 | consecutive_loss_count | 最近连续亏损笔数 | 情绪风险 |
+| 利润回吐 | profit_giveback_ratio | 回吐金额 / 最近利润 | 窗户裂缝 |
+| 盈利转亏 | profit_to_loss_flag | 曾浮盈后跌到成本下 | 破窗风险 |
+| 无计划交易 | no_plan_trade_flag | 无 trade_plan 买入 | 纪律破坏 |
+| 冲动交易 | impulse_trade_flag | 大盘不允许仍买 / 想回本加仓 | 行为风险 |
+
+## 2. 账户状态
+
+```
+account_window_state = intact / cracked / broken / repairing
+```
+
+建议规则：
+
+```
+intact:
+- 账户正常，按系统交易
+
+cracked:
+- 最近利润回吐超过 30%-40%
+- 或连续2笔亏损
+- 或盈利仓转亏
+- 动作：只允许 A 类买点，降低仓位
+
+broken:
+- 单笔亏损超规则
+- 或连续3笔亏损
+- 或出现冲动交易
+- 动作：暂停交易
+
+repairing:
+- 恢复期，只允许轻仓验证
+- 连续2-3笔按纪律执行后恢复正常
+```
+
+---
+
+# 十三、三类核心评分
+
+系统不要把所有指标混成一个分数。至少拆成三类。
+
+## 1. 股票质量分：stock_quality_score
+
+回答：
+
+> 这是不是一只值得关注的股票？
+>
+
+组成：
+
+```
+stock_quality_score =
+  35% * trend_structure_score
++ 25% * sector_score
++ 20% * volume_price_score
++ 20% * relative_strength_score
+```
+
+含义：股票质量分高，只代表它值得关注，不代表现在能买。
+
+## 2. 买点质量分：trade_timing_score
+
+回答：
+
+> 现在是不是一个舒服的买点？
+>
+
+组成：
+
+```
+trade_timing_score =
+  35% * ma5_pullback_score
++ 25% * ma5_breakout_score
++ 20% * breakout_quality_score
++ 20% * volume_confirmation_score
+```
+
+含义：买点质量分高，才代表现在接近可交易状态。
+
+## 3. 风险调整系数：risk_adjustment
+
+回答：
+
+> 这笔交易有没有明显风险？
+>
+
+基础值：
+
+```
+risk_adjustment = 1.0
+```
+
+风险降权：
+
+```
+high_volume_stall_flag: * 0.80
+upper_shadow_warning: * 0.85
+new_high_without_volume_flag: * 0.85
+volume_break_ma5_flag: * 0.60
+market_defense: * 0.70
+sector_retreat: * 0.60
+account_cracked: * 0.70
+account_broken: * 0.00
+```
+
+## 4. 最终交易分
+
+```
+final_trade_score = trade_timing_score * market_multiplier * sector_multiplier * risk_adjustment
+```
+
+核心解释：
+
+> 股票质量分高，不代表可以买；买点质量高，并且大盘、板块、风险都允许，才代表现在值得交易。
+>
+
+---
+
+# 十四、第一版最小指标集 MVP
+
+第一版不要做太多，先做 20 个字段。
+
+## 1. MA5 趋势结构
+
+```
+1. close_ma5_ratio
+2. ma5_slope_3d
+3. ma5_distance
+4. close_ma10_ratio
+5. close_ma20_ratio
+```
+
+## 2. MA5 回踩确认
+
+```
+6. pullback_depth
+7. pullback_to_ma5_distance
+8. pullback_volume_ratio
+9. ma5_reclaim_flag
+```
+
+## 3. MA5 突破确认
+
+```
+10. ma5_breakout_flag
+11. breakout_volume_ratio
+12. close_position
+13. real_body_ratio
+```
+
+## 4. 真假突破
+
+```
+14. previous_high
+15. previous_high_hold_ratio
+16. fall_back_into_box_flag
+```
+
+## 5. 量价风险
+
+```
+17. upper_shadow_ratio
+18. high_volume_stall_flag
+19. volume_break_ma5_flag
+```
+
+## 6. 综合输出
+
+```
+20. final_trade_score
+```
+
+这 20 个字段足够支撑第一版 MA5 趋势战法的买点、卖点、真假突破和排序。
+
+---
+
+# 十五、执行顺序
+
+## 第一阶段：MA5 买点指标化
+
+优先字段：
+
+```
+close_ma5_ratio
+ma5_slope_3d
+ma5_distance
+pullback_depth
+pullback_volume_ratio
+ma5_reclaim_flag
+ma5_breakout_flag
+breakout_volume_ratio
+close_position
+```
+
+目标：识别三类买点：
+
+```
+1. MA5 回踩确认
+2. MA5 突破确认
+3. MA5 假跌破重新站回
+```
+
+## 第二阶段：真假突破指标化
+
+优先字段：
+
+```
+previous_high
+previous_high_hold_ratio
+box_upper
+fall_back_into_box_flag
+post_breakout_drawdown
+breakout_quality
+```
+
+目标：过滤假突破，减少追高亏损。
+
+## 第三阶段：量价风险指标化
+
+优先字段：
+
+```
+volume_ratio_20
+shrink_pullback_flag
+high_volume_stall_flag
+upper_shadow_ratio
+new_high_without_volume_flag
+volume_break_ma5_flag
+```
+
+目标：区分健康回踩、放量滞涨、放量破位。
+
+## 第四阶段：大盘、板块、账户状态接入
+
+优先字段：
+
+```
+market_multiplier
+sector_multiplier
+account_window_state
+risk_adjustment
+final_trade_score
+```
+
+目标：从信号识别器升级成交易决策器。
+
+---
+
+# 十六、代码实现建议
+
+第一阶段优先改：
+
+```
+shilun/market/candidates.py
+```
+
+建议新增三个函数：
+
+```
+build_ma_features(bars)
+detect_ma5_trade_signal(features)
+build_trade_plan(features, signal)
+```
+
+## 1. build_ma_features
+
+负责计算所有基础指标。
+
+输出：
+
+```
+features = {
+  close_ma5_ratio,
+  ma5_slope_3d,
+  ma5_distance,
+  close_ma10_ratio,
+  close_ma20_ratio,
+  pullback_depth,
+  pullback_to_ma5_distance,
+  pullback_volume_ratio,
+  ma5_reclaim_flag,
+  ma5_breakout_flag,
+  breakout_volume_ratio,
+  close_position,
+  real_body_ratio,
+  previous_high,
+  previous_high_hold_ratio,
+  fall_back_into_box_flag,
+  upper_shadow_ratio,
+  high_volume_stall_flag,
+  volume_break_ma5_flag
+}
+```
+
+## 2. detect_ma5_trade_signal
+
+负责把指标转成信号。
+
+输出：
+
+```
+signal = {
+  buy_point_type: ma5_pullback / ma5_breakout / ma5_reclaim / watch,
+  signal_status: watch / confirm_next_day / buyable / invalid,
+  stock_quality_score,
+  trade_timing_score,
+  risk_flags,
+  breakout_quality,
+  holding_state
+}
+```
+
+## 3. build_trade_plan
+
+负责生成交易计划。
+
+输出：
+
+```
+trade_plan = {
+  entry_price,
+  confirm_point,
+  support_1,
+  support_2,
+  support_3,
+  stop_loss_1,
+  stop_loss_2,
+  breakdown_level,
+  target_price,
+  add_point,
+  reward_risk_ratio,
+  invalid_conditions,
+  sell_triggers
+}
+```
+
+---
+
+# 十七、后续接入顺序
+
+第一步只改 PART3，不要先动仓位管理。
+
+```
+第一步：candidates.py 指标化 MA5 买点
+第二步：接入 previous_high / box_upper 做真假突破
+第三步：接入量价风险
+第四步：接入 market_gate / sector_multiplier
+第五步：候选池读 final_trade_score
+第六步：仓位管理读取 stop_loss 和 account_window_state
+```
+
+仓位管理需要等字段稳定后再做。
+
+仓位管理最终读取：
+
+```
+market_gate
+sector_multiplier
+final_trade_score
+reward_risk_ratio
+stop_loss_1
+stop_loss_2
+account_window_state
+```
+
+---
+
+# 十八、最终原则
+
+1. 系统仍然以 MA5 为核心，不改成 MA10/MA20 战法。
+2. MA10/MA20 的思想只用于缓冲、背景和破位解释。
+3. 所有交易语言都要逐步转成指标字段。
+4. 先不要迷信固定阈值，要保留历史均值、中位数、分位数、ATR 动态阈值。
+5. 股票质量分和买点质量分必须分开。
+6. 买点质量高，也必须经过大盘、板块、风险三层过滤。
+7. 破窗状态必须指标化，否则系统管不住冲动交易。
+8. 第一版先完成 20 个 MVP 字段，再做复杂拟合。
+9. 先让系统能回测，再优化阈值。
+10. 最终目标是让“我感觉能买/不能买”变成“指标显示可交易/不可交易”。

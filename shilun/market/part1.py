@@ -7,6 +7,14 @@ import re
 from typing import Any
 
 import pandas as pd
+# 1. 准备指数数据
+# 2. 准备全市场股票数据
+# 3. 校验日期是否最新
+# 4. 计算市场广度、题材、支撑压力
+# 5. 分别计算趋势分、量能分、广度分、题材分、风险分
+# 6. 计算总分
+# 7. 判断硬触发风险
+# 8. 输出市场权限、操作权限、证据、图表数据和解释
 
 
 DEFAULT_BENCHMARK_TICKER = "000001.SH"
@@ -95,6 +103,9 @@ def evaluate_market_permission(
     It intentionally keeps proxy fields explicit, so later Rust migration can
     preserve the same contract without pretending all signals are first-class
     exchange data.
+    通过日数据计算PART1 大盘权限的结果
+    符合文档：https://www.notion.so/v0-2-3694ca8a1a218118b911cbee910c9ba2?source=copy_link的生产要求
+    先故意将字段做显示展示，方便日后迁移到架构上
     """
 
     index_frame = _prepare_index_frame(index_bars, analysis_date)
@@ -135,6 +146,7 @@ def evaluate_market_permission(
         weight_support_flag=bool(theme["weight_support_flag"]),
     )
 
+    # 先按1:1的权重来设计
     total_score = trend["score"] + volume["score"] + breadth_score["score"] + theme_score - risk["score"]
     hard_triggers = _build_hard_triggers(
         latest_index=latest_index,
@@ -185,13 +197,20 @@ def evaluate_market_permission(
         **theme["metrics"],
     }
     action_permission = _action_permission(market_permission)
+    market_gate = _build_market_gate(
+        permission=market_permission,
+        hard_triggers=hard_triggers,
+        scores=scores,
+        metrics=metrics,
+        breadth_evidence=breadth_score["evidence"],
+    )
     evidence = trend["evidence"] + volume["evidence"] + breadth_score["evidence"] + theme["evidence"] + risk["evidence"]
     chart_data = _build_market_chart_data(
         analysis_date=analysis_date,
         index_frame=index_frame,
         stock_frame=stock_frame,
         breadth=breadth,
-        total_score=total_score,
+        opportunity_score=trend["score"] + volume["score"] + breadth_score["score"] + theme_score,
         risk_score=risk["score"],
     )
     trend_summary = _market_trend_summary(latest_index)
@@ -208,6 +227,7 @@ def evaluate_market_permission(
         "permission_label": _permission_label(market_permission),
         "permission_summary": _permission_summary(market_permission),
         "action_permission": action_permission,
+        "market_gate": market_gate,
         "total_score": total_score,
         "scores": scores,
         "metrics": metrics,
@@ -267,6 +287,31 @@ def _prepare_index_frame(index_bars: pd.DataFrame, analysis_date: str) -> pd.Dat
     return frame
 
 
+def _compute_limit_thresholds(frame: pd.DataFrame) -> pd.Series:
+    """按板块 + 是否 ST 计算个股涨跌停阈值（向量化，一次算完全市场）。
+
+    A 股涨跌停规则：
+    - 主板（60x/000/001/002）：±10%（阈值 0.095）
+    - 创业板（300/301）：±20%（阈值 0.195）
+    - 科创板（688）：±20%（阈值 0.195）
+    - 北交所（8xx/4xx）：±30%（阈值 0.295）
+    - ST/*ST：±5%（阈值 0.045，覆盖上面所有板块的判定）
+    - 新股首日：无限制（当前无法准确识别，按默认 0.095 处理，会有小误差）
+    """
+    if frame.empty:
+        return pd.Series(dtype="float64")
+    tickers = frame["ticker"].astype(str).str.upper()
+    codes = tickers.str.split(".").str[0]
+    names = frame.get("name", pd.Series("", index=frame.index)).fillna("").astype(str)
+
+    thresholds = pd.Series(0.095, index=frame.index)  # 默认主板 10%
+    thresholds.loc[codes.str.startswith("688")] = 0.195       # 科创板
+    thresholds.loc[codes.str.startswith(("300", "301"))] = 0.195  # 创业板
+    thresholds.loc[codes.str.startswith(("4", "8"))] = 0.295  # 北交所
+    thresholds.loc[names.str.contains("ST", case=False, na=False)] = 0.045  # ST 优先级最高
+    return thresholds
+
+
 def _prepare_market_frame(
     market_bars: pd.DataFrame,
     *,
@@ -292,6 +337,8 @@ def _prepare_market_frame(
     frame["pct_chg"] = frame.groupby("ticker", group_keys=False)["close"].pct_change()
     fallback = (frame["close"] / frame["open"]) - 1.0
     frame["pct_chg"] = frame["pct_chg"].fillna(fallback).fillna(0.0)
+    # 分板块涨跌停阈值，供 breadth 使用
+    frame["limit_threshold"] = _compute_limit_thresholds(frame)
     return frame
 
 
@@ -322,11 +369,16 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
     grouped: list[dict[str, Any]] = []
     for trade_date, rows in stock_frame.groupby("date"):
         pct = pd.to_numeric(rows["pct_chg"], errors="coerce").fillna(0.0)
+        # 分板块涨跌停阈值（主板 10% / 创业板+科创板 20% / 北交所 30% / ST 5%）
+        threshold = pd.to_numeric(
+            rows.get("limit_threshold", pd.Series(0.095, index=rows.index)),
+            errors="coerce",
+        ).fillna(0.095)
         up_count = int((pct > 0).sum())
         down_count = int((pct < 0).sum())
         flat_count = int((pct == 0).sum())
-        limit_up_count = int((pct >= 0.095).sum())
-        limit_down_count = int((pct <= -0.095).sum())
+        limit_up_count = int((pct >= threshold).sum())
+        limit_down_count = int((pct <= -threshold).sum())
         market_amount = float(pd.to_numeric(rows["amount"], errors="coerce").fillna(0.0).clip(lower=0).sum())
         grouped.append(
             {
@@ -402,7 +454,7 @@ def _build_market_chart_data(
     index_frame: pd.DataFrame,
     stock_frame: pd.DataFrame,
     breadth: dict[str, Any],
-    total_score: int,
+    opportunity_score: int,
     risk_score: int,
 ) -> dict[str, Any]:
     index_history = index_frame.tail(20).copy()
@@ -423,8 +475,13 @@ def _build_market_chart_data(
 
     target_rows = stock_frame.loc[stock_frame["date"] == pd.Timestamp(analysis_date)].copy()
     pct = pd.to_numeric(target_rows.get("pct_chg"), errors="coerce").fillna(0.0)
+    threshold = pd.to_numeric(
+        target_rows.get("limit_threshold", pd.Series(0.095, index=target_rows.index)),
+        errors="coerce",
+    ).fillna(0.095)
+    # 说明：档位是"回报分布"，中间 9 档按固定百分比切分；两端"涨停/跌停"用个股实际阈值
     distribution_specs = (
-        ("跌停", pct <= -0.095),
+        ("跌停", pct <= -threshold),
         ("-9.5~-7%", (pct > -0.095) & (pct <= -0.07)),
         ("-7~-5%", (pct > -0.07) & (pct <= -0.05)),
         ("-5~-3%", (pct > -0.05) & (pct <= -0.03)),
@@ -433,7 +490,7 @@ def _build_market_chart_data(
         ("3~5%", (pct >= 0.03) & (pct < 0.05)),
         ("5~7%", (pct >= 0.05) & (pct < 0.07)),
         ("7~9.5%", (pct >= 0.07) & (pct < 0.095)),
-        ("涨停", pct >= 0.095),
+        ("涨停", pct >= threshold),
     )
     return_distribution = [
         {
@@ -443,7 +500,9 @@ def _build_market_chart_data(
         }
         for index, (label, mask) in enumerate(distribution_specs)
     ]
-    temperature_score = int(max(0, min(100, round(50 + total_score * 6 - risk_score * 4))))
+    # 温度分：机会项(+6/项) - 风险项(-4/项)，clip 到 0-100
+    # 修复历史 bug：原本传 total_score（已含 -risk），再 -risk_score*4 相当于 risk 被减两次（实际权重 -10）
+    temperature_score = int(max(0, min(100, round(50 + opportunity_score * 6 - risk_score * 4))))
     if temperature_score >= 75:
         temperature_label = "偏强，可按权限参与"
     elif temperature_score >= 55:
@@ -461,7 +520,7 @@ def _build_market_chart_data(
         "temperature": {
             "score": temperature_score,
             "label": temperature_label,
-            "formula": "clip(50 + total_score*6 - risk_score*4, 0, 100)",
+            "formula": "clip(50 + opportunity_score*6 - risk_score*4, 0, 100)，opportunity=trend+volume+breadth+theme",
         },
     }
 
@@ -582,7 +641,15 @@ def _build_theme_context(
         weight_return = float((weight_frame["return"] * weight_frame["market_share"]).sum() / max(0.0001, weight_frame["market_share"].sum()))
         non_weight = industry_frame.loc[~industry_frame["industry"].map(_is_weight_industry)]
         non_weight_up_ratio = float(non_weight["up_ratio"].mean()) if not non_weight.empty else 0.0
-        weight_support_flag = bool(index_pct_chg > 0 and weight_return > index_pct_chg + 0.003 and non_weight_up_ratio < 0.45)
+        # 权重护盘判定（不再要求大盘必须红盘，抗跌+平盘也可能是护盘）：
+        #   ① 权重加权收益 > 大盘 + 0.3%（权重明显强）
+        #   ② 非权重扩散差（上涨占比 < 45%）
+        #   ③ 大盘跌幅不超过 2%（真崩盘时权重也弱，那不叫护盘）
+        weight_support_flag = bool(
+            weight_return > index_pct_chg + 0.003
+            and non_weight_up_ratio < 0.45
+            and index_pct_chg > -0.02
+        )
         if weight_support_flag:
             score = min(score, -2)
             status = "weight_support_proxy"
@@ -2437,6 +2504,199 @@ def _permission_label(permission: str) -> str:
         "defense": "防守",
         "empty": "空仓",
     }.get(permission, permission)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Market Gate（机器可执行的大盘闸门规则）
+# 输出会被 PART3 消费用于降级候选、控制仓位建议。
+# 与 permission/action_permission 分工：
+#   permission        = 结论字段（展示用："进攻/持有/防守/空仓"）
+#   action_permission = 人类可读文字（展示用）
+#   market_gate       = 机器可执行字段（PART3 直接读，无需解析字符串）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 四种 gate 状态的固化规则表（关键字段）
+_MARKET_GATE_RULES: dict[str, dict[str, Any]] = {
+    "attack": {
+        "allow_new_position": True,
+        "allow_add_position": True,
+        "market_multiplier": 1.2,
+        "size_hint": 1.0,
+        "signal_downgrade_map": {
+            "breakout_confirm": "breakout_confirm",
+            "pullback_to_ma5": "pullback_to_ma5",
+            "gentle_rise": "gentle_rise",
+            "watch": "watch",
+        },
+        "high_quality_exception": None,
+        "holdings_advice": {
+            "check_stop_loss": False,
+            "reduce_percentage": None,
+            "note": "正常持仓，遵守个股止损即可。可择机加仓强趋势品种。",
+        },
+    },
+    "hold": {
+        "allow_new_position": True,
+        "allow_add_position": True,
+        "market_multiplier": 1.0,
+        "size_hint": 0.5,  # 均衡半仓
+        "signal_downgrade_map": {
+            "breakout_confirm": "breakout_confirm",
+            "pullback_to_ma5": "pullback_to_ma5",
+            "gentle_rise": "watch",  # 缩量上涨在持有状态下降级
+            "watch": "watch",
+        },
+        "high_quality_exception": None,
+        "holdings_advice": {
+            "check_stop_loss": False,
+            "reduce_percentage": None,
+            "note": "正常持仓，谨慎开新仓，建议半仓单位。",
+        },
+    },
+    "defense": {
+        "allow_new_position": False,
+        "allow_add_position": False,
+        "market_multiplier": 0.7,
+        "size_hint": 0.0,
+        "signal_downgrade_map": {
+            "breakout_confirm": "watch",
+            "pullback_to_ma5": "watch",
+            "gentle_rise": "watch",
+            "watch": "watch",
+        },
+        # 防守下的例外：极高质量突破仍允许小仓
+        "high_quality_exception": {
+            "enabled": True,
+            "condition": "entry_quality >= 85 AND signal == breakout_confirm",
+            "min_entry_quality": 85,
+            "allowed_signals": ["breakout_confirm"],
+            "override_size_hint": 0.3,
+            "note": "防守下仅允许极高质量突破买点，仓位限制为 30%（三成仓试探）。",
+        },
+        "holdings_advice": {
+            "check_stop_loss": True,
+            "reduce_percentage": None,
+            "note": "检查每只持仓的止损位（MA5 × 0.98），跌破需减仓；不加仓。",
+        },
+    },
+    "empty": {
+        "allow_new_position": False,
+        "allow_add_position": False,
+        "market_multiplier": 0.0,
+        "size_hint": 0.0,
+        "signal_downgrade_map": {
+            "breakout_confirm": "watch",
+            "pullback_to_ma5": "watch",
+            "gentle_rise": "watch",
+            "watch": "watch",
+        },
+        "high_quality_exception": None,
+        "holdings_advice": {
+            "check_stop_loss": True,
+            "reduce_percentage": 0.5,
+            "note": (
+                "空仓 gate 已触发，建议：① 立即检查每只持仓的 MA20，跌破的减仓 50% 以上；"
+                "② 涨停后未创新高的直接止盈；③ 破位低点的品种当日止损；"
+                "④ 保留强势主线龙头仅当其未破 MA20。目标降低总仓位到 30% 以内。"
+            ),
+        },
+    },
+}
+
+
+def _build_market_gate(
+    *,
+    permission: str,
+    hard_triggers: list[dict[str, str]],
+    scores: dict[str, int],
+    metrics: dict[str, Any],
+    breadth_evidence: list[str],
+) -> dict[str, Any]:
+    """把大盘结论转成机器可执行的闸门规则。
+
+    优先级：硬否决 > permission 状态查表。
+    """
+    hard_states = {t.get("target_state") for t in hard_triggers}
+    hard_veto_active = "empty" in hard_states
+
+    # 硬否决直接锁 empty gate（不再受其他分数影响）
+    if hard_veto_active:
+        effective_state = "empty"
+        rule = _MARKET_GATE_RULES["empty"]
+        veto_reasons = "；".join(t.get("reason", "") for t in hard_triggers if t.get("target_state") == "empty")
+        gate_reason = f"硬否决触发：{veto_reasons}"
+    else:
+        effective_state = permission
+        rule = _MARKET_GATE_RULES.get(permission, _MARKET_GATE_RULES["hold"])
+        gate_reason = _compose_gate_reason(permission, scores, metrics, breadth_evidence)
+
+    return {
+        "state": effective_state,
+        "state_label": _permission_label(effective_state),
+        "allow_new_position": rule["allow_new_position"],
+        "allow_add_position": rule["allow_add_position"],
+        "market_multiplier": rule["market_multiplier"],
+        "size_hint": rule["size_hint"],
+        "gate_reason": gate_reason,
+        "hard_veto_active": hard_veto_active,
+        "high_quality_exception": rule["high_quality_exception"],
+        "signal_downgrade_map": rule["signal_downgrade_map"],
+        "holdings_advice": rule["holdings_advice"],
+    }
+
+
+def _compose_gate_reason(
+    permission: str,
+    scores: dict[str, int],
+    metrics: dict[str, Any],
+    breadth_evidence: list[str],
+) -> str:
+    """根据当前状态、分数和关键指标合成 gate_reason 文本。"""
+    trend = scores.get("trend_score", 0)
+    volume = scores.get("volume_score", 0)
+    breadth = scores.get("breadth_score", 0)
+    theme = scores.get("theme_score", 0)
+    risk = scores.get("risk_score", 0)
+
+    up_ratio = _float(metrics.get("up_ratio"), 0.0)
+    weight_flag = bool(metrics.get("weight_support_flag"))
+    theme_status = str(metrics.get("main_theme_status", ""))
+
+    reasons: list[str] = []
+
+    if permission == "attack":
+        reasons.append("大盘处于进攻，趋势/量能/广度/主线共振")
+        if theme == 2: reasons.append("主线确认扩散")
+        return "，".join(reasons) + "。"
+
+    if permission == "hold":
+        reasons.append("大盘处于持有")
+        if trend >= 2 and breadth < 1:
+            reasons.append("结构未破但广度不足")
+        elif theme <= 0:
+            reasons.append("主线未确认")
+        elif volume <= 0:
+            reasons.append("量能偏弱")
+        else:
+            reasons.append("信号不足以打开进攻")
+        return "，".join(reasons) + "，有先手观察、无先手不追。"
+
+    if permission == "defense":
+        reasons.append("大盘处于防守")
+        if risk >= 3: reasons.append(f"风险分 {risk} 偏高")
+        if up_ratio < 0.30: reasons.append(f"市场广度不足（上涨占比 {up_ratio:.0%}）")
+        if weight_flag: reasons.append("权重护盘触发")
+        if theme_status == "index_up_theme_weak": reasons.append("指数涨但主线扩散不足")
+        if trend < 0: reasons.append("指数结构转弱")
+        return "；".join(reasons) + "。禁止主动进攻。"
+
+    if permission == "empty":
+        reasons.append("大盘处于空仓")
+        if risk >= 5: reasons.append(f"风险分极高（{risk}）")
+        if up_ratio < 0.20: reasons.append(f"广度极差（上涨占比 {up_ratio:.0%}）")
+        return "；".join(reasons) + "。禁止开仓，只允许止损/减仓/等待止跌。"
+
+    return f"大盘状态：{permission}。"
 
 
 def _permission_summary(permission: str) -> str:

@@ -12,7 +12,7 @@ import pandas as pd
 from shilun.market.part1 import DEFAULT_BENCHMARK_TICKER, benchmark_index_meta
 
 
-SECTOR_ENGINE_VERSION = "market_sector_v1"
+SECTOR_ENGINE_VERSION = "market_sector_v3_ma5_v02_mainline"
 
 
 @dataclass(frozen=True)
@@ -20,6 +20,7 @@ class SectorTrendRequest:
     analysis_date: str
     benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER
     lookback_days: int = 40
+    trend_lookback_days: int = 60  # v2: 从 15 改为 60，捕获中期主线（元器件/半导体）
     top_n: int = 8
     min_stock_count: int = 3
     exclude_st: bool = True
@@ -27,7 +28,8 @@ class SectorTrendRequest:
     @property
     def start_date(self) -> str:
         target_dt = datetime.strptime(self.analysis_date, "%Y-%m-%d")
-        return (target_dt - timedelta(days=max(20, self.lookback_days))).strftime("%Y-%m-%d")
+        # 60 日窗口需要至少 90 个自然日的数据（去掉周末），加 10 天缓冲
+        return (target_dt - timedelta(days=max(20, self.lookback_days, int(self.trend_lookback_days * 1.5)))).strftime("%Y-%m-%d")
 
 
 def evaluate_sector_trends(
@@ -44,6 +46,8 @@ def evaluate_sector_trends(
     exclude_st: bool = True,
     include_daily_leaders: bool = True,
     include_all_sectors: bool = True,
+    market_gate: dict[str, Any] | None = None,
+    trend_lookback_days: int = 60,
 ) -> dict[str, Any]:
     """Evaluate Part2 sector/theme momentum from synced daily data.
 
@@ -99,15 +103,8 @@ def evaluate_sector_trends(
     ranked_returns = current_history["return_1d"].rank(method="min", ascending=False)
     current_history["amount_rank"] = ranked_amounts.astype(int)
     current_history["return_rank"] = ranked_returns.astype(int)
-    candidate_sector_names = _preselect_sector_names(
-        current_history=current_history,
-        sector_history=sector_history,
-        benchmark_frame=benchmark_frame,
-        analysis_date=analysis_date,
-        top_n=top_n,
-    )
-    if candidate_sector_names:
-        current_history = current_history.loc[current_history["sector_name"].astype(str).isin(candidate_sector_names)].copy()
+    # v3 主线分依赖全市场横截面分位数，不能在评分前把板块池裁窄；
+    # `_preselect_sector_names` 保留给后续性能优化或“只算候选板块”模式。
 
     for _, sector_row in current_history.iterrows():
         sector_name = str(sector_row["sector_name"])
@@ -120,11 +117,43 @@ def evaluate_sector_trends(
         current = current.iloc[-1]
         date_slice = sector_daily.tail(10)
         last_5 = sector_daily.tail(5)
+        last_20 = sector_daily.tail(20)
+        last_60 = sector_daily.tail(60)
+        last_120 = sector_daily.tail(120)
         return_3d = _compound(sector_daily.tail(3)["return_1d"])
         return_5d = _compound(last_5["return_1d"])
+        return_20d = _compound(last_20["return_1d"]) if len(last_20) >= 5 else None
+        return_60d = _compound(last_60["return_1d"]) if len(last_60) >= 15 else None
+        return_120d = _compound(last_120["return_1d"]) if len(last_120) >= 30 else None
         outperform_days_5 = int(
             sum(_float(row["return_1d"], 0.0) > _float(benchmark_returns.get(row["date"]), 0.0) for _, row in last_5.iterrows())
         )
+        outperform_days_20 = int(
+            sum(_float(row["return_1d"], 0.0) > _float(benchmark_returns.get(row["date"]), 0.0) for _, row in last_20.iterrows())
+        )
+        outperform_days_60 = int(
+            sum(_float(row["return_1d"], 0.0) > _float(benchmark_returns.get(row["date"]), 0.0) for _, row in last_60.iterrows())
+        )
+        # 多周期基准回报，用来计算 relative return
+        benchmark_return_20d = _compound(benchmark_frame.tail(20)["pct_chg"]) if len(benchmark_frame) >= 5 else 0.0
+        benchmark_return_60d = _compound(benchmark_frame.tail(60)["pct_chg"]) if len(benchmark_frame) >= 15 else 0.0
+        benchmark_return_120d = _compound(benchmark_frame.tail(120)["pct_chg"]) if len(benchmark_frame) >= 30 else 0.0
+
+        # 多周期共振分（0-100）：跨窗口跑赢基准就加分
+        resonance_score = 0
+        if return_5d is not None and return_5d > _float(benchmark_return_5d, 0.0):
+            resonance_score += 15  # 短期跑赢
+        if return_20d is not None and return_20d > _float(benchmark_return_20d, 0.0):
+            resonance_score += 25  # 中短期跑赢
+        if return_60d is not None and return_60d > _float(benchmark_return_60d, 0.0):
+            resonance_score += 30  # 中期跑赢（元器件/半导体在此维度）
+        if return_120d is not None and return_120d > _float(benchmark_return_120d, 0.0):
+            resonance_score += 30  # 中长期跑赢
+        # 至少两个窗口都跑赢基准，才叫"共振"
+        cross_period_windows = sum(1 for r, b in [
+            (return_5d, benchmark_return_5d), (return_20d, benchmark_return_20d),
+            (return_60d, benchmark_return_60d), (return_120d, benchmark_return_120d),
+        ] if r is not None and r > _float(b, 0.0))
 
         target_sector_rows = target_rows.loc[target_rows["industry"].astype(str) == sector_name].copy()
         stock_profiles = _build_stock_profiles(
@@ -179,10 +208,32 @@ def evaluate_sector_trends(
             "return_1d": _round(current.get("return_1d"), 4),
             "return_3d": _round(return_3d, 4),
             "return_5d": _round(return_5d, 4),
+            "return_20d": _round(return_20d, 4) if return_20d is not None else None,
+            "return_60d": _round(return_60d, 4) if return_60d is not None else None,
+            "return_120d": _round(return_120d, 4) if return_120d is not None else None,
             "benchmark_return_1d": _round(benchmark_return_1d, 4),
             "benchmark_return_5d": _round(benchmark_return_5d, 4),
+            "benchmark_return_20d": _round(benchmark_return_20d, 4),
+            "benchmark_return_60d": _round(benchmark_return_60d, 4),
+            "benchmark_return_120d": _round(benchmark_return_120d, 4),
             "relative_return_5d": _round(return_5d - benchmark_return_5d, 4),
+            "relative_return_20d": _round((return_20d or 0) - benchmark_return_20d, 4) if return_20d is not None else None,
+            "relative_return_60d": _round((return_60d or 0) - benchmark_return_60d, 4) if return_60d is not None else None,
+            "relative_return_120d": _round((return_120d or 0) - benchmark_return_120d, 4) if return_120d is not None else None,
             "outperform_days_5": outperform_days_5,
+            "outperform_days_20": outperform_days_20,
+            "outperform_days_60": outperform_days_60,
+            "resonance_score": resonance_score,          # 0-100，跨周期共振分
+            "cross_period_windows": cross_period_windows,  # 0-4，跑赢基准的窗口数
+            "main_net_20d": _round(_float(current.get("main_net_20d"), 0.0)),
+            "main_net_60d": _round(_float(current.get("main_net_60d"), 0.0)),
+            # 主动买入结构分析
+            "active_buy_ratio": _round(current.get("active_buy_ratio"), 4),
+            "active_buy_structure": _round(current.get("active_buy_structure"), 4),
+            "main_active_buy": _round(current.get("main_active_buy")),
+            "main_active_sell": _round(current.get("main_active_sell")),
+            "retail_active_buy": _round(current.get("retail_active_buy")),
+            "retail_active_sell": _round(current.get("retail_active_sell")),
             "amount": _round(current.get("amount")),
             "amount_ma5": _round(current.get("amount_ma5")),
             "amount_ratio_5": _round(current.get("amount_ratio_5"), 4),
@@ -242,9 +293,51 @@ def evaluate_sector_trends(
     if not sector_items:
         raise ValueError(f"No sector trend result generated for {analysis_date}.")
 
+    trend_sectors_all = _build_trend_sectors(
+        sector_items=sector_items,
+        sector_history=sector_history,
+        benchmark_frame=benchmark_frame,
+        analysis_date=analysis_date,
+        top_n=max(1, len(sector_items)),
+        trend_lookback_days=max(5, int(trend_lookback_days)),
+    )
+    trend_lookup = {str(item.get("sector_name") or ""): item for item in trend_sectors_all}
+    for item in sector_items:
+        trend = trend_lookup.get(str(item.get("sector_name") or ""))
+        if not trend:
+            continue
+        item["trend_label"] = trend.get("trend_label")
+        item["trend_meaning"] = trend.get("trend_meaning")
+        item["sector_state"] = trend.get("sector_state")
+        item["sector_state_label"] = trend.get("sector_state_label")
+        item["sector_multiplier"] = trend.get("sector_multiplier")
+        item["retreat_flag"] = trend.get("retreat_flag")
+        item["state_reason"] = trend.get("state_reason")
+        item["sector_mainline_score"] = trend.get("sector_mainline_score")
+        item["trend_sort_score"] = trend.get("trend_sort_score")
+        item["mainline_rank"] = trend.get("mainline_rank")
+        item["scores"]["sector_mainline_score"] = trend.get("sector_mainline_score")
+        for score_key in (
+            "excess_return_20d_score",
+            "excess_return_60d_score",
+            "outperform_days_5_score",
+            "sector_amount_ratio_score",
+            "leader_zhongjun_score",
+            "score_breakdown",
+        ):
+            if score_key in (trend.get("scores") or {}):
+                item["scores"][score_key] = (trend.get("scores") or {}).get(score_key)
+        item["scores"]["mainline_formula"] = (trend.get("scores") or {}).get("formula")
+        item["metrics"]["trend_sort_score"] = trend.get("trend_sort_score")
+        item["metrics"]["sector_multiplier"] = trend.get("sector_multiplier")
+        item["metrics"]["mainline_rank"] = trend.get("mainline_rank")
+
+    # 排序（v3）：60/20 日主线分优先，5 日收益只作为热度和同分辅助。
     sector_items = sorted(
         sector_items,
         key=lambda item: (
+            _float(item.get("trend_sort_score"), 0.0),
+            _float(item["scores"].get("sector_mainline_score"), 0.0),
             item["scores"]["sector_score"],
             item["metrics"]["market_share"],
             item["metrics"]["return_5d"],
@@ -252,25 +345,22 @@ def evaluate_sector_trends(
         reverse=True,
     )
     top_sectors = sector_items[: max(1, int(top_n))]
-    trend_sectors = _build_trend_sectors(
-        sector_items=sector_items,
-        sector_history=sector_history,
-        benchmark_frame=benchmark_frame,
-        analysis_date=analysis_date,
-        top_n=max(6, int(top_n)),
-    )
+    trend_sectors = trend_sectors_all[: max(6, int(top_n))]
     from shilun.market.candidates import build_candidates
 
     candidates = build_candidates(
         top_sectors=top_sectors,
         stock_frame=stock_frame,
         analysis_date=analysis_date,
+        market_gate=market_gate,
+        trend_sectors=trend_sectors,
     )
     return {
         "engine_version": SECTOR_ENGINE_VERSION,
         "analysis_date": analysis_date,
         "benchmark_ticker": benchmark_ticker,
         "benchmark_name": benchmark_index_meta(benchmark_ticker)["name"],
+        "trend_lookback_days": max(5, int(trend_lookback_days)),
         "sector_source": "Tushare stock_basic.industry",
         "sector_source_note": "第一版按 stock_basic.industry 聚合个股日线，是行业代理板块；不是申万行业指数，也不是同花顺概念板块。",
         "summary": _build_summary(top_sectors),
@@ -387,11 +477,37 @@ def _prepare_stock_frame(
     frame["pct_chg"] = frame.groupby("ticker", group_keys=False)["close"].pct_change()
     fallback = (frame["close"] / frame["open"]) - 1.0
     frame["pct_chg"] = frame["pct_chg"].fillna(fallback).fillna(0.0)
-    for window in (5, 10, 20):
+    for window in (5, 8, 10, 20):
         frame[f"ma{window}"] = frame.groupby("ticker", group_keys=False)["close"].transform(lambda series: series.rolling(window, min_periods=1).mean())
+    frame["volume_ma5"] = frame.groupby("ticker", group_keys=False)["volume"].transform(lambda series: series.rolling(5, min_periods=1).mean())
     frame["amount_ma5"] = frame.groupby("ticker", group_keys=False)["amount"].transform(lambda series: series.rolling(5, min_periods=1).mean())
+    frame["atr_14"] = _compute_atr_series(frame, period=14)
+    frame["atr_pct_14"] = _safe_div_series(frame["atr_14"], frame["close"])
+    frame["median_abs_return_20d"] = frame.groupby("ticker", group_keys=False)["pct_chg"].transform(
+        lambda series: series.abs().rolling(20, min_periods=5).median()
+    ).fillna(frame["pct_chg"].abs())
+    volume_median_20 = frame.groupby("ticker", group_keys=False)["volume"].transform(lambda series: series.rolling(20, min_periods=5).median())
+    amount_median_60 = frame.groupby("ticker", group_keys=False)["amount"].transform(lambda series: series.rolling(60, min_periods=15).median())
+    range_median_20 = (frame["high"] - frame["low"]).groupby(frame["ticker"], group_keys=False).transform(
+        lambda series: series.rolling(20, min_periods=5).median()
+    )
+    frame["volume_ratio_20"] = _safe_div_series(frame["volume"], volume_median_20).replace(0, 1.0)
+    frame["amount_ratio_60"] = _safe_div_series(frame["amount"], amount_median_60).replace(0, 1.0)
+    frame["range_ratio_20"] = _safe_div_series(frame["high"] - frame["low"], range_median_20).replace(0, 1.0)
+    frame["volume_percentile_120"] = frame.groupby("ticker", group_keys=False)["volume"].transform(
+        lambda series: _rolling_rank_pct(series, 120, 30)
+    ).fillna(0.5)
+    frame["return_percentile_120"] = frame.groupby("ticker", group_keys=False)["pct_chg"].transform(
+        lambda series: _rolling_rank_pct(series, 120, 30)
+    ).fillna(0.5)
+    extension = _safe_div_series(frame["close"], frame["ma5"]) - 1.0
+    frame["extension_percentile_120"] = extension.groupby(frame["ticker"], group_keys=False).transform(
+        lambda series: _rolling_rank_pct(series, 120, 30)
+    ).fillna(0.5)
     frame["close_position"] = _close_position_series(frame)
+    frame["real_body_ratio"] = _safe_div_series((frame["close"] - frame["open"]).abs(), frame["high"] - frame["low"])
     frame["upper_shadow_ratio"] = _safe_div_series(frame["high"] - frame[["open", "close"]].max(axis=1), frame["high"] - frame["low"])
+    frame["lower_shadow_ratio"] = _safe_div_series(frame[["open", "close"]].min(axis=1) - frame["low"], frame["high"] - frame["low"])
     return frame
 
 
@@ -427,6 +543,23 @@ def _normalize_bars(frame: pd.DataFrame | None) -> pd.DataFrame:
 
 
 def _prepare_moneyflow_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
+    """处理 Tushare moneyflow。
+
+    Tushare moneyflow 的 buy_/sell_ 字段本身就是**主动方向**（外盘/内盘拆分）：
+      buy_elg/lg/md/sm_amount = 特大/大/中/小单的**主动买入**（外盘）
+      sell_elg/lg/md/sm_amount = 特大/大/中/小单的**主动卖出**（内盘）
+
+    我们在这里同时计算：
+      large_net_amount       主力（特大+大）净流入（现有）
+      main_active_buy        主力主动买入总额（buy_elg + buy_lg）
+      main_active_sell       主力主动卖出总额（sell_elg + sell_lg）
+      retail_active_buy      散户主动买入总额（buy_md + buy_sm）
+      retail_active_sell     散户主动卖出总额（sell_md + sell_sm）
+      total_active           全部主动买+卖，用来算比率
+      active_buy_ratio       外盘占比 = 主动买入 / 全部主动
+      active_buy_structure   主力主动占比 - 散户主动占比（-1..1）
+                             > 0 = 聪明钱进场；< 0 = 散户接盘（顶部特征）
+    """
     if frame is None or frame.empty:
         return pd.DataFrame()
     normalized = frame.copy()
@@ -439,32 +572,54 @@ def _prepare_moneyflow_frame(frame: pd.DataFrame | None) -> pd.DataFrame:
     normalized["ticker"] = normalized["ticker"].astype(str)
     normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce")
     amount_columns = [
-        "buy_lg_amount",
-        "sell_lg_amount",
-        "buy_elg_amount",
-        "sell_elg_amount",
+        "buy_lg_amount", "sell_lg_amount",
+        "buy_elg_amount", "sell_elg_amount",
+        "buy_md_amount", "sell_md_amount",
+        "buy_sm_amount", "sell_sm_amount",
         "net_mf_amount",
     ]
     for column in amount_columns:
         if column not in normalized.columns:
             normalized[column] = 0.0
         normalized[column] = pd.to_numeric(normalized[column], errors="coerce").fillna(0.0)
+
+    # 主力（特大+大单）净流入 = 现有字段
     normalized["large_net_amount"] = (
-        normalized["buy_lg_amount"]
-        + normalized["buy_elg_amount"]
-        - normalized["sell_lg_amount"]
-        - normalized["sell_elg_amount"]
+        normalized["buy_lg_amount"] + normalized["buy_elg_amount"]
+        - normalized["sell_lg_amount"] - normalized["sell_elg_amount"]
     )
+
+    # 主动买卖结构（v2）
+    normalized["main_active_buy"] = normalized["buy_elg_amount"] + normalized["buy_lg_amount"]
+    normalized["main_active_sell"] = normalized["sell_elg_amount"] + normalized["sell_lg_amount"]
+    normalized["retail_active_buy"] = normalized["buy_md_amount"] + normalized["buy_sm_amount"]
+    normalized["retail_active_sell"] = normalized["sell_md_amount"] + normalized["sell_sm_amount"]
+
+    total_buy = normalized["main_active_buy"] + normalized["retail_active_buy"]
+    total_sell = normalized["main_active_sell"] + normalized["retail_active_sell"]
+    total_active = total_buy + total_sell
+
+    # 外盘占比（主动买入 / 全部主动） 0..1
+    normalized["active_buy_ratio"] = (total_buy / total_active.replace(0, pd.NA)).fillna(0.5)
+
+    # 主力主动占比 - 散户主动占比（-1..1）
+    total_active_safe = total_active.replace(0, pd.NA)
+    main_share = (normalized["main_active_buy"] / total_active_safe).fillna(0.0)
+    retail_share = (normalized["retail_active_buy"] / total_active_safe).fillna(0.0)
+    normalized["active_buy_structure"] = main_share - retail_share
+
     return normalized[
         [
-            "ticker",
-            "date",
-            "buy_lg_amount",
-            "sell_lg_amount",
-            "buy_elg_amount",
-            "sell_elg_amount",
+            "ticker", "date",
+            "buy_lg_amount", "sell_lg_amount",
+            "buy_elg_amount", "sell_elg_amount",
+            "buy_md_amount", "sell_md_amount",
+            "buy_sm_amount", "sell_sm_amount",
             "net_mf_amount",
             "large_net_amount",
+            "main_active_buy", "main_active_sell",
+            "retail_active_buy", "retail_active_sell",
+            "active_buy_ratio", "active_buy_structure",
         ]
     ].dropna(subset=["ticker", "date"]).drop_duplicates(["ticker", "date"])
 
@@ -497,6 +652,29 @@ def _build_sector_history(stock_frame: pd.DataFrame, *, min_stock_count: int) ->
             large_net_amount = None
             positive_moneyflow_ratio = None
             net_mf_amount = None
+
+        # 主动买卖聚合（板块层）
+        main_active_buy = None
+        main_active_sell = None
+        retail_active_buy = None
+        retail_active_sell = None
+        active_buy_ratio = None
+        active_buy_structure = None
+        if "main_active_buy" in group.columns:
+            main_active_buy = float(pd.to_numeric(group["main_active_buy"], errors="coerce").fillna(0.0).sum())
+            main_active_sell = float(pd.to_numeric(group["main_active_sell"], errors="coerce").fillna(0.0).sum())
+            retail_active_buy = float(pd.to_numeric(group["retail_active_buy"], errors="coerce").fillna(0.0).sum())
+            retail_active_sell = float(pd.to_numeric(group["retail_active_sell"], errors="coerce").fillna(0.0).sum())
+            total_buy = main_active_buy + retail_active_buy
+            total_sell = main_active_sell + retail_active_sell
+            total_active = total_buy + total_sell
+            if total_active > 0:
+                active_buy_ratio = total_buy / total_active
+                active_buy_structure = (main_active_buy - retail_active_buy) / total_active
+            else:
+                active_buy_ratio = 0.5
+                active_buy_structure = 0.0
+
         rows.append(
             {
                 "date": date,
@@ -508,6 +686,12 @@ def _build_sector_history(stock_frame: pd.DataFrame, *, min_stock_count: int) ->
                 "large_net_ratio": _safe_div(float(large_net_amount or 0.0), amount / 10.0) if large_net_amount is not None else None,
                 "positive_moneyflow_ratio": positive_moneyflow_ratio,
                 "net_mf_amount": net_mf_amount,
+                "main_active_buy": main_active_buy,
+                "main_active_sell": main_active_sell,
+                "retail_active_buy": retail_active_buy,
+                "retail_active_sell": retail_active_sell,
+                "active_buy_ratio": active_buy_ratio,
+                "active_buy_structure": active_buy_structure,
                 "up_ratio": float((returns > 0).mean()),
                 "down_ratio": float((returns < 0).mean()),
                 "limit_up_count": int((returns >= 0.095).sum()),
@@ -531,8 +715,13 @@ def _attach_sector_rolling(sector_daily: pd.DataFrame) -> pd.DataFrame:
     if "large_net_amount" in frame.columns:
         flow = pd.to_numeric(frame["large_net_amount"], errors="coerce")
         frame["moneyflow_persistence_3d"] = (flow > 0).astype(int).rolling(3, min_periods=1).sum()
+        # 20 日累计主力净流入（判断中期资金持续入场）
+        frame["main_net_20d"] = flow.rolling(20, min_periods=5).sum()
+        frame["main_net_60d"] = flow.rolling(60, min_periods=15).sum()
     else:
         frame["moneyflow_persistence_3d"] = 0
+        frame["main_net_20d"] = 0.0
+        frame["main_net_60d"] = 0.0
     return frame
 
 
@@ -1162,14 +1351,21 @@ def _preselect_sector_names(
     names = set(current.sort_values("preselect_score", ascending=False).head(current_limit)["sector_name"].astype(str))
 
     target = pd.Timestamp(analysis_date)
-    benchmark_returns = dict(zip(benchmark_frame["date"], benchmark_frame["pct_chg"]))
-    benchmark_return_5d = _compound(benchmark_frame.tail(5)["pct_chg"])
+    benchmark_slice = benchmark_frame.loc[benchmark_frame["date"] <= target].copy()
+    benchmark_returns = dict(zip(benchmark_slice["date"], benchmark_slice["pct_chg"]))
+    benchmark_return_5d = _compound(benchmark_slice.tail(5)["pct_chg"])
+    benchmark_return_20d = _compound(benchmark_slice.tail(20)["pct_chg"]) if len(benchmark_slice) >= 5 else 0.0
+    benchmark_return_60d = _compound(benchmark_slice.tail(60)["pct_chg"]) if len(benchmark_slice) >= 15 else 0.0
     trend_rows: list[dict[str, Any]] = []
     for sector_name, history in sector_history.loc[sector_history["date"] <= target].groupby("sector_name"):
-        history = _attach_sector_rolling(history.sort_values("date")).tail(5)
+        history = _attach_sector_rolling(history.sort_values("date")).tail(60)
         if history.empty:
             continue
-        return_5d = _compound(history["return_1d"])
+        last_5 = history.tail(5)
+        last_20 = history.tail(20)
+        return_5d = _compound(last_5["return_1d"])
+        return_20d = _compound(last_20["return_1d"]) if len(last_20) >= 5 else 0.0
+        return_60d = _compound(history["return_1d"]) if len(history) >= 15 else 0.0
         strong_days = int(
             sum(
                 _float(row.get("return_1d"), 0.0) > _float(benchmark_returns.get(row.get("date")), 0.0)
@@ -1178,11 +1374,17 @@ def _preselect_sector_names(
             )
         )
         amount_ratio = _float(history.iloc[-1].get("amount_ratio_5"), 1.0)
+        flow = pd.to_numeric(history.get("large_net_amount"), errors="coerce") if "large_net_amount" in history.columns else pd.Series(dtype=float)
+        moneyflow_days = int((flow.fillna(0.0) > 0).sum()) if not flow.empty else 0
+        actual_days = max(1, len(history))
         trend_rows.append(
             {
                 "sector_name": str(sector_name),
-                "score": max(0.0, return_5d - benchmark_return_5d) * 220.0
-                + strong_days * 9.0
+                "score": max(0.0, return_60d - benchmark_return_60d) * 90.0
+                + max(0.0, return_20d - benchmark_return_20d) * 130.0
+                + max(0.0, return_5d - benchmark_return_5d) * 80.0
+                + (strong_days / actual_days) * 45.0
+                + (moneyflow_days / actual_days) * 25.0
                 + max(0.0, min(amount_ratio, 2.0) - 1.0) * 10.0,
             }
         )
@@ -1193,6 +1395,108 @@ def _preselect_sector_names(
     return names
 
 
+def _positive_return_score(value: Any, scale: float) -> float:
+    if value is None:
+        return 0.0
+    number = _float(value, 0.0)
+    return _clip_score(max(0.0, number) * scale)
+
+
+def _ratio_score(count: int, total: int) -> float:
+    return _clip_score(float(count) / max(1, int(total)) * 100.0)
+
+
+def _percentile_score(value: Any, values: list[Any]) -> float:
+    valid_values = sorted(_float(item, 0.0) for item in values if item is not None and not pd.isna(item))
+    if not valid_values:
+        return 0.0
+    number = _float(value, 0.0)
+    if len(valid_values) == 1:
+        return 100.0
+    lower = sum(1 for item in valid_values if item < number)
+    equal = sum(1 for item in valid_values if item == number)
+    # Mid-rank percentile keeps ties readable and avoids all top names becoming 100.
+    return _clip_score((lower + equal * 0.5) / len(valid_values) * 100.0)
+
+
+def _sector_mainline_state(
+    *,
+    score: float,
+    rank: int,
+    item: dict[str, Any],
+    relative_return_5d: float,
+    relative_return_20d: float | None,
+    relative_return_60d: float | None,
+    strong_days: int,
+    actual_days: int,
+) -> dict[str, Any]:
+    stage = str(item.get("stage") or "")
+    metrics = item.get("metrics") or {}
+    scores = item.get("scores") or {}
+    core_stats = item.get("core_stats") or {}
+    divergence = item.get("divergence") or {}
+    up_ratio = _float(metrics.get("up_ratio"), 0.0)
+    amount_ratio = _float(metrics.get("amount_ratio_5"), 1.0)
+    core_breaks = int(core_stats.get("core_hard_break_count") or 0)
+    divergence_score = int(divergence.get("score") or 0)
+    raw_risk = _float(scores.get("risk_penalty"), 0.0)
+    rel20 = _float(relative_return_20d, 0.0) if relative_return_20d is not None else 0.0
+    rel60 = _float(relative_return_60d, 0.0) if relative_return_60d is not None else 0.0
+
+    retreat_flag = bool(
+        stage == "decline"
+        or core_breaks >= 2
+        or (rel20 < 0 and rel60 < 0 and up_ratio < 0.45 and amount_ratio >= 1.15)
+    )
+    if retreat_flag:
+        return {
+            "sector_state": "retreat",
+            "sector_state_label": "退潮",
+            "sector_multiplier": 0.60,
+            "retreat_flag": True,
+            "state_reason": "核心破位、跑输大盘或放量转弱，板块信号进入硬降权。",
+        }
+    if score >= 75 and rank <= 3:
+        return {
+            "sector_state": "mainline_top3",
+            "sector_state_label": "主线前三",
+            "sector_multiplier": 1.30,
+            "retreat_flag": False,
+            "state_reason": "主线分进入全市场前三且超过 75，作为 MA5 候选的强主线加权。",
+        }
+    if score >= 60 and rank <= 8:
+        return {
+            "sector_state": "mainline_top8",
+            "sector_state_label": "主线前八",
+            "sector_multiplier": 1.10,
+            "retreat_flag": False,
+            "state_reason": "主线分进入全市场前八且超过 60，候选票按中期主线背景加权。",
+        }
+    if relative_return_5d > 0.03 or stage in {"start", "confirm", "repair", "accelerate"}:
+        return {
+            "sector_state": "hot",
+            "sector_state_label": "短线热点",
+            "sector_multiplier": 1.00,
+            "retreat_flag": False,
+            "state_reason": "短线热度较强，但 20/60 日主线证据不足，暂不提高策略乘数。",
+        }
+    if stage == "divergence" or divergence_score >= 2 or raw_risk >= 18:
+        return {
+            "sector_state": "divergence",
+            "sector_state_label": "分歧观察",
+            "sector_multiplier": 0.85,
+            "retreat_flag": False,
+            "state_reason": "板块存在成交、广度或核心反馈分歧，候选票只做降权观察。",
+        }
+    return {
+        "sector_state": "neutral",
+        "sector_state_label": "中性观察",
+        "sector_multiplier": 0.85,
+        "retreat_flag": False,
+        "state_reason": "暂未形成明确主线或退潮信号，候选票不做额外加权。",
+    }
+
+
 def _build_trend_sectors(
     *,
     sector_items: list[dict[str, Any]],
@@ -1200,10 +1504,15 @@ def _build_trend_sectors(
     benchmark_frame: pd.DataFrame,
     analysis_date: str,
     top_n: int,
+    trend_lookback_days: int,
 ) -> list[dict[str, Any]]:
-    """Build a 5-day trend board without recomputing stock-level profiles."""
+    """Build a multi-day trend board without recomputing stock-level profiles."""
 
     target = pd.Timestamp(analysis_date)
+    window = max(5, int(trend_lookback_days))
+    strong_threshold = max(3, math.ceil(window * 0.50))
+    resonance_threshold = max(2, math.ceil(window * 0.32))
+    moneyflow_threshold = max(2, math.ceil(window * 0.28))
     benchmark_returns = dict(zip(benchmark_frame["date"], benchmark_frame["pct_chg"]))
     trend_items: list[dict[str, Any]] = []
     for item in sector_items:
@@ -1216,7 +1525,8 @@ def _build_trend_sectors(
         ].sort_values("date")
         if history.empty:
             continue
-        history = _attach_sector_rolling(history).tail(5).reset_index(drop=True)
+        history = _attach_sector_rolling(history).tail(window).reset_index(drop=True)
+        actual_days = len(history)
         strong_days = 0
         repair_days = 0
         resonance_days = 0
@@ -1265,67 +1575,199 @@ def _build_trend_sectors(
         scores = item.get("scores") or {}
         sector_score = _float(scores.get("sector_score"), 0.0)
         relative_return_5d = _float(metrics.get("relative_return_5d"), 0.0)
+        relative_return_20d = metrics.get("relative_return_20d")
+        relative_return_60d = metrics.get("relative_return_60d")
         return_5d = _float(metrics.get("return_5d"), 0.0)
+        return_20d = metrics.get("return_20d")
+        return_60d = metrics.get("return_60d")
         amount_ratio_5 = _float(metrics.get("amount_ratio_5"), 1.0)
-        trend_score = _clip_score(
-            0.36 * sector_score
-            + strong_days * 8.0
-            + repair_days * 8.0
-            + resonance_days * 5.0
-            + moneyflow_days * 5.0
-            + max(0.0, relative_return_5d) * 160.0
-            + max(0.0, min(amount_ratio_5, 2.0) - 1.0) * 8.0
+        has_moneyflow_data = any(point.get("main_net_inflow") is not None for point in points)
+        recent_points = points[-5:]
+        strong_days_5 = sum(1 for point in recent_points if point.get("strong"))
+        repair_days_5 = sum(1 for point in recent_points if point.get("repair"))
+        resonance_days_5 = sum(1 for point in recent_points if point.get("resonance"))
+        moneyflow_days_5 = sum(1 for point in recent_points if _float(point.get("main_net_inflow"), 0.0) > 0)
+        outperform_days_5_score = _ratio_score(strong_days_5, len(recent_points))
+        current_health_score = _clip_score(
+            0.45 * sector_score
+            + 0.30 * _float(scores.get("amount_activity_score"), 0.0)
+            + 0.25 * _float(scores.get("breadth_score"), 0.0)
         )
-        if moneyflow_days >= 2:
-            trend_label = "资金趋势"
-            trend_meaning = "近5日多次出现大单+特大单净流入，板块强度有资金持续性支撑。"
-        elif repair_days >= 1:
-            trend_label = "分歧后修复"
-            trend_meaning = "近5日出现前置分歧后的重新跑赢和广度修复。"
-        elif strong_days >= 3 and resonance_days >= 2:
-            trend_label = "共振趋势"
-            trend_meaning = "板块多日跑赢，并且多次与大盘同向上行。"
-        elif strong_days >= 3:
-            trend_label = "多日强势"
-            trend_meaning = "近5日多次强于基准，仍需观察资金和核心反馈。"
-        else:
-            trend_label = "短线强势观察"
-            trend_meaning = "当前排名较强，但趋势连续性还需要继续确认。"
+        leader_zhongjun_raw = _clip_score(_float(scores.get("core_feedback_score"), 0.0))
+        risk_penalty = min(28.0, _float(scores.get("risk_penalty"), 0.0) * 0.45)
+        short_heat_score = _clip_score(
+            _positive_return_score(relative_return_5d, 180.0) * 0.65
+            + max(0.0, min(amount_ratio_5, 2.0) - 1.0) * 18.0
+            + _float(scores.get("breadth_score"), 0.0) * 0.20
+        )
         trend_items.append(
             {
                 "sector_name": sector_name,
                 "stage": item.get("stage"),
                 "stage_label": item.get("stage_label"),
-                "trend_label": trend_label,
-                "trend_meaning": trend_meaning,
-                "trend_score": _round(trend_score, 2),
+                "sector_state": None,
+                "sector_state_label": None,
+                "sector_multiplier": None,
+                "retreat_flag": False,
+                "state_reason": "",
+                "trend_label": "",
+                "trend_meaning": "",
+                "trend_score": None,
+                "trend_sort_score": None,
+                "sector_mainline_score": None,
+                "scores": {
+                    "outperform_days_5_score": _round(outperform_days_5_score, 2),
+                    "current_health_score": _round(current_health_score, 2),
+                    "leader_zhongjun_raw_score": _round(leader_zhongjun_raw, 2),
+                    "risk_penalty": _round(risk_penalty, 2),
+                    "formula": "sector_mainline_score = 35%*20日相对强度分位 + 25%*60日相对强度分位 + 15%*近5日跑赢分 + 15%*成交额活跃分位 + 10%*龙头/中军反馈分位",
+                },
                 "metrics": {
                     "return_5d": _round(return_5d, 4),
+                    "return_20d": _round(return_20d, 4) if return_20d is not None else None,
+                    "return_60d": _round(return_60d, 4) if return_60d is not None else None,
                     "relative_return_5d": _round(relative_return_5d, 4),
-                    "strong_days_5": strong_days,
-                    "repair_days_5": repair_days,
-                    "resonance_days_5": resonance_days,
-                    "moneyflow_days_5": moneyflow_days,
+                    "relative_return_20d": _round(relative_return_20d, 4) if relative_return_20d is not None else None,
+                    "relative_return_60d": _round(relative_return_60d, 4) if relative_return_60d is not None else None,
+                    "lookback_days": window,
+                    "actual_days": actual_days,
+                    "strong_days": strong_days,
+                    "repair_days": repair_days,
+                    "resonance_days": resonance_days,
+                    "moneyflow_days": moneyflow_days,
+                    "strong_days_5": strong_days_5,
+                    "repair_days_5": repair_days_5,
+                    "resonance_days_5": resonance_days_5,
+                    "moneyflow_days_5": moneyflow_days_5,
                     "amount_ratio_5": _round(amount_ratio_5, 4),
                     "up_ratio": metrics.get("up_ratio"),
                     "market_share": metrics.get("market_share"),
+                    "has_moneyflow_data": has_moneyflow_data,
                 },
-                "evidence": [
-                    f"近5日跑赢/强势 {strong_days} 天，相对大盘 {_pct_text(relative_return_5d)}。",
-                    f"共振 {resonance_days} 天，分歧后修复 {repair_days} 天，资金净流入 {moneyflow_days} 天。",
-                    f"当前阶段 {item.get('stage_label')}，板块评分 {scores.get('sector_score')}。",
-                ],
+                "evidence": [],
                 "trend_points": points,
+                "_mainline_raw": {
+                    "relative_return_20d": relative_return_20d,
+                    "relative_return_60d": relative_return_60d,
+                    "amount_ratio_5": amount_ratio_5,
+                    "leader_zhongjun": leader_zhongjun_raw,
+                    "short_heat_score": short_heat_score,
+                },
+                "_source_item": item,
             }
         )
-    return sorted(
+
+    rel20_values = [row["_mainline_raw"]["relative_return_20d"] for row in trend_items]
+    rel60_values = [row["_mainline_raw"]["relative_return_60d"] for row in trend_items]
+    amount_values = [row["_mainline_raw"]["amount_ratio_5"] for row in trend_items]
+    leader_values = [row["_mainline_raw"]["leader_zhongjun"] for row in trend_items]
+    for row in trend_items:
+        raw = row["_mainline_raw"]
+        scores = row["scores"]
+        metrics = row["metrics"]
+        excess_20_score = _percentile_score(raw["relative_return_20d"], rel20_values)
+        excess_60_score = _percentile_score(raw["relative_return_60d"], rel60_values)
+        amount_ratio_score = _percentile_score(raw["amount_ratio_5"], amount_values)
+        leader_zhongjun_score = _percentile_score(raw["leader_zhongjun"], leader_values)
+        outperform_days_5_score = _float(scores.get("outperform_days_5_score"), 0.0)
+        sector_mainline_score = _clip_score(
+            0.35 * excess_20_score
+            + 0.25 * excess_60_score
+            + 0.15 * outperform_days_5_score
+            + 0.15 * amount_ratio_score
+            + 0.10 * leader_zhongjun_score
+        )
+        row["sector_mainline_score"] = _round(sector_mainline_score, 2)
+        row["trend_score"] = _round(sector_mainline_score, 2)
+        row["trend_sort_score"] = _round(sector_mainline_score, 2)
+        scores.update(
+            {
+                "sector_mainline_score": _round(sector_mainline_score, 2),
+                "excess_return_20d_score": _round(excess_20_score, 2),
+                "excess_return_60d_score": _round(excess_60_score, 2),
+                "sector_amount_ratio_score": _round(amount_ratio_score, 2),
+                "leader_zhongjun_score": _round(leader_zhongjun_score, 2),
+                "score_breakdown": {
+                    "20日相对强度": _round(excess_20_score, 2),
+                    "60日相对强度": _round(excess_60_score, 2),
+                    "近5日跑赢": _round(outperform_days_5_score, 2),
+                    "成交额活跃": _round(amount_ratio_score, 2),
+                    "龙头中军反馈": _round(leader_zhongjun_score, 2),
+                },
+            }
+        )
+        metrics["short_heat_score"] = _round(raw["short_heat_score"], 2)
+
+    trend_items = sorted(
         trend_items,
         key=lambda row: (
-            _float(row.get("trend_score"), 0.0),
+            _float(row.get("sector_mainline_score"), 0.0),
+            _float((row.get("metrics") or {}).get("relative_return_20d"), 0.0),
+            _float((row.get("metrics") or {}).get("relative_return_60d"), 0.0),
             _float((row.get("metrics") or {}).get("relative_return_5d"), 0.0),
         ),
         reverse=True,
-    )[: max(1, int(top_n))]
+    )
+
+    for rank, row in enumerate(trend_items, start=1):
+        metrics = row["metrics"]
+        state = _sector_mainline_state(
+            score=_float(row.get("sector_mainline_score"), 0.0),
+            rank=rank,
+            item=row["_source_item"],
+            relative_return_5d=_float(metrics.get("relative_return_5d"), 0.0),
+            relative_return_20d=metrics.get("relative_return_20d"),
+            relative_return_60d=metrics.get("relative_return_60d"),
+            strong_days=int(metrics.get("strong_days") or 0),
+            actual_days=int(metrics.get("actual_days") or 0),
+        )
+        row["mainline_rank"] = rank
+        row["sector_state"] = state["sector_state"]
+        row["sector_state_label"] = state["sector_state_label"]
+        row["sector_multiplier"] = state["sector_multiplier"]
+        row["retreat_flag"] = state["retreat_flag"]
+        row["state_reason"] = state["state_reason"]
+        metrics["mainline_rank"] = rank
+        metrics["sector_multiplier"] = state["sector_multiplier"]
+        if state["sector_state"] == "retreat":
+            trend_label = "退潮观察"
+            trend_meaning = state["state_reason"]
+        elif state["sector_state"] in {"mainline_top3", "mainline_top8"}:
+            trend_label = state["sector_state_label"]
+            trend_meaning = state["state_reason"]
+        elif state["sector_state"] == "divergence":
+            trend_label = "分歧观察"
+            trend_meaning = state["state_reason"]
+        elif state["sector_state"] == "hot":
+            trend_label = "短线热点"
+            trend_meaning = state["state_reason"]
+        elif int(metrics.get("repair_days") or 0) >= 1:
+            trend_label = "分歧后修复"
+            trend_meaning = f"近{window}个交易日出现前置分歧后的重新跑赢和广度修复。"
+        elif int(metrics.get("moneyflow_days") or 0) >= moneyflow_threshold:
+            trend_label = "资金趋势"
+            trend_meaning = f"近{window}个交易日多次出现大单+特大单净流入，板块强度有资金持续性支撑。"
+        elif int(metrics.get("strong_days") or 0) >= strong_threshold and int(metrics.get("resonance_days") or 0) >= resonance_threshold:
+            trend_label = "共振趋势"
+            trend_meaning = "板块多日跑赢，并且多次与大盘同向上行。"
+        elif int(metrics.get("strong_days") or 0) >= strong_threshold:
+            trend_label = "多日强势"
+            trend_meaning = f"近{window}个交易日多次强于基准，仍需观察资金和核心反馈。"
+        else:
+            trend_label = "中性观察"
+            trend_meaning = state["state_reason"]
+        row["trend_label"] = trend_label
+        row["trend_meaning"] = trend_meaning
+        scores = row["scores"]
+        row["evidence"] = [
+            f"主线分 {row['sector_mainline_score']}：20日相对分 {scores['excess_return_20d_score']}、60日相对分 {scores['excess_return_60d_score']}、近5日跑赢分 {scores['outperform_days_5_score']}、成交额分 {scores['sector_amount_ratio_score']}、龙头/中军分 {scores['leader_zhongjun_score']}。",
+            f"近{metrics['actual_days']}/{window}个交易日跑赢/强势 {metrics['strong_days']} 天；60日相对大盘 {_pct_text(metrics.get('relative_return_60d'))}，20日相对大盘 {_pct_text(metrics.get('relative_return_20d'))}。",
+            f"近5日相对大盘 {_pct_text(metrics.get('relative_return_5d'))}，只作为短线热度参考；状态 {state['sector_state_label']}，乘数 {state['sector_multiplier']}。",
+        ]
+        row.pop("_mainline_raw", None)
+        row.pop("_source_item", None)
+
+    return trend_items[: max(1, int(top_n))]
 
 
 def _build_daily_leaders(
@@ -1679,6 +2121,33 @@ def _data_quality(
 def _close_position_series(frame: pd.DataFrame) -> pd.Series:
     spread = frame["high"] - frame["low"]
     return _safe_div_series(frame["close"] - frame["low"], spread).replace(0, 0.5).clip(lower=0, upper=1)
+
+
+def _compute_atr_series(frame: pd.DataFrame, period: int = 14) -> pd.Series:
+    def _one(group: pd.DataFrame) -> pd.Series:
+        high = pd.to_numeric(group["high"], errors="coerce")
+        low = pd.to_numeric(group["low"], errors="coerce")
+        close = pd.to_numeric(group["close"], errors="coerce")
+        prev_close = close.shift(1)
+        true_range = pd.concat(
+            [
+                (high - low).abs(),
+                (high - prev_close).abs(),
+                (low - prev_close).abs(),
+            ],
+            axis=1,
+        ).max(axis=1)
+        return true_range.ewm(span=period, adjust=False).mean()
+
+    result = frame.groupby("ticker", group_keys=False).apply(_one)
+    return result.reindex(frame.index).fillna(0.0)
+
+
+def _rolling_rank_pct(series: pd.Series, window: int, min_periods: int) -> pd.Series:
+    return series.rolling(window, min_periods=min_periods).apply(
+        lambda values: pd.Series(values).rank(pct=True).iloc[-1],
+        raw=False,
+    )
 
 
 def _safe_div_series(numerator: pd.Series, denominator: pd.Series) -> pd.Series:

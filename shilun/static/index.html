@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>石论控制台</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260625-data-colors-v1" />
+  <link rel="stylesheet" href="/static/app.css?v=20260706-ma5-v02-sector-trend" />
 </head>
 <body>
   <div class="workbench">
@@ -20,12 +20,13 @@
           <button class="tab-button" type="button" data-tab="market" onclick="switchTab('market')"><span>02</span>大盘计算</button>
           <button class="tab-button" type="button" data-tab="sectors" onclick="switchTab('sectors')"><span>03</span>板块动向</button>
           <button class="tab-button" type="button" data-tab="analysis" onclick="switchTab('analysis')"><span>04</span>单票分析</button>
+          <button class="tab-button" type="button" data-tab="intraday" onclick="switchTab('intraday')"><span>05</span>盘中监控</button>
         </div>
         <p class="nav-group-label">系统与交付</p>
         <div class="tab-bar tab-bar-secondary" role="tablist" aria-label="石论系统功能分区">
-          <button class="tab-button" type="button" data-tab="push" onclick="switchTab('push')"><span>05</span>日报推送</button>
-          <button class="tab-button" type="button" data-tab="data" onclick="switchTab('data')"><span>06</span>数据同步</button>
-          <button class="tab-button" type="button" data-tab="system" onclick="switchTab('system')"><span>07</span>系统状态</button>
+          <button class="tab-button" type="button" data-tab="push" onclick="switchTab('push')"><span>06</span>日报推送</button>
+          <button class="tab-button" type="button" data-tab="data" onclick="switchTab('data')"><span>07</span>数据同步</button>
+          <button class="tab-button" type="button" data-tab="system" onclick="switchTab('system')"><span>08</span>系统状态</button>
         </div>
       </nav>
       <div class="sidebar-foot">
@@ -59,11 +60,16 @@
 
       <section id="tab-permission" class="tab-panel active" role="tabpanel">
         <div class="grid">
-          <div class="card wide">
-            <h2>权限确认</h2>
-            <div class="hint">使用顶部全局日期与基准指数。第一步只确认交易权限和动作边界。详细评分和证据链在「大盘计算」Tab。</div>
-            <button id="permissionQueryButton" onclick="runMarketPermission()">确认今日权限</button>
-            <button class="secondary" onclick="switchTab('market')">查看大盘计算</button>
+          <div class="card wide fs-primary-card">
+            <div class="fs-section-header">
+              <span class="fs-eyebrow">SUMMARY · 交易闸门</span>
+              <h2>权限确认</h2>
+              <p>先回答今天能不能开仓、能不能加仓、最大策略强度是多少。详细评分和证据链进入「大盘计算」继续验证。</p>
+            </div>
+            <div class="fs-action-bar">
+              <button id="permissionQueryButton" onclick="runMarketPermission()">确认今日权限</button>
+              <button class="secondary" onclick="switchTab('market')">查看大盘计算</button>
+            </div>
             <div id="marketPermissionSummary" class="permission-summary"></div>
             <pre id="marketPermissionConfirmResult">等待确认...</pre>
           </div>
@@ -75,7 +81,7 @@
         <div class="grid">
 
       <!-- 数据源子 Tab 切换器 -->
-      <div class="card wide">
+      <div class="card wide fs-tab-switch-card">
         <div class="data-source-tabs">
           <button class="data-source-tab active" type="button" data-source-tab="status" onclick="switchDataSourceTab('status')">总览 · 数据状态</button>
           <button class="data-source-tab" type="button" data-source-tab="tushare" onclick="switchDataSourceTab('tushare')">Tushare（核心）</button>
@@ -84,19 +90,27 @@
       </div>
 
       <!-- 子 Tab 1：总览 · 数据状态 -->
-      <div class="card wide data-source-panel" data-source-panel="status">
-        <h2>全部数据源状态</h2>
-        <div id="dataStatus" class="hint">正在检查所有数据源...</div>
-        <button class="secondary" onclick="loadDataStatus()">刷新数据状态</button>
-        <button class="secondary" onclick="useLatestHistoryDate()">使用最近历史日期分析</button>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="status">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">SUMMARY · 数据可用性</span>
+          <h2>全部数据源状态</h2>
+          <p id="dataStatus">正在检查所有数据源...</p>
+        </div>
+        <div class="fs-action-bar">
+          <button class="secondary" onclick="loadDataStatus()">刷新数据状态</button>
+          <button class="secondary" onclick="useLatestHistoryDate()">使用最近历史日期分析</button>
+        </div>
         <div id="dataStatusGrid" class="data-status-grid"></div>
         <pre id="syncResult" style="display:none">链路规则：核心数据缺失阻断 PART1/2/3；增强数据缺失自动降级，相关维度按 0 计算。</pre>
       </div>
 
       <!-- 子 Tab 2：Tushare 核心数据 -->
-      <div class="card wide data-source-panel" data-source-panel="tushare" style="display:none">
-        <h2>Tushare 核心数据同步</h2>
-        <div class="hint">同步个股日线、基准指数、股票基础信息、资金流向。</div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="tushare" style="display:none">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">ACTION · 核心数据补齐</span>
+          <h2>Tushare 核心数据同步</h2>
+          <p>同步个股日线、基准指数、股票基础信息、资金流向。先看缺口，再执行最小必要同步。</p>
+        </div>
         <div class="sync-button-grid">
           <button onclick="syncLatestData()" title="同步当日个股日线 + 基准指数 + 资金流向">① 同步最新交易日</button>
           <button onclick="syncIncrementalData()" title="检查最近 N 天缺口，按缺口同步">② 增量同步缺口</button>
@@ -113,9 +127,12 @@
       </div>
 
       <!-- 子 Tab 3：AkShare 增强数据 -->
-      <div class="card wide data-source-panel" data-source-panel="akshare" style="display:none">
-        <h2>AkShare 增强数据同步</h2>
-        <div class="hint">免费、不需要 token。涨停池/概念板块/北向资金。任一接口失败会直接报错，不做多源回退。</div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="akshare" style="display:none">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">EXPLORE · 增强数据</span>
+          <h2>AkShare 增强数据同步</h2>
+          <p>免费、不需要 token。用于涨停池、概念板块、北向资金等增强维度；任一接口失败会直接报错，不做多源回退。</p>
+        </div>
         <div class="sync-button-grid">
           <button onclick="syncAkshare('limit_up_pool')" title="东方财富涨停池：连板数/封板时间/炸板次数">① 同步涨停池</button>
           <button onclick="syncAkshare('concept_boards')" title="东方财富概念板块当日快照">② 同步概念板块</button>
@@ -131,12 +148,18 @@
       <section id="tab-market" class="tab-panel" role="tabpanel">
         <div class="grid">
 
-      <div class="card wide">
-        <h2>PART1 大盘计算和解读</h2>
-        <div class="hint">使用顶部全局日期与基准指数。输出五维评分、硬否决项、支撑压力、证据链和状态机规则。板块口径当前是 Tushare stock_basic.industry 行业聚合 proxy，不是申万行业指数。</div>
-        <button id="marketQueryButton" onclick="runMarketPermission()">查询并更新解读</button>
-        <button class="secondary" onclick="forceRunMarketPermission()" title="跳过缓存，重新计算（约 20-30 秒）">强制重算</button>
-        <a class="link-button secondary" href="/api/v1/market/permission?date=__DEFAULT_DATE__" target="_blank">查看 PART1 JSON</a>
+      <div class="card wide fs-primary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">SUMMARY → EVIDENCE · 大盘交易闸门</span>
+          <h2>PART1 大盘计算和解读</h2>
+          <p>先给出交易权限结论，再展示趋势、量能、广度、主线和风险证据链。板块口径当前是 Tushare stock_basic.industry 行业聚合 proxy。</p>
+        </div>
+        <div class="fs-action-bar">
+          <button id="marketQueryButton" onclick="runMarketPermission()">查询并更新解读</button>
+          <button class="secondary" onclick="forceRunMarketPermission()" title="跳过缓存，重新计算（约 20-30 秒）">强制重算</button>
+          <button id="marketSyncMissingButton" class="secondary" onclick="syncMarketMissingData()" title="同步当前日期缺失的个股日线、资金流向和基准指数后自动重新计算">同步缺失数据</button>
+          <a class="link-button secondary" href="/api/v1/market/permission?date=__DEFAULT_DATE__" target="_blank">查看 PART1 JSON</a>
+        </div>
         <div id="marketProgress" class="task-progress" hidden aria-live="polite">
           <div class="task-progress-head">
             <strong id="marketProgressLabel">准备计算</strong>
@@ -151,11 +174,14 @@
         <div id="marketPermissionResult" class="market-output">等待计算...</div>
       </div>
 
-      <div class="card wide">
-        <h2>波浪/外部分析文档导入</h2>
-        <div class="hint">
+      <div class="card wide fs-secondary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">EXPLAIN · 外部证据校准</span>
+          <h2>波浪/外部分析文档导入</h2>
+          <p>
           上传黑兔量化等外部分析文档（.docx / .pdf / .txt / .md），系统会用正则提取
           "支撑/压力/波浪位 + 价位" 组合，并叠加到当前日期的 PART1 关键位上。可选 AI 解读（需配置 ANTHROPIC_API_KEY）。
+          </p>
         </div>
         <div class="wave-upload-row">
           <input type="file" id="waveDocFile" accept=".docx,.pdf,.txt,.md" />
@@ -172,11 +198,17 @@
       <section id="tab-sectors" class="tab-panel" role="tabpanel">
         <div class="grid">
 
-      <div class="card wide">
-        <h2>PART2 板块动向</h2>
-        <div class="hint">使用顶部全局日期与基准指数。用日线数据落地板块生命周期、资金流向、龙头/中军候选、分歧与修复。Tushare moneyflow 已接入；分钟启动时间和封板质量仍会明确标记为待接入。</div>
-        <button id="sectorQueryButton" onclick="runSectorTrends()">查询板块动向</button>
-        <a class="link-button secondary" href="/api/v1/market/sectors?date=__DEFAULT_DATE__" target="_blank">查看板块 JSON</a>
+      <div class="card wide fs-primary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">EVIDENCE → EXPLORE · 板块生命线</span>
+          <h2>PART2 板块动向</h2>
+          <p>先展示今日强力板块，再给趋势板块、龙头榜、指标口径。Tushare moneyflow 已接入；分钟启动时间和封板质量仍会明确标记为待接入。</p>
+        </div>
+        <div class="fs-action-bar">
+          <button id="sectorQueryButton" onclick="runSectorTrends()">查询板块动向</button>
+          <button id="sectorPrecomputeButton" class="secondary" onclick="runPrecomputeSectorsFromPage()">同步板块预计算</button>
+          <a class="link-button secondary" href="/api/v1/market/sectors?date=__DEFAULT_DATE__" target="_blank">查看板块 JSON</a>
+        </div>
         <div id="sectorProgress" class="task-progress" hidden aria-live="polite">
           <div class="task-progress-head">
             <strong id="sectorProgressLabel">准备计算</strong>
@@ -191,9 +223,12 @@
         <div id="sectorTrendResult" class="market-output">等待计算...</div>
       </div>
 
-      <div class="card wide story-aligned-card" id="candidatesCard" style="display:none">
-        <h2>PART3 · MA5 趋势战法候选</h2>
-        <div class="hint">从 PART2 龙头/中军候选里，筛出符合 MA5 趋势战法的多头排列与入场形态。点击股票代码可直接跳转单票分析。</div>
+      <div class="card wide story-aligned-card fs-secondary-card" id="candidatesCard">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">ACTION · 候选票池</span>
+          <h2>MA5 趋势战法候选</h2>
+          <p>从板块动向的龙头/中军候选里，筛出符合 MA5 趋势战法的多头排列、入场形态和交易价位。勾选后可进入盘中监控实时验证。</p>
+        </div>
         <div id="candidatesResult" class="candidates-output">等待板块动向计算完成...</div>
       </div>
         </div>
@@ -202,32 +237,62 @@
       <section id="tab-analysis" class="tab-panel" role="tabpanel">
         <div class="grid">
 
-      <div class="card wide">
-        <h2>单票分析</h2>
-        <div class="hint">使用顶部全局日期。下方只输入股票代码即可。</div>
-        <div class="row">
-          <div>
-            <label>股票代码</label>
-            <input id="analyzeTicker" value="600132.SH" />
-          </div>
-          <div>
-            <label class="check"><input id="allowFallback" type="checkbox" /> 允许显式 Tushare fallback</label>
-          </div>
+      <div class="card wide fs-primary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">SUMMARY → EVIDENCE → ACTION · 单票技术面</span>
+          <h2>单票分析</h2>
+          <p>按 FinScope 阅读路径展示：先看 AI 综合结论，再看 K 线信号、支撑阻力、穿透分析和同类技术事件。</p>
         </div>
-        <div id="analyzeHint" class="hint"></div>
-        <button onclick="runAnalyze()">运行分析</button>
-        <button class="secondary" onclick="runTelegramText()">生成 Telegram 文本</button>
-        <div id="analyzeResult" class="stock-output">等待操作...</div>
+        <div class="analyze-header">
+          <div class="analyze-input-row">
+            <label>股票代码</label>
+            <input id="analyzeTicker" value="603986.SH" />
+            <button onclick="runStockPanel()">运行分析</button>
+          </div>
+          <div id="analyzeHint" class="hint"></div>
+        </div>
+        <div id="stockPanelResult" class="stock-panel-output">
+          <p class="hint">输入股票代码，点击"运行分析"查看图 4 风格的单票面板：分时图 + 信号点 + 支撑压力 + 智能评级 + 大盘穿透。</p>
+        </div>
       </div>
+        </div>
+      </section>
+
+      <section id="tab-intraday" class="tab-panel" role="tabpanel">
+        <div class="grid">
+          <div class="card wide fs-primary-card">
+            <div class="fs-section-header">
+              <span class="fs-eyebrow">ACTION · 实时触发验证</span>
+              <h2>盘中监控 · 实时验证</h2>
+              <p>
+                基于当日 PART1 缓存的关键位 + 实时行情，判断大盘/候选票是否已触发关键位。
+                数据延迟 15-30 秒。建议在交易时段（9:30-11:30 / 13:00-15:00）使用。
+              </p>
+            </div>
+            <div class="intraday-toolbar">
+              <button onclick="runIntraday()">立即刷新</button>
+              <label class="check"><input id="intradayAutoRefresh" type="checkbox" checked /> 30 秒自动刷新</label>
+              <select id="intradaySource" onchange="runIntraday()">
+                <option value="auto">数据源：自动（推荐）</option>
+                <option value="tushare" selected>数据源：Tushare（新浪源，最稳定）</option>
+                <option value="akshare">数据源：AkShare（东财，本地限流慎用）</option>
+              </select>
+              <span id="intradayCountdown" class="hint" style="margin-left: 10px"></span>
+            </div>
+            <div id="intradayResult" class="intraday-output">尚未查询。点击"立即刷新"开始。</div>
+          </div>
         </div>
       </section>
 
       <section id="tab-push" class="tab-panel" role="tabpanel">
         <div class="grid">
 
-      <div class="card wide">
-        <h2>每日日报 / 飞书</h2>
-        <div class="hint">使用顶部全局日期。下方只设置消息 Top K。</div>
+      <div class="card wide fs-primary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">ACTION · 研究交付</span>
+          <h2>每日日报 / 飞书</h2>
+          <p>使用顶部全局日期。先预览日报内容，再决定是否发送飞书；下方只设置消息 Top K。</p>
+        </div>
         <div class="row">
           <div>
             <label>消息 Top K</label>
@@ -244,8 +309,12 @@
         <pre id="pushResult">建议先保持“只预览”，确认内容后再取消勾选发送飞书。</pre>
       </div>
 
-      <div class="card wide">
-        <h2>快捷入口</h2>
+      <div class="card wide fs-secondary-card">
+        <div class="fs-section-header">
+          <span class="fs-eyebrow">EXPLORE · 调试入口</span>
+          <h2>快捷入口</h2>
+          <p>保留给系统联调和接口校验，不抢主流程注意力。</p>
+        </div>
         <a class="link-button" href="/api/v1/telegram/get-me" target="_blank">Telegram getMe</a>
         <a class="link-button" href="/openapi.json" target="_blank">OpenAPI JSON</a>
         <a class="link-button secondary" href="/api/v1/analyze?ticker=600132.SH&date=__DEFAULT_DATE__" target="_blank">示例单票 JSON</a>
@@ -255,9 +324,12 @@
 
       <section id="tab-system" class="tab-panel" role="tabpanel">
         <div class="grid">
-          <div class="card wide">
-            <h2>系统状态</h2>
-            <div class="hint">集中检查后台依赖：Mongo、飞书、Telegram Bot 和日报推送配置，不混在业务判断 TAB 里。</div>
+          <div class="card wide fs-primary-card">
+            <div class="fs-section-header">
+              <span class="fs-eyebrow">SUMMARY · 运行依赖</span>
+              <h2>系统状态</h2>
+              <p>集中检查后台依赖：Mongo、飞书、Telegram Bot 和日报推送配置，不混在业务判断 TAB 里。</p>
+            </div>
             <div id="status" class="status"></div>
           </div>
         </div>
@@ -267,6 +339,9 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260625-storyline-dock-v2" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.min.js"></script>
+  <script src="/static/app.js?v=20260706-ma5-v02-sector-trend" defer></script>
 </body>
 </html>

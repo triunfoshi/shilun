@@ -7,12 +7,52 @@ let runtimeStatus = {};
     let leaderTickerDraft = "";
     let sectorProgressTimer = null;
     let sectorProgressState = { version: 0, phase: "idle", startedAt: 0, phaseStartedAt: 0 };
+    const TREND_POOL_STORAGE_KEY = "shilun.trendStrategyPool";
+    const CANDIDATE_VIEW_STORAGE_KEY = "shilun.candidateViewMode";
+    let selectedTrendPool = loadTrendPool();
+    let candidateViewMode = loadCandidateViewMode();
+    let latestCandidateRows = [];
     let latestMarketData = null;
     let latestAnalysisData = null;
     let selectedMarketChart = "distribution";
     let marketProgressTimer = null;
     let marketProgressState = { phase: "idle", startedAt: 0, progress: 0 };
     const pretty = (value) => JSON.stringify(value, null, 2);
+    function loadTrendPool() {
+      try {
+        const raw = localStorage.getItem(TREND_POOL_STORAGE_KEY);
+        const parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+    function saveTrendPool() {
+      try {
+        localStorage.setItem(TREND_POOL_STORAGE_KEY, JSON.stringify(selectedTrendPool));
+      } catch {
+        // 浏览器禁用 localStorage 时，不阻断主流程。
+      }
+    }
+    function loadCandidateViewMode() {
+      try {
+        return localStorage.getItem(CANDIDATE_VIEW_STORAGE_KEY) === "expanded" ? "expanded" : "compact";
+      } catch {
+        return "compact";
+      }
+    }
+    function setCandidateViewMode(mode) {
+      candidateViewMode = mode === "expanded" ? "expanded" : "compact";
+      try {
+        localStorage.setItem(CANDIDATE_VIEW_STORAGE_KEY, candidateViewMode);
+      } catch {
+        // localStorage 不可用时，当前会话仍可切换。
+      }
+      renderCandidates(latestCandidateRows);
+    }
+    function selectedTrendPoolTickers() {
+      return Object.keys(selectedTrendPool).filter(Boolean);
+    }
     const chineseJsonLabels = {
       target_date: "同步目标日期", sync_trade_date: "实际同步交易日", start_date: "同步起始日期", end_date: "同步结束日期",
       calendar_start: "交易日历起始日期", calendar_end: "交易日历结束日期", daily_trade_date: "日线探测交易日",
@@ -114,6 +154,64 @@ let runtimeStatus = {};
         return "请求失败：未知错误。请检查服务终端日志。";
       }
     };
+    function marketDataGapMessage(error) {
+      const raw = formatError(error);
+      if (/No market breadth rows found/i.test(raw)) {
+        return {
+          title: "市场广度数据缺失",
+          message: "当前日期缺少全市场个股日线，无法计算上涨/下跌家数、涨跌停分布和赚钱效应。这个报错不是单纯的“大盘指数未同步”，而是 PART1 需要的市场广度数据没有补齐。",
+          action: "点击“同步缺失数据”会强制补齐当前日期附近的个股日线、资金流向和基准指数，然后自动重新计算。",
+          raw,
+          canSync: true
+        };
+      }
+      if (/No benchmark\/index bars found|Benchmark latest date/i.test(raw)) {
+        return {
+          title: "基准指数日线缺失",
+          message: "当前选择的基准指数日线没有同步到请求日期，趋势、均线和支撑压力无法计算。",
+          action: "点击“同步缺失数据”会补齐当前日期的基准指数日线，并同时检查全市场日线缺口。",
+          raw,
+          canSync: true
+        };
+      }
+      if (/No stock market bars found/i.test(raw)) {
+        return {
+          title: "全市场日线缺失",
+          message: "当前日期没有可用于 PART1 的个股日线样本，市场广度、主线代理和风险代理都无法计算。",
+          action: "点击“同步缺失数据”会按当前日期做强制增量同步。",
+          raw,
+          canSync: true
+        };
+      }
+      return {
+        title: "查询失败",
+        message: raw,
+        action: "请按错误提示处理后重试；如果是数据缺口，可以尝试同步缺失数据。",
+        raw,
+        canSync: false
+      };
+    }
+    function renderMarketError(error) {
+      const info = marketDataGapMessage(error);
+      const syncButton = info.canSync
+        ? `<button class="secondary" onclick="syncMarketMissingData()">同步缺失数据</button>`
+        : "";
+      return `
+        <div class="interpretation-card market-error-card">
+          <h3>${escapeHtml(info.title)}</h3>
+          <p class="section-conclusion">${escapeHtml(info.message)}</p>
+          <p class="hint">${escapeHtml(info.action)}</p>
+          <div class="market-error-actions">
+            ${syncButton}
+            <button class="secondary" onclick="forceRunMarketPermission()">重新计算</button>
+          </div>
+          <details class="json-details">
+            <summary>查看原始错误</summary>
+            <pre>${escapeHtml(info.raw)}</pre>
+          </details>
+        </div>
+      `;
+    }
     const show = (id, value) => { document.getElementById(id).textContent = localizeJsonText(value); };
     const showHtml = (id, value) => {
       document.getElementById(id).innerHTML = value;
@@ -188,6 +286,11 @@ let runtimeStatus = {};
         progress = Math.min(68, 5 + (phaseElapsed / 34) * 63);
         const remaining = Math.max(5, 34 - phaseElapsed) + 32;
         remainingText = `预计完整结果剩余约 ${formatWaitDuration(remaining)}`;
+      } else if (sectorProgressState.phase === "precompute") {
+        label = "正在同步板块预计算（60 日趋势窗口）";
+        progress = Math.min(95, 5 + (phaseElapsed / 120) * 90);
+        const remaining = Math.max(5, 120 - phaseElapsed);
+        remainingText = `预计预计算剩余约 ${formatWaitDuration(remaining)}`;
       } else if (sectorProgressState.phase === "leaders") {
         label = "阶段 2/2：生成近 30 个交易日龙头榜（估算进度）";
         progress = Math.min(98, 70 + (phaseElapsed / 32) * 28);
@@ -216,6 +319,12 @@ let runtimeStatus = {};
       document.getElementById("sectorProgressRemaining").textContent = remainingText;
       sectorProgressState.progress = progress;
     }
+    function setSectorPrecomputeButton(running, label) {
+      const button = document.getElementById("sectorPrecomputeButton");
+      if (!button) return;
+      button.disabled = !!running;
+      button.textContent = label || (running ? "同步中..." : "同步板块预计算");
+    }
     function startSectorProgress(version) {
       if (sectorProgressTimer) clearInterval(sectorProgressTimer);
       const now = Date.now();
@@ -225,6 +334,7 @@ let runtimeStatus = {};
         button.disabled = true;
         button.textContent = "正在计算主结果...";
       }
+      setSectorPrecomputeButton(true, "查询中...");
       renderSectorProgressTick();
       sectorProgressTimer = setInterval(renderSectorProgressTick, 1000);
     }
@@ -249,6 +359,7 @@ let runtimeStatus = {};
         button.disabled = false;
         button.textContent = "查询板块动向";
       }
+      setSectorPrecomputeButton(false);
       renderSectorProgressTick();
     }
     function failSectorProgress(version, partial = false) {
@@ -261,6 +372,33 @@ let runtimeStatus = {};
         button.disabled = false;
         button.textContent = "重新查询板块动向";
       }
+      setSectorPrecomputeButton(false);
+      renderSectorProgressTick();
+    }
+    function startSectorPrecomputeProgress(version) {
+      if (sectorProgressTimer) clearInterval(sectorProgressTimer);
+      const now = Date.now();
+      sectorProgressState = { version, phase: "precompute", startedAt: now, phaseStartedAt: now, progress: 5 };
+      const queryButton = document.getElementById("sectorQueryButton");
+      if (queryButton) {
+        queryButton.disabled = true;
+        queryButton.textContent = "预计算中...";
+      }
+      setSectorPrecomputeButton(true, "同步中...");
+      renderSectorProgressTick();
+      sectorProgressTimer = setInterval(renderSectorProgressTick, 1000);
+    }
+    function finishSectorPrecomputeProgress(version, success) {
+      if (sectorProgressState.version !== version) return;
+      if (sectorProgressTimer) clearInterval(sectorProgressTimer);
+      sectorProgressTimer = null;
+      sectorProgressState.phase = success ? "complete" : "error";
+      const queryButton = document.getElementById("sectorQueryButton");
+      if (queryButton) {
+        queryButton.disabled = false;
+        queryButton.textContent = success ? "重新查询板块动向" : "重新查询板块动向";
+      }
+      setSectorPrecomputeButton(false);
       renderSectorProgressTick();
     }
     const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
@@ -280,7 +418,7 @@ let runtimeStatus = {};
       document.getElementById("analyzeTicker").value = normalized;
       switchTab("analysis");
       document.getElementById("tab-analysis").scrollIntoView({ behavior: "smooth", block: "start" });
-      runAnalyze();
+      runStockPanel();
     }
     function scrollMarketFeature(id) {
       const node = document.getElementById(id);
@@ -349,6 +487,7 @@ let runtimeStatus = {};
       market: { title: "大盘计算", subtitle: "PART1 · 日线市场状态机", kicker: "市场研究", description: "用趋势、量能、广度、主线和风险，形成可执行的大盘权限。" },
       sectors: { title: "板块动向", subtitle: "PART2 · 强弱、趋势与龙头", kicker: "市场研究", description: "从板块扩散、资金口径和龙头/中军候选中识别市场主线。" },
       analysis: { title: "单票分析", subtitle: "个股结构与策略边界", kicker: "个股研究", description: "输入股票代码，查看行情、结构、支撑压力和执行边界。" },
+      intraday: { title: "盘中监控", subtitle: "实时行情 · 触位验证", kicker: "研究主流程", description: "把 PART1 预设的关键位和候选票信号，用实时行情做在线验证。" },
       push: { title: "日报推送", subtitle: "研究结论交付", kicker: "系统与交付", description: "先预览，再将结构化日报发送到已配置通道。" },
       data: { title: "数据同步", subtitle: "Mongo 数据水位与网关", kicker: "系统与交付", description: "确认交易日数据、增量缺口与 Tushare 网关健康状态。" },
       system: { title: "系统状态", subtitle: "运行依赖检查", kicker: "系统与交付", description: "集中检查 Mongo、消息通道和运行时依赖。" },
@@ -372,7 +511,8 @@ let runtimeStatus = {};
       const tabId = activeTabId();
       if (tabId === "permission" || tabId === "market") return runMarketPermission();
       if (tabId === "sectors") return runSectorTrends();
-      if (tabId === "analysis") return runAnalyze();
+      if (tabId === "analysis") return runStockPanel();
+      if (tabId === "intraday") return runIntraday();
       if (tabId === "data") {
         loadDataStatus();
         return loadTushareHealth();
@@ -449,7 +589,7 @@ let runtimeStatus = {};
       const primaryBounds = bounds(primaryValues);
       const secondaryBounds = bounds(secondaryValues);
       const points = rows.map((row, index) => {
-        const x = rows.length === 1 ? 50 : 5 + (index * 90) / (rows.length - 1);
+        const x = rows.length === 1 ? 50 : 9 + (index * 82) / (rows.length - 1);
         const primary = Number(row[config.primaryKey] || 0);
         const secondary = Number(row[config.secondaryKey] || 0);
         const y1 = 12 + ((primaryBounds.max - primary) / (primaryBounds.max - primaryBounds.min)) * 68;
@@ -466,15 +606,17 @@ let runtimeStatus = {};
             <polyline class="market-line-primary" points="${points.map((item) => `${item.x},${item.y1}`).join(" ")}"></polyline>
             <polyline class="market-line-secondary" points="${points.map((item) => `${item.x},${item.y2}`).join(" ")}"></polyline>
           </svg>
-          ${points.map((item) => `
-            <button type="button" class="market-chart-point" style="left:${item.x}%;top:${item.y1}%" aria-label="${escapeHtml(item.row.date)} 数据详情">
+          ${points.map((item) => {
+            const alignClass = item.x < 18 ? "align-left" : item.x > 82 ? "align-right" : "";
+            return `
+            <button type="button" class="market-chart-point ${alignClass}" style="left:${item.x}%;top:${item.y1}%" aria-label="${escapeHtml(item.row.date)} 数据详情">
               <span class="market-chart-tooltip">
                 <strong>${escapeHtml(item.row.date)}</strong>
                 <span>${escapeHtml(config.primaryLabel)}</span><b>${escapeHtml(config.primaryFormat(item.primary))}</b>
                 <span>${escapeHtml(config.secondaryLabel)}</span><b>${escapeHtml(config.secondaryFormat(item.secondary))}</b>
               </span>
             </button>
-          `).join("")}
+          `; }).join("")}
           <span class="market-chart-start">${escapeHtml(String(rows[0].date || "").slice(5))}</span>
           <span class="market-chart-end">${escapeHtml(String(rows[rows.length - 1].date || "").slice(5))}</span>
         </div>
@@ -506,6 +648,58 @@ let runtimeStatus = {};
         });
       }
       return renderMarketDistribution(chartData);
+    }
+
+    function renderMarketGate(gate) {
+      if (!gate) return "";
+      const stateClass = {
+        attack: "gate-attack",
+        hold: "gate-hold",
+        defense: "gate-defense",
+        empty: "gate-empty",
+      }[gate.state] || "gate-hold";
+
+      const yes = (v) => v ? "✅ 允许" : "❌ 禁止";
+      const dm = gate.signal_downgrade_map || {};
+      const dowgradeRows = Object.entries(dm)
+        .filter(([src, dst]) => src !== dst)
+        .map(([src, dst]) => `<span class="gate-downgrade-item">${escapeHtml(src)} → <b>${escapeHtml(dst)}</b></span>`)
+        .join(" ") || "<span class='muted'>无降级（全部保留原始信号）</span>";
+
+      const exc = gate.high_quality_exception;
+      const excBlock = exc && exc.enabled ? `
+        <div class="gate-exception">
+          <strong>⭐ 高质量例外</strong>
+          <p>${escapeHtml(exc.note || exc.condition || "")}</p>
+        </div>` : "";
+
+      const holdings = gate.holdings_advice || {};
+      const holdingsAlert = holdings.check_stop_loss || holdings.reduce_percentage;
+
+      return `
+        <section class="market-feature market-gate-card ${stateClass}">
+          <div class="feature-kicker">Market Gate · 机器可执行闸门</div>
+          <div class="gate-headline">
+            <h3>${escapeHtml(gate.state_label || gate.state)}${gate.hard_veto_active ? ' <span class="gate-hard-veto">硬否决</span>' : ''}</h3>
+            <p class="gate-reason">${escapeHtml(gate.gate_reason || "")}</p>
+          </div>
+          <div class="gate-rules-grid">
+            <div class="gate-rule-cell"><span class="metric-label">新开仓</span><strong class="value-emphasis">${yes(gate.allow_new_position)}</strong></div>
+            <div class="gate-rule-cell"><span class="metric-label">加仓</span><strong class="value-emphasis">${yes(gate.allow_add_position)}</strong></div>
+            <div class="gate-rule-cell"><span class="metric-label">市场乘数</span><strong class="value-emphasis">${escapeHtml(String(gate.market_multiplier ?? "-"))}</strong><p class="muted">影响候选排序</p></div>
+            <div class="gate-rule-cell"><span class="metric-label">仓位建议</span><strong class="value-emphasis">${escapeHtml(String((gate.size_hint ?? 0) * 100).slice(0,4))}%</strong><p class="muted">建议单只仓位</p></div>
+          </div>
+          <div class="gate-downgrade-block">
+            <span class="metric-label">PART3 信号降级映射</span>
+            <div class="gate-downgrade-list">${dowgradeRows}</div>
+          </div>
+          ${excBlock}
+          <div class="gate-holdings ${holdingsAlert ? 'gate-holdings-alert' : ''}">
+            <span class="metric-label">持仓建议 ${holdingsAlert ? '⚠️' : ''}</span>
+            <p>${escapeHtml(holdings.note || "无特殊建议")}</p>
+          </div>
+        </section>
+      `;
     }
 
     function renderMarketDashboard(data) {
@@ -556,12 +750,68 @@ let runtimeStatus = {};
       return { primary: parts[0], chips: parts.slice(1) };
     }
 
+    function parseLevelIndicator(indicator, value) {
+      const text = String(indicator || "");
+      const match = text.match(/^(支撑|压力|目标)\s*([0-9.]+)(?:（([^）]+)）)?/);
+      if (!match) return null;
+      const kind = match[1];
+      const price = match[2];
+      const significance = match[3] || "";
+      const label = String(value || "").trim();
+      return { kind, price, significance, label };
+    }
+
+    function levelActionText(level) {
+      const label = level.label || "";
+      if (level.kind === "目标") {
+        return "接近目标位时优先兑现或收紧止盈，不把目标位当成追高理由。";
+      }
+      if (level.kind === "压力") {
+        if (/突破|调整结束|第5浪|开始/.test(label)) return "只有放量站上才算确认；冲高回落则不追，按压力处理。";
+        return "压力位附近先观察承接，放量突破才升级，缩量上冲容易回落。";
+      }
+      if (/破位|失效|不得|核心保护/.test(label)) {
+        return "这是风险边界；放量跌破要降低仓位或重新评估结构。";
+      }
+      if (/目标|C浪|低点/.test(label)) {
+        return "这是止跌观察位；先看是否企稳，不用单独作为抄底信号。";
+      }
+      return "回踩不破可观察，放量跌破则说明支撑失效。";
+    }
+
+    function renderLevelCard(row, level) {
+      const klass = [
+        "insight-row-card",
+        "level-focus-card",
+        level.kind === "支撑" ? "level-support" : "",
+        level.kind === "压力" ? "level-resistance" : "",
+        level.kind === "目标" ? "level-target" : "",
+      ].filter(Boolean).join(" ");
+      const title = [level.kind, level.label].filter(Boolean).join(" · ");
+      const meta = level.significance ? `重要度 ${level.significance}` : "关键价位";
+      return `
+        <article class="${klass}">
+          <span class="metric-label">${escapeHtml(title || level.kind)}</span>
+          <strong class="value-emphasis level-price">${escapeHtml(level.price)}</strong>
+          <div class="level-action"><b>动作</b><span>${escapeHtml(levelActionText(level))}</span></div>
+          <p><strong>${escapeHtml(meta)}</strong> · ${escapeHtml(row.judgement || "")}</p>
+        </article>
+      `;
+    }
+
     function renderMarketInsight(section, index) {
       const number = String(index + 1).padStart(2, "0");
       const isPatternSection = String(section.title || "").includes("今日形态") || String(section.title || "").includes("波浪结构");
+      const rawRows = section.rows || [];
+      const displayRows = isPatternSection
+        ? [
+          ...rawRows.filter((row) => !String(row.indicator || "").includes("⚠️")),
+          ...rawRows.filter((row) => String(row.indicator || "").includes("⚠️")),
+        ]
+        : rawRows;
       // 从 section row[0].value 里解析 signal_type（格式：信号性质：bullish）
-      const rawSignalType = isPatternSection && section.rows && section.rows[0]
-        ? String(section.rows[0].value || "").replace("信号性质：", "").trim()
+      const rawSignalType = isPatternSection && rawRows && rawRows[0]
+        ? String(rawRows[0].value || "").replace("信号性质：", "").trim()
         : "";
       const patternBadgeCls = { bullish: "pattern-bullish", bearish: "pattern-bearish", warning: "pattern-warning", neutral: "pattern-neutral" }[rawSignalType] || "pattern-neutral";
       const patternLabel = { bullish: "看多", bearish: "看空", warning: "预警", neutral: "中性" }[rawSignalType] || rawSignalType;
@@ -577,7 +827,7 @@ let runtimeStatus = {};
           </div>
           <p class="insight-conclusion">${escapeHtml(section.conclusion)}</p>
           <div class="insight-row-grid">
-            ${(section.rows || []).map((row, i) => {
+            ${displayRows.map((row, i) => {
               const indicator = String(row.indicator || "");
 
               // 波浪结构主卡：宽幅叙述卡
@@ -635,6 +885,8 @@ let runtimeStatus = {};
               const isSupportRow = indicator.startsWith("支撑");
               const isResistRow = indicator.startsWith("压力");
               const isTargetRow = indicator.startsWith("目标");
+              const levelInfo = parseLevelIndicator(indicator, row.value);
+              if (isPatternSection && levelInfo) return renderLevelCard(row, levelInfo);
 
               const { primary, chips } = parseInsightValue(row.value);
               const chipCls = (c) => {
@@ -703,7 +955,6 @@ let runtimeStatus = {};
           <aside class="market-storyline" aria-label="大盘解读故事线">
             <div class="story-title">PART1</div>
             <button class="market-story-link active" data-target="market-overview" onclick="scrollMarketFeature('market-overview')"><span>00</span><b class="story-link-label">今日结论</b></button>
-            <button class="market-story-link" data-target="market-visuals" onclick="scrollMarketFeature('market-visuals')"><span>图</span><b class="story-link-label">结构图</b></button>
             ${sections.map((section, index) => `<button class="market-story-link" data-target="market-insight-${index + 1}" onclick="scrollMarketFeature('market-insight-${index + 1}')"><span>${String(index + 1).padStart(2, "0")}</span><b class="story-link-label">${escapeHtml(compactMarketStoryLabel(section.title))}</b></button>`).join("")}
           </aside>
           <div class="market-feature-stack">
@@ -718,6 +969,7 @@ let runtimeStatus = {};
                 ${data._from_cache ? `<span class="meta-chip cache-chip" title="缓存于 ${escapeHtml(data._cached_at || "")}">读取缓存</span>` : `<span class="meta-chip fresh-chip">实时计算</span>`}
               </div>
             </section>
+            ${renderMarketGate(data.market_gate)}
             ${renderMarketDashboard(data)}
             ${sections.map(renderMarketInsight).join("")}
             <section class="market-feature scorecard-feature">
@@ -1106,45 +1358,99 @@ let runtimeStatus = {};
     function renderTrendLineChart(points) {
       const rows = points || [];
       if (!rows.length) return '<div class="trend-line-chart"><span class="hint">暂无趋势点</span></div>';
-      const values = rows.map((point) => Number(point.relative_return_1d || 0));
-      let minValue = Math.min(0, ...values);
-      let maxValue = Math.max(0, ...values);
+      const visibleRows = rows.slice(-60);
+      const chart = { width: 640, height: 250, left: 58, right: 18, top: 22, bottom: 46 };
+      const innerWidth = chart.width - chart.left - chart.right;
+      const innerHeight = chart.height - chart.top - chart.bottom;
+      let cumulative = 0;
+      const enriched = visibleRows.map((point, index) => {
+        const daily = Number(point.relative_return_1d || 0);
+        cumulative += daily;
+        return { point, index, daily, cumulative };
+      });
+      const ySource = enriched.flatMap((item) => [item.daily, item.cumulative, 0]);
+      let minValue = Math.min(...ySource);
+      let maxValue = Math.max(...ySource);
       if (maxValue - minValue < 0.004) {
         maxValue += 0.002;
         minValue -= 0.002;
       }
-      const range = maxValue - minValue;
-      const positions = rows.map((point, index) => {
-        const x = rows.length === 1 ? 50 : 8 + (index * 84) / (rows.length - 1);
-        const value = Number(point.relative_return_1d || 0);
-        const y = 17 + ((maxValue - value) / range) * 55;
-        return { point, value, x, y, index };
-      });
-      const zeroY = 17 + ((maxValue - 0) / range) * 55;
-      const pathPoints = positions.map((item) => `${item.x},${item.y}`).join(" ");
+      const pad = (maxValue - minValue) * 0.12;
+      minValue -= pad;
+      maxValue += pad;
+      const range = maxValue - minValue || 1;
+      const xForIndex = (index) => chart.left + (enriched.length === 1 ? innerWidth / 2 : (index * innerWidth) / (enriched.length - 1));
+      const yForValue = (value) => chart.top + ((maxValue - value) / range) * innerHeight;
+      const zeroY = yForValue(0);
+      const positions = enriched.map((item) => ({
+        ...item,
+        x: xForIndex(item.index),
+        yDaily: yForValue(item.daily),
+        yCumulative: yForValue(item.cumulative),
+      }));
+      const linePath = positions.map((item, index) => `${index ? "L" : "M"}${item.x.toFixed(2)} ${item.yCumulative.toFixed(2)}`).join(" ");
+      const barWidth = Math.max(3, Math.min(9, innerWidth / Math.max(1, enriched.length) * 0.46));
+      const yTicks = [minValue, (minValue + maxValue) / 2, maxValue];
+      const tickStep = Math.max(1, Math.ceil(enriched.length / 5));
+      const xTickIndexes = Array.from(new Set([
+        0,
+        ...enriched.map((_, index) => index).filter((index) => index > 0 && index < enriched.length - 1 && index % tickStep === 0),
+        enriched.length - 1,
+      ]));
+      const maxDailyIndex = positions.reduce((best, item) => item.daily > positions[best].daily ? item.index : best, 0);
+      const minDailyIndex = positions.reduce((best, item) => item.daily < positions[best].daily ? item.index : best, 0);
+      const latestIndex = positions.length - 1;
+      const keyIndexes = new Set([maxDailyIndex, minDailyIndex, latestIndex]);
       return `
         <div class="trend-line-chart">
-          <svg class="trend-line-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-            <line class="trend-zero-line" x1="4" y1="${zeroY}" x2="96" y2="${zeroY}"></line>
-            <polyline class="trend-line-path" points="${pathPoints}"></polyline>
+          <svg class="trend-line-svg" viewBox="0 0 ${chart.width} ${chart.height}" role="img" aria-label="60日趋势图：柱状为单日相对收益，折线为累计相对收益">
+            <text class="trend-axis-title y-title" x="16" y="${chart.top + innerHeight / 2}" transform="rotate(-90 16 ${chart.top + innerHeight / 2})">相对大盘收益</text>
+            <text class="trend-axis-title x-title" x="${chart.left + innerWidth / 2}" y="${chart.height - 6}">交易日期</text>
+            ${yTicks.map((tick) => `
+              <line class="trend-grid-line" x1="${chart.left}" y1="${yForValue(tick).toFixed(2)}" x2="${chart.left + innerWidth}" y2="${yForValue(tick).toFixed(2)}"></line>
+              <text class="trend-y-tick" x="${chart.left - 8}" y="${(yForValue(tick) + 4).toFixed(2)}">${escapeHtml(formatPercent(tick))}</text>
+            `).join("")}
+            <line class="trend-axis-line" x1="${chart.left}" y1="${chart.top + innerHeight}" x2="${chart.left + innerWidth}" y2="${chart.top + innerHeight}"></line>
+            <line class="trend-axis-line" x1="${chart.left}" y1="${chart.top}" x2="${chart.left}" y2="${chart.top + innerHeight}"></line>
+            <line class="trend-zero-line" x1="${chart.left}" y1="${zeroY.toFixed(2)}" x2="${chart.left + innerWidth}" y2="${zeroY.toFixed(2)}"></line>
+            ${positions.map((item) => {
+              const y = Math.min(item.yDaily, zeroY);
+              const height = Math.max(2, Math.abs(item.yDaily - zeroY));
+              return `<rect class="trend-bar ${item.daily < 0 ? "is-negative" : "is-positive"}" x="${(item.x - barWidth / 2).toFixed(2)}" y="${y.toFixed(2)}" width="${barWidth.toFixed(2)}" height="${height.toFixed(2)}"></rect>`;
+            }).join("")}
+            <path class="trend-line-path" d="${linePath}"></path>
+            ${positions.map((item) => `<circle class="trend-line-dot ${item.daily < 0 ? "is-negative" : ""}" cx="${item.x.toFixed(2)}" cy="${item.yCumulative.toFixed(2)}" r="3"></circle>`).join("")}
+            ${xTickIndexes.map((index) => {
+              const item = positions[index];
+              return `<text class="trend-x-tick" x="${item.x.toFixed(2)}" y="${chart.top + innerHeight + 20}">${escapeHtml(String(item.point.date || "").slice(5))}</text>`;
+            }).join("")}
+            <g class="trend-chart-legend">
+              <line x1="${chart.left}" y1="12" x2="${chart.left + 24}" y2="12" class="legend-line"></line>
+              <text x="${chart.left + 30}" y="16">累计相对</text>
+              <rect x="${chart.left + 116}" y="6" width="12" height="12" class="trend-bar is-positive"></rect>
+              <text x="${chart.left + 134}" y="16">单日相对</text>
+            </g>
           </svg>
-          ${positions.map(({ point, value, x, y, index }) => {
+          ${positions.map(({ point, daily, cumulative, x, yCumulative, index }) => {
             const signals = [
               point.strong ? "强势" : "",
               point.repair ? "修复" : "",
               point.resonance ? "共振" : "",
             ].filter(Boolean);
-            const alignClass = index === 0 ? "align-left" : index === rows.length - 1 ? "align-right" : "";
-            const aria = `${point.date}，板块 ${formatPercent(point.return_1d)}，相对大盘 ${formatPercent(value)}`;
+            const xPercent = (x / chart.width) * 100;
+            const yPercent = (yCumulative / chart.height) * 100;
+            const alignClass = index === 0 ? "align-left" : index === visibleRows.length - 1 ? "align-right" : "";
+            const aria = `${point.date}，板块 ${formatPercent(point.return_1d)}，单日相对大盘 ${formatPercent(daily)}，累计相对 ${formatPercent(cumulative)}`;
             return `
-              <button type="button" class="trend-point-hit ${value < 0 ? "is-negative" : ""} ${alignClass}" style="left:${x}%;top:${y}%" aria-label="${escapeHtml(aria)}">
-                <span class="trend-point-label">${colorPercent(value)}</span>
+              <button type="button" class="trend-point-hit ${daily < 0 ? "is-negative" : ""} ${alignClass}" style="left:${xPercent}%;top:${yPercent}%" aria-label="${escapeHtml(aria)}">
+                ${keyIndexes.has(index) ? `<span class="trend-point-label">${colorPercent(daily)}</span>` : ""}
                 <span class="trend-point-tooltip">
                   <strong>${escapeHtml(point.date || "-")} · 数据明细</strong>
                   <span class="trend-tooltip-grid">
                     <span>板块涨跌</span><span>${colorPercent(point.return_1d)}</span>
                     <span>对比指数</span><span>${colorPercent(point.benchmark_return_1d)}</span>
-                    <span>相对强弱</span><span>${colorPercent(value)}</span>
+                    <span>单日相对</span><span>${colorPercent(daily)}</span>
+                    <span>累计相对</span><span>${colorPercent(cumulative)}</span>
                     <span>上涨占比</span><span>${escapeHtml(formatPercent(point.up_ratio))}</span>
                     <span>量能 / 5日均</span><span>${escapeHtml(formatRatio(point.amount_ratio_5))}</span>
                     <span>主力净流入</span><span>${escapeHtml(formatMoneyWan(point.main_net_inflow))}</span>
@@ -1152,31 +1458,52 @@ let runtimeStatus = {};
                   ${signals.length ? `<span class="trend-signal-row">${signals.map((signal) => `<span class="trend-signal">${escapeHtml(signal)}</span>`).join("")}</span>` : ""}
                 </span>
               </button>
-              <span class="trend-date-label" style="left:${x}%">${escapeHtml(String(point.date || "").slice(5))}</span>
             `;
           }).join("")}
         </div>
       `;
     }
+    function renderTrendScoreBreakdown(item) {
+      const scores = item.scores || {};
+      const parts = [
+        ["20日相对", scores.excess_return_20d_score],
+        ["60日相对", scores.excess_return_60d_score],
+        ["近5日跑赢", scores.outperform_days_5_score],
+        ["成交额", scores.sector_amount_ratio_score],
+        ["龙头中军", scores.leader_zhongjun_score],
+      ];
+      return `
+        <div class="trend-score-breakdown" aria-label="主线分拆解">
+          ${parts.map(([label, value]) => `
+            <span class="trend-score-chip">
+              <b>${escapeHtml(label)}</b>
+              <strong>${escapeHtml(value === null || value === undefined ? "-" : Number(value).toFixed(1))}</strong>
+            </span>
+          `).join("")}
+        </div>
+      `;
+    }
     function renderTrendSectors(data) {
       const trends = data.trend_sectors || [];
+      const lookback = data.trend_lookback_days || (trends[0] && trends[0].metrics && trends[0].metrics.lookback_days) || 60;
       return `
         <section id="sector-trends" class="sector-feature">
-          <div class="feature-kicker">功能区二 · 5-Day Trend</div>
+          <div class="feature-kicker">功能区二 · ${escapeHtml(lookback)}-Day Trend</div>
           <div class="feature-header">
             <div>
               <h3>趋势板块</h3>
-              <p>用过去 5 日的多日强力、分歧后修复、与大盘共振和资金净流入次数综合排序。</p>
+              <p>用过去 ${escapeHtml(lookback)} 个交易日的 20日相对强度、60日相对强度、近5日跑赢、成交额活跃和龙头/中军反馈综合排序；5日收益只作为短线热度参考。</p>
             </div>
           </div>
           ${trends.length ? `
             <div class="trend-board">
               ${trends.slice(0, 6).map((item, index) => `
                 <article class="trend-card">
-                  <h4>#${index + 1} ${escapeHtml(item.sector_name)} · ${escapeHtml(item.trend_label)}</h4>
+                  <h4>#${escapeHtml(item.mainline_rank || index + 1)} ${escapeHtml(item.sector_name)} · ${escapeHtml(item.trend_label || item.sector_state_label || "等待重算")}</h4>
                   <p class="rankline">
-                    趋势分 ${escapeHtml(item.trend_score)}，5日收益 ${colorPercent(item.metrics && item.metrics.return_5d)}，相对大盘 ${colorPercent(item.metrics && item.metrics.relative_return_5d)}
+                    主线分 ${escapeHtml(item.sector_mainline_score ?? item.trend_score ?? "-")}，状态 ${escapeHtml(item.sector_state_label || "需重新预计算")}，乘数 ${escapeHtml(item.sector_multiplier || "-")}；20日相对大盘 ${colorPercent(item.metrics && item.metrics.relative_return_20d)}，60日相对大盘 ${colorPercent(item.metrics && item.metrics.relative_return_60d)}，5日相对 ${colorPercent(item.metrics && item.metrics.relative_return_5d)}
                   </p>
+                  ${renderTrendScoreBreakdown(item)}
                   ${renderTrendLineChart(item.trend_points)}
                   <div class="metric-explain">${reasonList((item.evidence || []).map(escapeHtml))}</div>
                 </article>
@@ -1193,27 +1520,135 @@ let runtimeStatus = {};
           <div class="feature-header">
             <div>
               <h3>指标口径与边界</h3>
-              <p>把“怎么判断”和“哪些是真数据/代理数据”放在一起，所有小叹号都能跳回这里校验口径。</p>
+              <p>默认折叠展示，避免挤占主分析区；需要核对公式、数据来源和代理口径时再展开。</p>
             </div>
           </div>
-          <div class="knowledge-grid">
-            <article class="knowledge-panel">
-              <h4>指标边界</h4>
-              ${renderDataQuality(data.data_quality)}
-            </article>
-            <article class="knowledge-panel">
-              <h4>指标口径</h4>
-              ${renderIndicatorDefinitions(data.indicator_definitions)}
-            </article>
-          </div>
+          <details class="knowledge-collapsible">
+            <summary>
+              <span>展开指标边界、公式口径和主题层说明</span>
+              <small>当前板块仍使用 Tushare 行业代理；CPO、存储芯片等概念主题后续单独建设。</small>
+            </summary>
+            <div class="knowledge-grid">
+              <article class="knowledge-panel full concept-roadmap-panel">
+                <h4>概念/主题层待建设</h4>
+                <p class="hint">Tushare 行业更适合传统行业统计，不适合直接表达 CPO、存储芯片、算力、铜缆等交易主线。下一步应新增“概念/主题映射 + 人工主线池”，而不是用 AKShare 涨停池行业简单替换。</p>
+              </article>
+              <article class="knowledge-panel">
+                <h4>指标边界</h4>
+                ${renderDataQuality(data.data_quality)}
+              </article>
+              <article class="knowledge-panel">
+                <h4>指标口径</h4>
+                ${renderIndicatorDefinitions(data.indicator_definitions)}
+              </article>
+            </div>
+          </details>
         </section>
       `;
+    }
+    function formatCandidatePrice(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0) return "-";
+      return n.toFixed(2);
+    }
+    function firstFinitePositive(...values) {
+      for (const value of values) {
+        const n = Number(value);
+        if (Number.isFinite(n) && n > 0) return n;
+      }
+      return null;
+    }
+    function candidateDisplayPlan(c) {
+      const close = firstFinitePositive(c.close);
+      const ma5 = firstFinitePositive(c.ma5);
+      const ma8 = firstFinitePositive(c.ma8, ma5);
+      const stop = firstFinitePositive(c.stop_loss);
+      const support = firstFinitePositive(c.support_price, ma8, ma5, stop ? stop / 0.98 : null);
+      const buy = firstFinitePositive(c.predicted_buy_price, c.entry_price, support, close);
+      const pressure = firstFinitePositive(c.pressure_price, c.expected_sell_price, close ? close * 1.08 : null);
+      const target = firstFinitePositive(c.expected_sell_price, pressure, buy ? buy * 1.08 : null);
+      return {
+        buy,
+        buyLabel: c.predicted_buy_label || (c.predicted_buy_price ? "" : "兜底估算"),
+        support,
+        supportSource: c.support_source || (c.support_price ? "" : (ma8 ? "MA8/MA5兜底" : "兜底")),
+        pressure,
+        pressureSource: c.pressure_source || (c.pressure_price ? "" : "8%目标兜底"),
+        ma8,
+        target,
+      };
+    }
+    function renderCandidateTradePlan(c) {
+      const plan = candidateDisplayPlan(c);
+      const buy = formatCandidatePrice(plan.buy);
+      const support = formatCandidatePrice(plan.support);
+      const pressure = formatCandidatePrice(plan.pressure);
+      const ma8 = formatCandidatePrice(plan.ma8);
+      const target = formatCandidatePrice(plan.target);
+      return `
+        <div class="candidate-trade-plan">
+          <div><b>买</b><span>${buy}</span><small>${escapeHtml(plan.buyLabel || "")}</small></div>
+          <div><b>撑</b><span>${support}</span><small>${escapeHtml(plan.supportSource || "")}</small></div>
+          <div><b>压</b><span>${pressure}</span><small>${escapeHtml(plan.pressureSource || "")}</small></div>
+          <div><b>MA8</b><span>${ma8}</span><small>目标 ${target}</small></div>
+        </div>
+      `;
+    }
+    function candidateRewardRisk(plan, stop) {
+      const buy = Number(plan.buy);
+      const target = Number(plan.target);
+      const stopLoss = Number(stop);
+      if (!Number.isFinite(buy) || !Number.isFinite(target) || !Number.isFinite(stopLoss) || buy <= stopLoss) return "-";
+      const ratio = (target - buy) / (buy - stopLoss);
+      if (!Number.isFinite(ratio)) return "-";
+      return ratio.toFixed(1);
+    }
+    function candidateDecisionTone(c) {
+      const finalSig = c.final_signal || c.signal;
+      if (c.gate_downgraded || finalSig === "watch" || Number(c.size_hint || 0) === 0) return "watch";
+      if ((c.entry_quality || 0) >= 70 || finalSig === "breakout_confirm") return "strong";
+      return "normal";
+    }
+    function renderTrendPoolSummary() {
+      const tickers = selectedTrendPoolTickers();
+      if (!tickers.length) {
+        return `<div class="trend-pool-summary muted">尚未勾选趋势战法池。勾选后可在盘中监控里实时验证。</div>`;
+      }
+      return `
+        <div class="trend-pool-summary">
+          <strong>已勾选 ${tickers.length} 只</strong>
+          <span>${tickers.slice(0, 8).map((ticker) => escapeHtml(ticker)).join("、")}${tickers.length > 8 ? "…" : ""}</span>
+          <button type="button" class="mini-action" onclick="switchTab('intraday')">去盘中监控</button>
+        </div>
+      `;
+    }
+    function toggleTrendPoolCandidate(checkbox) {
+      const ticker = checkbox && checkbox.dataset ? checkbox.dataset.ticker : "";
+      if (!ticker) return;
+      if (checkbox.checked) {
+        selectedTrendPool[ticker] = {
+          ticker,
+          name: checkbox.dataset.name || ticker,
+          sector_name: checkbox.dataset.sector || "",
+          selected_at: new Date().toISOString(),
+        };
+      } else {
+        delete selectedTrendPool[ticker];
+      }
+      saveTrendPool();
+      const summary = document.getElementById("trendPoolSummary");
+      if (summary) summary.innerHTML = renderTrendPoolSummary();
     }
     function renderCandidates(candidates) {
       const card = document.getElementById("candidatesCard");
       if (!card) return;
+      latestCandidateRows = Array.isArray(candidates) ? candidates : [];
       if (!candidates || !candidates.length) {
-        card.style.display = "none";
+        card.style.display = "";
+        showHtml("candidatesResult", `
+          <div id="trendPoolSummary">${renderTrendPoolSummary()}</div>
+          <p class="hint">暂无 MA5 趋势战法候选。请先查询板块动向，或等待数据同步完成后重试。</p>
+        `);
         return;
       }
       card.style.display = "";
@@ -1234,44 +1669,150 @@ let runtimeStatus = {};
         return flags.map((f) => `<span class="risk-flag">${escapeHtml(f)}</span>`).join(" ");
       };
 
-      const tableRows = rows.map((c) => `
-        <tr class="candidate-row" onclick="jumpToAnalysis('${escapeHtml(c.ticker)}')">
-          <td>
-            <span class="signal-tag ${escapeHtml(signalColors[c.signal] || "signal-watch")}">${escapeHtml(c.signal_label)}</span>
-            ${c.ma20_slope_up ? '<span class="badge-zhusheng">主升</span>' : ""}
-          </td>
-          <td>
-            <strong>${escapeHtml(c.name)}</strong><br>
-            <small class="muted">${escapeHtml(c.ticker)}</small>
-            ${riskTags(c.risk_flags)}
-          </td>
-          <td>${escapeHtml(c.sector_name)}</td>
-          <td><span class="role-label">${escapeHtml(c.role_label)}</span></td>
-          <td class="num">${qualityBadge(c.entry_quality ?? 0)}</td>
-          <td class="num">${escapeHtml(String(c.close ?? "-"))}</td>
-          <td class="num">${escapeHtml(String(c.ma5 ?? "-"))}</td>
-          <td class="num">${escapeHtml(String(c.stop_loss ?? "-"))}</td>
-          <td class="num">${c.rsi != null ? c.rsi.toFixed(1) : "-"}</td>
-          <td>${colorPercent(c.return_5d)}</td>
-          <td class="reason-cell">${escapeHtml(c.reason)}</td>
-        </tr>
-      `).join("");
+      // 判断整体是否有任何一只候选发生了 gate 降级；决定是否显示"降级"列
+      const hasGate = rows.some((c) => c.original_signal !== undefined);
+      const anyDowngraded = rows.some((c) => c.gate_downgraded);
+
+      const renderSignalCell = (c) => {
+        const finalSig = c.final_signal || c.signal;
+        const finalLabel = c.final_signal_label || c.signal_label;
+        const origSig = c.original_signal || c.signal;
+        const origLabel = c.original_signal_label || c.signal_label;
+        const finalTag = `<span class="signal-tag ${escapeHtml(signalColors[finalSig] || "signal-watch")}">${escapeHtml(finalLabel)}</span>`;
+        if (c.gate_downgraded && origSig !== finalSig) {
+          return `
+            <div class="signal-downgrade">
+              <span class="signal-tag ${escapeHtml(signalColors[origSig] || "signal-watch")} signal-tag-strike">${escapeHtml(origLabel)}</span>
+              <span class="downgrade-arrow">→</span>
+              ${finalTag}
+            </div>`;
+        }
+        // 高质量例外情况：final 未变但 allowed_new_position 特批
+        if (c.allowed_new_position && !anyDowngradedRow(c) && hasGate && c.size_hint > 0 && c.size_hint < 0.5) {
+          return `${finalTag}<span class="badge-exception" title="满足高质量例外，允许小仓">⭐例外</span>`;
+        }
+        return finalTag;
+      };
+      const anyDowngradedRow = (c) => c.gate_downgraded;
+
+      const sizeCell = (c) => {
+        if (c.size_hint === undefined || c.size_hint === null) return "-";
+        const pct = Math.round(c.size_hint * 100);
+        if (pct === 0) return '<span class="size-hint-zero">禁止</span>';
+        if (pct >= 100) return '<span class="size-hint-full">满仓</span>';
+        return `<span class="size-hint-partial">${pct}%</span>`;
+      };
+
+      const candidateCards = rows.map((c) => {
+        const plan = candidateDisplayPlan(c);
+        const tone = candidateDecisionTone(c);
+        const finalLabel = c.final_signal_label || c.signal_label || "仅关注";
+        const rr = candidateRewardRisk(plan, c.stop_loss);
+        const size = sizeCell(c);
+        const buyLabel = plan.buyLabel || "计划买点";
+        const targetSource = plan.pressureSource || "压力/目标";
+        const detailOpen = candidateViewMode === "expanded" ? "open" : "";
+        const reasonText = c.reason || "-";
+        const trendBoost = c.trend_score != null
+          ? `趋势板块 #${c.trend_rank || "-"} · ${c.trend_label || "-"} · 主线分 ${c.sector_mainline_score ?? c.trend_score} · 乘数 ${c.sector_multiplier || "-"}`
+          : "";
+        return `
+        <article class="candidate-decision-card tone-${tone} ${candidateViewMode === "expanded" ? "is-expanded" : "is-compact"} ${c.gate_downgraded ? 'row-downgraded' : ''}">
+          <header class="candidate-card-head">
+            <label class="candidate-monitor-check" onclick="event.stopPropagation()">
+              <input
+                type="checkbox"
+                class="trend-pool-check"
+                data-ticker="${escapeHtml(c.ticker)}"
+                data-name="${escapeHtml(c.name || c.ticker)}"
+                data-sector="${escapeHtml(c.sector_name || "")}"
+                ${selectedTrendPool[c.ticker] ? "checked" : ""}
+                onchange="toggleTrendPoolCandidate(this)"
+                aria-label="加入盘中监控勾选池 ${escapeHtml(c.ticker)}"
+              />
+              <span>监控</span>
+            </label>
+            <button class="candidate-stock-title" type="button" onclick="jumpToAnalysis('${escapeHtml(c.ticker)}')">
+              <strong>
+                ${escapeHtml(c.name || c.ticker)}
+                <span>${escapeHtml(c.ticker)}</span>
+                <em>${escapeHtml(c.sector_name || "-")}</em>
+                <em>${escapeHtml(c.role_label || "-")}</em>
+              </strong>
+            </button>
+            <div class="candidate-signal-box">
+              ${renderSignalCell(c)}
+              ${c.ma20_slope_up ? '<span class="badge-zhusheng">主升</span>' : ""}
+              ${riskTags(c.risk_flags)}
+            </div>
+          </header>
+          <div class="candidate-decision-strip">
+            <div><span>推荐</span><strong>${escapeHtml(finalLabel)}</strong><small>${hasGate ? `仓位 ${size.replace(/<[^>]+>/g, "")}` : "大盘闸门"}</small></div>
+            <div><span>买点</span><strong>${formatCandidatePrice(plan.buy)}</strong><small>${escapeHtml(buyLabel)}</small></div>
+            <div><span>目标</span><strong>${formatCandidatePrice(plan.target)}</strong><small>${escapeHtml(targetSource)}</small></div>
+            <div><span>止损</span><strong>${escapeHtml(String(c.stop_loss ?? "-"))}</strong><small>退出位</small></div>
+            <div><span>RR</span><strong>${escapeHtml(rr)}</strong><small>收益/风险</small></div>
+          </div>
+          <div class="candidate-scan-lines">
+            <p><b>评分</b><span>最终 ${qualityBadge(c.final_trade_score ?? c.entry_quality ?? 0)} · 股票 ${escapeHtml(String(c.stock_quality_score ?? "-"))} · 买点 ${escapeHtml(String(c.trade_timing_score ?? "-"))} · 风险系数 ${escapeHtml(String(c.risk_adjustment ?? "-"))}</span></p>
+            <p><b>趋势</b><span>MA5 ${escapeHtml(String(c.ma5 ?? "-"))} · MA8 ${formatCandidatePrice(plan.ma8)} · RSI ${Number.isFinite(Number(c.rsi)) ? Number(c.rsi).toFixed(1) : "-"} · 旧质量 ${qualityBadge(c.entry_quality ?? 0)} · 5日 ${colorPercent(c.return_5d)}</span></p>
+            <p><b>位置</b><span>收盘 ${escapeHtml(String(c.close ?? "-"))} · 支撑 ${formatCandidatePrice(plan.support)} · 压力 ${formatCandidatePrice(plan.pressure)}</span></p>
+          </div>
+          <details class="candidate-reason" ${detailOpen}>
+            <summary><b>AI理由</b><span>${escapeHtml(reasonText)}</span></summary>
+            <p>${escapeHtml(reasonText)}${trendBoost ? `<br><small>${escapeHtml(trendBoost)}</small>` : ""}</p>
+          </details>
+        </article>
+      `; }).join("");
+      const banner = anyDowngraded ? `
+        <p class="hint gate-active-hint">
+          ⚠️ Market Gate 已启用：部分候选的原始信号被降级为"仅关注"。
+          横线代表被降级的原始信号，→ 后面是 gate 后的最终信号。
+        </p>` : "";
       showHtml("candidatesResult", `
-        <table class="candidates-table">
-          <thead><tr>
-            <th>形态</th><th>股票</th><th>板块</th><th>角色</th>
-            <th class="num">质量</th><th class="num">收盘</th><th class="num">MA5</th>
-            <th class="num">止损</th><th class="num">RSI</th><th>5日收益</th><th>理由</th>
-          </tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-        <p class="hint">点击任意行跳转单票分析。止损位 = MA5 × 0.98，跌破收盘离场。「主升」= MA20 近 5 日向上。质量分 ≥ 70 为高质量入场。</p>
+        <div id="trendPoolSummary">${renderTrendPoolSummary()}</div>
+        <div class="candidate-view-toolbar">
+          <div>
+            <strong>候选池扫描</strong>
+            <span>默认紧凑模式，一屏快速比较 4-5 只股票。</span>
+          </div>
+          <div class="candidate-view-actions">
+            <button type="button" class="${candidateViewMode === "compact" ? "active" : ""}" onclick="setCandidateViewMode('compact')">紧凑模式</button>
+            <button type="button" class="${candidateViewMode === "expanded" ? "active" : ""}" onclick="setCandidateViewMode('expanded')">展开模式</button>
+          </div>
+        </div>
+        ${banner}
+        <div class="candidate-decision-list mode-${candidateViewMode}">${candidateCards}</div>
+        <p class="hint">点击任意行跳转单票分析。勾选框会把股票加入盘中监控池；预测买入/支撑/压力/预计售出由 MA5 战法和近20日价位自动推导。质量分 ≥ 70 为高质量入场，最终仓位由大盘 gate 决定。</p>
       `);
     }
     function jumpToAnalysis(ticker) {
+      if (!ticker) return;
       document.getElementById("analyzeTicker").value = ticker;
       switchTab("analysis");
-      runAnalyze();
+      // v2：优先跳新版单票面板，如果 runStockPanel 不存在再回退到 runAnalyze
+      if (typeof runStockPanel === "function") {
+        runStockPanel();
+      } else {
+        runAnalyze();
+      }
+    }
+
+    function jumpToSectorByName(sectorName) {
+      if (!sectorName) return;
+      switchTab("sectors");
+      // 在 sectors Tab 里高亮该板块
+      setTimeout(() => {
+        const cards = document.querySelectorAll(".sector-summary-card, .sector-card, [data-sector-name]");
+        cards.forEach((card) => {
+          const name = card.getAttribute("data-sector-name") || card.querySelector(".sector-name")?.textContent || "";
+          if (name && name.trim() === sectorName.trim()) {
+            card.classList.add("sector-highlight");
+            card.scrollIntoView({ behavior: "smooth", block: "center" });
+            setTimeout(() => card.classList.remove("sector-highlight"), 3000);
+          }
+        });
+      }, 400);
     }
     function renderSectorTrends(data) {
       const rawPayload = {
@@ -1291,7 +1832,8 @@ let runtimeStatus = {};
             <button class="story-link active" data-target="sector-today" onclick="scrollSectorFeature('sector-today')"><span>01</span><b class="story-link-label">今日强力</b></button>
             <button class="story-link" data-target="sector-trends" onclick="scrollSectorFeature('sector-trends')"><span>02</span><b class="story-link-label">趋势板块</b></button>
             <button class="story-link" data-target="dailyLeaderSection" onclick="scrollSectorFeature('dailyLeaderSection')"><span>03</span><b class="story-link-label">龙头榜</b></button>
-            <button class="story-link" data-target="sector-knowledge" onclick="scrollSectorFeature('sector-knowledge')"><span>04</span><b class="story-link-label">口径边界</b></button>
+            <button class="story-link" data-target="candidatesCard" onclick="scrollSectorFeature('candidatesCard')"><span>04</span><b class="story-link-label">趋势战法</b></button>
+            <button class="story-link" data-target="sector-knowledge" onclick="scrollSectorFeature('sector-knowledge')"><span>05</span><b class="story-link-label">口径边界</b></button>
           </aside>
           <div class="sector-feature-stack">
             ${renderTodayStrongSectors(data)}
@@ -1375,8 +1917,10 @@ let runtimeStatus = {};
             <polyline class="stock-ma5-line" points="${positions.map((item) => `${item.x},${item.ma5Y}`).join(" ")}"></polyline>
             <polyline class="stock-ma20-line" points="${positions.map((item) => `${item.x},${item.ma20Y}`).join(" ")}"></polyline>
           </svg>
-          ${positions.map((item, index) => `
-            <button type="button" class="stock-chart-point ${index === positions.length - 1 ? "is-last" : ""}" style="left:${item.x}%;top:${item.closeY}%" aria-label="${escapeHtml(item.row.date)} 收盘 ${escapeHtml(item.row.close)}">
+          ${positions.map((item, index) => {
+            const alignClass = item.x < 18 ? "align-left" : item.x > 82 ? "align-right" : "";
+            return `
+            <button type="button" class="stock-chart-point ${index === positions.length - 1 ? "is-last" : ""} ${alignClass}" style="left:${item.x}%;top:${item.closeY}%" aria-label="${escapeHtml(item.row.date)} 收盘 ${escapeHtml(item.row.close)}">
               ${index === positions.length - 1 ? `<span class="stock-last-label">${escapeHtml(formatCompactNumber(item.row.close))}</span>` : ""}
               <span class="market-chart-tooltip">
                 <strong>${escapeHtml(item.row.date)}</strong>
@@ -1387,7 +1931,7 @@ let runtimeStatus = {};
                 <span>成交额</span><b>${escapeHtml(formatTradeAmount(item.row.amount))}</b>
               </span>
             </button>
-          `).join("")}
+          `; }).join("")}
           <span class="market-chart-start">${escapeHtml(String(rows[0].date || "").slice(5))}</span>
           <span class="market-chart-end">${escapeHtml(String(rows[rows.length - 1].date || "").slice(5))}</span>
         </div>
@@ -1789,8 +2333,10 @@ let runtimeStatus = {};
     }
 
     function updateAnalyzeHint() {
-      const fallback = document.getElementById("allowFallback").checked;
       const hint = document.getElementById("analyzeHint");
+      const fallbackEl = document.getElementById("allowFallback");
+      if (!hint || !fallbackEl) return;
+      const fallback = fallbackEl.checked;
       if (!runtimeStatus.mongo_configured && !fallback) {
         hint.textContent = "当前 Mongo 未配置。关闭 fallback 时，单票分析会直接提示缺少 Mongo 数据。";
       } else if (!runtimeStatus.mongo_configured && fallback) {
@@ -1805,13 +2351,14 @@ let runtimeStatus = {};
     async function runAnalyze() {
       const ticker = encodeURIComponent(document.getElementById("analyzeTicker").value.trim());
       const date = encodeURIComponent(document.getElementById("globalDate").value);
-      const fallback = document.getElementById("allowFallback").checked ? "true" : "false";
-      showHtml("analyzeResult", `<div class="stock-loading"><span></span><strong>正在生成个股行情与策略分析</strong><p>${fallback === "true" ? "已允许 Tushare fallback，若 Mongo 无数据可能等待较久。" : "Mongo-first 模式，不会调用 Tushare。"}</p></div>`);
+      const fallback = document.getElementById("allowFallback")?.checked ? "true" : "false";
+      const targetId = document.getElementById("analyzeResult") ? "analyzeResult" : "stockPanelResult";
+      showHtml(targetId, `<div class="stock-loading"><span></span><strong>正在生成个股行情与策略分析</strong><p>${fallback === "true" ? "已允许 Tushare fallback，若 Mongo 无数据可能等待较久。" : "Mongo-first 模式，不会调用 Tushare。"}</p></div>`);
       try {
         latestAnalysisData = await fetchJson(`/api/v1/analyze?ticker=${ticker}&date=${date}&allow_tushare_fallback=${fallback}`, { timeoutMs: 25000 });
-        showHtml("analyzeResult", renderStockAnalysis(latestAnalysisData));
+        showHtml(targetId, renderStockAnalysis(latestAnalysisData));
       } catch (error) {
-        showHtml("analyzeResult", `<div class="interpretation-card"><h3>分析失败</h3><p class="section-conclusion">${escapeHtml(formatError(error, "analysis"))}</p></div>`);
+        showHtml(targetId, `<div class="interpretation-card"><h3>分析失败</h3><p class="section-conclusion">${escapeHtml(formatError(error, "analysis"))}</p></div>`);
       }
     }
 
@@ -1833,13 +2380,79 @@ let runtimeStatus = {};
         finishMarketProgress(true);
       } catch (error) {
         document.getElementById("marketPermissionSummary").innerHTML = "";
-        show("marketPermissionConfirmResult", formatError(error));
-        showHtml("marketPermissionResult", `<div class="interpretation-card"><h3>查询失败</h3><p class="section-conclusion">${escapeHtml(formatError(error))}</p></div>`);
+        const gap = marketDataGapMessage(error);
+        show("marketPermissionConfirmResult", `${gap.title}：${gap.message}`);
+        showHtml("marketPermissionResult", renderMarketError(error));
         finishMarketProgress(false);
       }
     }
 
     function forceRunMarketPermission() { return runMarketPermission(true); }
+
+    async function syncMarketMissingData() {
+      const syncButton = document.getElementById("marketSyncMissingButton");
+      const date = selectedMarketDate();
+      const benchmark = selectedBenchmarkTicker();
+      if (syncButton) {
+        syncButton.disabled = true;
+        syncButton.textContent = "正在同步...";
+      }
+      startMarketProgress();
+      show("marketPermissionConfirmResult", "正在补齐 PART1 缺失数据...");
+      showHtml("marketPermissionResult", `
+        <div class="interpretation-card">
+          <h3>正在同步缺失数据</h3>
+          <p class="section-conclusion">目标日期 ${escapeHtml(date)}，基准指数 ${escapeHtml(benchmark)}。将强制增量补齐当前日期附近的个股日线、资金流向和基准指数。</p>
+          <p class="hint">如果之前同步被“已有部分数据”跳过，这次会用 force 模式重新检查当前日期缺口。</p>
+        </div>
+      `);
+      try {
+        const data = await fetchJson("/api/v1/data/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          timeoutMs: 180000,
+          body: JSON.stringify({
+            target_date: date,
+            mode: "incremental",
+            force: true,
+            benchmark_ticker: benchmark,
+            incremental_lookback_days: 14,
+            incremental_overlap_days: 5
+          })
+        });
+        showHtml("marketPermissionResult", `
+          <div class="interpretation-card">
+            <h3>缺失数据同步完成，正在重新计算</h3>
+            <p class="section-conclusion">已完成当前日期附近的强制增量同步，下面会自动重新跑 PART1。</p>
+            <details class="json-details" open>
+              <summary>同步结果</summary>
+              <pre>${escapeHtml(prettyChineseJson(data))}</pre>
+            </details>
+          </div>
+        `);
+        await loadDataStatus();
+        if (syncButton) {
+          syncButton.disabled = false;
+          syncButton.textContent = "同步缺失数据";
+        }
+        await runMarketPermission(true);
+      } catch (error) {
+        const message = formatError(error);
+        show("marketPermissionConfirmResult", message);
+        showHtml("marketPermissionResult", `
+          <div class="interpretation-card market-error-card">
+            <h3>同步失败</h3>
+            <p class="section-conclusion">${escapeHtml(message)}</p>
+            <p class="hint">请检查 Tushare 网关健康、token、限速状态，或到“数据同步”页查看详细返回。</p>
+          </div>
+        `);
+        finishMarketProgress(false);
+        if (syncButton) {
+          syncButton.disabled = false;
+          syncButton.textContent = "同步缺失数据";
+        }
+      }
+    }
 
     function queryLeaderStreak() {
       const ticker = document.getElementById("leaderTickerQuery").value.trim().toUpperCase();
@@ -1927,7 +2540,69 @@ let runtimeStatus = {};
       } catch (error) {
         if (requestVersion !== sectorRequestVersion) return;
         failSectorProgress(requestVersion, false);
-        showHtml("sectorTrendResult", `<div class="interpretation-card"><h3>查询失败</h3><p class="section-conclusion">${escapeHtml(formatError(error, "sectors"))}</p></div>`);
+        const msg = String(error && error.message || error || "");
+        // 未预计算 → 显示引导卡（含一键预计算按钮）
+        if (msg.includes("未预计算")) {
+          showHtml("sectorTrendResult", renderPrecomputePrompt(dateValue, benchmarkValue, msg));
+        } else {
+          showHtml("sectorTrendResult", `<div class="interpretation-card"><h3>查询失败</h3><p class="section-conclusion">${escapeHtml(formatError(error, "sectors"))}</p></div>`);
+        }
+      }
+    }
+
+    function renderPrecomputePrompt(date, benchmark, msg) {
+      return `
+        <div class="precompute-card">
+          <div class="precompute-icon">⚡</div>
+          <h3>板块数据未预计算</h3>
+          <p class="precompute-hint">${escapeHtml(msg)}</p>
+          <p class="precompute-hint">60 日趋势窗口计算需要 60-120 秒。点击下方按钮开始预计算，完成后自动重新加载板块动向。</p>
+          <div class="precompute-actions">
+            <button onclick="runPrecomputeSectors('${escapeHtml(date)}', '${escapeHtml(benchmark)}', this)">立即预计算</button>
+            <a class="link-button secondary" href="/api/v1/market/sectors?date=${encodeURIComponent(date)}&benchmark_ticker=${encodeURIComponent(benchmark)}" target="_blank">查看错误 JSON</a>
+          </div>
+          <div id="precomputeProgress" class="precompute-progress" style="display:none">
+            <div class="precompute-spinner"></div>
+            <p>正在预计算 <span id="precomputeElapsed">0</span>s ...</p>
+          </div>
+        </div>`;
+    }
+
+    let precomputeTimer = null;
+    function runPrecomputeSectorsFromPage() {
+      const date = document.getElementById("globalDate").value;
+      const benchmark = document.getElementById("globalBenchmark").value;
+      return runPrecomputeSectors(date, benchmark, document.getElementById("sectorPrecomputeButton"));
+    }
+    async function runPrecomputeSectors(date, benchmark, sourceButton = null) {
+      const requestVersion = ++sectorRequestVersion;
+      const progressEl = document.getElementById("precomputeProgress");
+      const elapsedEl = document.getElementById("precomputeElapsed");
+      const btn = sourceButton;
+      if (btn) btn.disabled = true;
+      if (progressEl) progressEl.style.display = "";
+      startSectorPrecomputeProgress(requestVersion);
+      showHtml("sectorTrendResult", `<div class="interpretation-card"><h3>正在同步板块预计算</h3><p class="section-conclusion">正在调用 POST /api/v1/data/precompute-sectors?date=${escapeHtml(date)}，完成后会自动重新查询板块动向。</p></div>`);
+      const startAt = Date.now();
+      if (precomputeTimer) clearInterval(precomputeTimer);
+      precomputeTimer = setInterval(() => {
+        if (elapsedEl) elapsedEl.textContent = Math.floor((Date.now() - startAt) / 1000);
+      }, 500);
+      try {
+        const data = await fetchJson(
+          `/api/v1/data/precompute-sectors?date=${encodeURIComponent(date)}&benchmark_ticker=${encodeURIComponent(benchmark)}`,
+          { method: "POST", timeoutMs: 300000 }
+        );
+        clearInterval(precomputeTimer); precomputeTimer = null;
+        finishSectorPrecomputeProgress(requestVersion, true);
+        // 预计算成功 → 立即重跑 runSectorTrends 拉缓存
+        await runSectorTrends();
+      } catch (error) {
+        clearInterval(precomputeTimer); precomputeTimer = null;
+        finishSectorPrecomputeProgress(requestVersion, false);
+        if (btn) btn.disabled = false;
+        if (progressEl) progressEl.style.display = "none";
+        showHtml("sectorTrendResult", `<div class="interpretation-card"><h3>预计算失败</h3><p class="section-conclusion">${escapeHtml(formatError(error, "precompute"))}</p></div>`);
       }
     }
 
@@ -1998,10 +2673,1129 @@ let runtimeStatus = {};
       }
     }
 
+    // ── 盘中监控 ─────────────────────────────────────────────────────
+    let intradayTimer = null;
+    let intradayCountdownTimer = null;
+    let intradayNextRefresh = 0;
+    const intradayHistory = {};
+
+    function stopIntradayAutoRefresh() {
+      if (intradayTimer) { clearInterval(intradayTimer); intradayTimer = null; }
+      if (intradayCountdownTimer) { clearInterval(intradayCountdownTimer); intradayCountdownTimer = null; }
+      const el = document.getElementById("intradayCountdown");
+      if (el) el.textContent = "";
+    }
+
+    function startIntradayAutoRefresh() {
+      stopIntradayAutoRefresh();
+      const el = document.getElementById("intradayCountdown");
+      intradayNextRefresh = Date.now() + 30_000;
+      intradayCountdownTimer = setInterval(() => {
+        const remain = Math.max(0, Math.ceil((intradayNextRefresh - Date.now()) / 1000));
+        if (el) el.textContent = `下次刷新 ${remain}s`;
+      }, 500);
+      intradayTimer = setInterval(() => {
+        intradayNextRefresh = Date.now() + 30_000;
+        runIntraday(false);
+      }, 30_000);
+    }
+
+    async function runIntraday(showLoading = true) {
+      const date = encodeURIComponent(document.getElementById("globalDate").value);
+      const bm = encodeURIComponent(selectedBenchmarkTicker());
+      const sourceEl = document.getElementById("intradaySource");
+      const source = sourceEl ? sourceEl.value : "tushare";
+      const selected = selectedTrendPoolTickers().map(encodeURIComponent).join(",");
+      if (showLoading) {
+        showHtml("intradayResult", `<p class="hint">正在拉取实时数据（source=${source}）...</p>`);
+      }
+      try {
+        const data = await fetchJson(`/api/v1/market/intraday?date=${date}&benchmark_ticker=${bm}&include_candidates=true&source=${source}&selected_tickers=${selected}`, { timeoutMs: 30000 });
+        renderIntraday(data);
+        // 自动开启定时器
+        const auto = document.getElementById("intradayAutoRefresh");
+        if (auto && auto.checked && !intradayTimer) startIntradayAutoRefresh();
+      } catch (error) {
+        showHtml("intradayResult", `<p class="hint" style="color:#dc2626">${escapeHtml(formatError(error))}</p>`);
+        stopIntradayAutoRefresh();
+      }
+    }
+
+    function intradayToneClass(value) {
+      if (!value) return "neutral";
+      if (["red", "bullish"].includes(value)) return "bullish";
+      if (["green", "bearish"].includes(value)) return "bearish";
+      return "neutral";
+    }
+
+    function rememberIntradaySeriesPoint(ticker, label, realtime, events) {
+      if (!ticker || !realtime || realtime.current == null) return [];
+      const key = String(ticker);
+      if (!intradayHistory[key]) intradayHistory[key] = [];
+      const series = intradayHistory[key];
+      const last = series[series.length - 1];
+      const now = realtime.update_at || new Date().toISOString();
+      const point = {
+        time: now,
+        label,
+        price: Number(realtime.current),
+        pct_chg: realtime.pct_chg,
+        events: events || [],
+      };
+      if (!last || last.time !== point.time || last.price !== point.price) {
+        series.push(point);
+      }
+      if (series.length > 80) series.splice(0, series.length - 80);
+      return series;
+    }
+
+    function renderIntradayMiniChart(ticker, label, realtime, events) {
+      const series = rememberIntradaySeriesPoint(ticker, label, realtime, events);
+      if (!series.length) {
+        return `<div class="intraday-chart-empty">暂无可绘制的实时轨迹，等待下一次刷新。</div>`;
+      }
+      const prices = series.map((item) => Number(item.price)).filter(Number.isFinite);
+      const min = Math.min(...prices);
+      const max = Math.max(...prices);
+      const range = Math.max(max - min, max * 0.002, 0.01);
+      const points = series.map((item, index) => {
+        const x = series.length === 1 ? 50 : 5 + (index * 90) / (series.length - 1);
+        const y = 84 - ((Number(item.price) - min) / range) * 68;
+        return { ...item, x, y };
+      });
+      const path = points.map((item) => `${item.x},${item.y}`).join(" ");
+      const latest = series[series.length - 1];
+      const latestEvents = (latest.events || []).filter((event) => event.code !== "no_trigger").slice(0, 5);
+      return `
+        <div class="intraday-chart-card">
+          <div class="intraday-chart-head">
+            <div>
+              <strong>${escapeHtml(label || ticker)}</strong>
+              <small>${escapeHtml(ticker || "")} · ${escapeHtml(String(latest.time || "").replace("T", " "))}</small>
+            </div>
+            <b class="${Number(latest.pct_chg) >= 0 ? "up" : "down"}">${colorPercent(latest.pct_chg)}</b>
+          </div>
+          <div class="intraday-chart-stage">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <line x1="4" y1="84" x2="96" y2="84"></line>
+              <polyline points="${path}"></polyline>
+            </svg>
+            ${points.map((item, index) => {
+              const hasEvent = index === points.length - 1 && latestEvents.length;
+              const primary = hasEvent ? latestEvents[0] : null;
+              const tone = intradayToneClass(primary && (primary.color || primary.direction));
+              return `
+                <button type="button" class="intraday-chart-dot ${hasEvent ? "has-event" : ""} ${tone}" style="left:${item.x}%;top:${item.y}%" title="${escapeHtml(item.label || ticker)} ${escapeHtml(String(item.price))}">
+                  ${hasEvent ? `<span>${latestEvents.length}</span>` : ""}
+                </button>
+              `;
+            }).join("")}
+          </div>
+          <div class="intraday-chart-events">
+            ${latestEvents.length ? latestEvents.map((event) => `<span class="event-pill ${intradayToneClass(event.color || event.direction)}">${escapeHtml(event.title)}</span>`).join("") : `<span class="muted">暂无触发信号</span>`}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderIntradayPlanGrid(plan) {
+      const cells = [
+        ["预测买入", plan.buy_price, plan.buy_label],
+        ["支撑位", plan.support_price, plan.support_source],
+        ["压力位", plan.pressure_price, plan.pressure_source],
+        ["MA8", plan.ma8, "趋势线"],
+        ["止损位", plan.stop_loss, "风险边界"],
+        ["预计售出", plan.expected_sell_price, plan.expected_sell_label],
+      ];
+      return `
+        <div class="intraday-plan-grid">
+          ${cells.map(([label, value, note]) => `
+            <span>
+              <small>${escapeHtml(label)}</small>
+              <strong>${escapeHtml(formatCandidatePrice(value))}</strong>
+              <em>${escapeHtml(note || "")}</em>
+            </span>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderIntradayEventList(events) {
+      const items = (events || []).slice(0, 8);
+      if (!items.length) return `<p class="hint">暂无技术事件。</p>`;
+      return `
+        <div class="technical-event-list">
+          ${items.map((event) => `
+            <article class="technical-event-card ${intradayToneClass(event.color || event.direction)}">
+              <div>
+                <span class="event-dot"></span>
+                <strong>${escapeHtml(event.title || event.code || "-")}</strong>
+                <small>${escapeHtml(event.severity || "")}</small>
+              </div>
+              <p>${escapeHtml(event.detail || "")}</p>
+              <b>动作：${escapeHtml(event.action || "继续观察。")}</b>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderSameMarketSignals(candidates) {
+      const buckets = {};
+      (candidates || []).forEach((candidate) => {
+        (candidate.signal_events || []).forEach((event) => {
+          if (!event.code || event.code === "no_trigger" || event.code === "realtime_missing") return;
+          if (!buckets[event.code]) buckets[event.code] = { event, items: [] };
+          buckets[event.code].items.push(candidate);
+        });
+      });
+      const groups = Object.values(buckets).sort((a, b) => b.items.length - a.items.length).slice(0, 6);
+      if (!groups.length) return `<p class="hint">暂无同市场技术信号。</p>`;
+      return `
+        <div class="same-signal-list">
+          ${groups.map((group) => `
+            <article>
+              <div><span class="event-pill ${intradayToneClass(group.event.color || group.event.direction)}">${escapeHtml(group.event.title)}</span><b>${group.items.length} 只</b></div>
+              <p>${group.items.slice(0, 6).map((item) => `${escapeHtml(item.name || item.ticker)} <small>${escapeHtml(item.ticker || "")}</small>`).join("、")}</p>
+            </article>
+          `).join("")}
+        </div>
+      `;
+    }
+
+    function renderIntradayCandidateCards(candidates) {
+      if (!candidates || !candidates.length) {
+        return `<p class="hint">暂无候选票。请先在板块动向里勾选趋势战法池，或先运行板块动向。</p>`;
+      }
+      return `
+        <div class="intraday-candidate-grid">
+          ${candidates.slice(0, 12).map((candidate) => {
+            const realtime = candidate.realtime || {};
+            const rating = candidate.technical_rating || {};
+            const primary = candidate.primary_event || {};
+            return `
+              <article class="intraday-candidate-card ${intradayToneClass(rating.tone)}">
+                <header>
+                  <div>
+                    ${stockLink(candidate.name || candidate.ticker, candidate.ticker, "compact")}
+                    <small>${escapeHtml(candidate.industry || candidate.sector_name || "-")} · ${escapeHtml(candidate.pool_status || candidate.role_label || "-")}</small>
+                  </div>
+                  <strong class="${Number(realtime.pct_chg) >= 0 ? "up" : "down"}">${colorPercent(realtime.pct_chg)}</strong>
+                </header>
+                <div class="candidate-live-line">
+                  <span>现价 <b>${escapeHtml(String(realtime.current ?? "-"))}</b></span>
+                  <span>评级 <b>${escapeHtml(rating.label || "-")}</b></span>
+                  <span>主信号 <b>${escapeHtml(primary.title || "-")}</b></span>
+                </div>
+                ${renderIntradayPlanGrid(candidate.trade_plan || {})}
+                ${renderIntradayMiniChart(candidate.ticker, candidate.name, realtime, candidate.signal_events)}
+                ${renderIntradayEventList(candidate.signal_events || [])}
+              </article>
+            `;
+          }).join("")}
+        </div>
+      `;
+    }
+
+    function renderIntraday(data) {
+      const gate = data.market_gate || {};
+      const br = data.benchmark_realtime;
+      const pl = data.planned_levels || {};
+      const te = data.triggered_levels || [];
+      const cs = data.candidates_realtime || [];
+      const errs = data.realtime_errors || [];
+
+      const gateBadge = `<span class="gate-badge gate-${gate.state || 'hold'}">${escapeHtml(gate.state_label || '—')}</span>`;
+
+      // 实时基准指数卡片
+      const brCard = br ? `
+        <div class="intraday-benchmark-card">
+          <div class="benchmark-header">
+            <strong>${escapeHtml(br.name || br.ticker)}</strong>
+            <small class="muted">${escapeHtml(br.ticker || '')} · 更新 ${escapeHtml(br.update_at || '')}</small>
+          </div>
+          <div class="benchmark-price">
+            <span class="benchmark-current ${br.pct_chg > 0 ? 'up' : (br.pct_chg < 0 ? 'down' : '')}">${br.current}</span>
+            <span class="benchmark-pct ${br.pct_chg > 0 ? 'up' : (br.pct_chg < 0 ? 'down' : '')}">${br.pct_chg != null ? (br.pct_chg * 100).toFixed(2) + '%' : '-'}</span>
+          </div>
+          <div class="benchmark-meta">
+            <span>开 ${br.open ?? '-'}</span>
+            <span>高 ${br.high ?? '-'}</span>
+            <span>低 ${br.low ?? '-'}</span>
+            <span>昨收 ${br.prev_close ?? '-'}</span>
+          </div>
+        </div>` : `<div class="intraday-benchmark-card"><p class="hint">实时基准指数暂不可用${errs.length ? '：' + escapeHtml(errs.join('; ')) : ''}</p></div>`;
+
+      // 关键位状态
+      const levelStatus = (label, level, current, isSupport) => {
+        if (!level || current == null) return `<span class="level-cell"><small class="muted">${escapeHtml(label)}</small><strong>${escapeHtml(String(level ?? '-'))}</strong><small class="muted">未触发</small></span>`;
+        const delta = ((current - level) / level * 100).toFixed(2);
+        const held = isSupport ? current > level : current < level;
+        const cls = held ? "held" : (isSupport ? "support-broken" : "pressure-broken");
+        const txt = isSupport
+          ? (held ? `站上（+${delta}%）` : `破位（${delta}%）`)
+          : (held ? `未破（${delta}%）` : `突破（+${delta}%）`);
+        return `<span class="level-cell level-${cls}"><small class="muted">${escapeHtml(label)}</small><strong>${escapeHtml(String(level))}</strong><small>${escapeHtml(txt)}</small></span>`;
+      };
+
+      const currentPrice = br ? br.current : null;
+      const levelsRow = `
+        <div class="intraday-levels-row">
+          ${levelStatus(`压力1 ${pl.pressure_1_source || ''}`, pl.pressure_1, currentPrice, false)}
+          ${levelStatus(`支撑1 ${pl.support_1_source || ''}`, pl.support_1, currentPrice, true)}
+          ${levelStatus(`支撑2 ${pl.support_2_source || ''}`, pl.support_2, currentPrice, true)}
+        </div>`;
+
+      // 触发事件
+      const triggerCard = te.length ? `
+        <div class="intraday-triggers">
+          <h4>⚡ 已触发的关键位（${te.length}）</h4>
+          <ul>
+            ${te.map(e => `<li class="trigger-${e.severity}"><b>${escapeHtml(e.level_label)}</b> · ${escapeHtml(e.note)}</li>`).join("")}
+          </ul>
+        </div>` : '';
+
+      const focusCandidate = cs.find((candidate) => (candidate.signal_events || []).some((event) => !["no_trigger", "realtime_missing"].includes(event.code))) || cs[0];
+      const focusChart = focusCandidate
+        ? renderIntradayMiniChart(focusCandidate.ticker, focusCandidate.name, focusCandidate.realtime, focusCandidate.signal_events)
+        : renderIntradayMiniChart(data.benchmark_ticker, br && br.name, br, te);
+      const focusEvents = focusCandidate ? (focusCandidate.signal_events || []) : te;
+
+      const gateReason = gate.gate_reason ? `<p class="intraday-gate-reason">${gateBadge} ${escapeHtml(gate.gate_reason)}</p>` : '';
+
+      const html = `
+        <div class="intraday-container">
+          <div class="intraday-meta">
+            <small>服务器时间 ${escapeHtml(data.server_time || '')} · PART1 缓存 ${escapeHtml(data.part1_cached_at || '')} · 实时源 <b>${escapeHtml(data.realtime_source || '未知')}</b>${data.realtime_source_requested && data.realtime_source_requested !== data.realtime_source ? ' (请求 ' + escapeHtml(data.realtime_source_requested) + ' → 已回退)' : ''}</small>
+          </div>
+          ${gateReason}
+          ${brCard}
+          ${levelsRow}
+          ${triggerCard}
+          <div class="intraday-workbench">
+            <section class="intraday-workbench-main">
+              <div class="intraday-section-head">
+                <div>
+                  <h3>实时趋势与信号</h3>
+                  <p>当前为 30 秒轮询采样趋势；接入 minute_bars 后可升级为真实分时图。</p>
+                </div>
+              </div>
+              ${focusChart}
+            </section>
+            <aside class="intraday-event-panel">
+              <h3>技术事件解释</h3>
+              ${renderIntradayEventList(focusEvents)}
+              <h3>同市场信号</h3>
+              ${renderSameMarketSignals(cs)}
+            </aside>
+          </div>
+          <section class="intraday-candidates">
+            <div class="intraday-section-head">
+              <div>
+                <h3>趋势战法候选实时验证（${cs.length}）</h3>
+                <p>候选票会显示计划买点、支撑/压力、MA8、止损、预计售出和实时触发事件。</p>
+              </div>
+            </div>
+            ${renderIntradayCandidateCards(cs)}
+          </section>
+          ${errs.length ? `<p class="hint" style="color:#dc2626">实时数据错误：${escapeHtml(errs.join('; '))}</p>` : ''}
+        </div>
+      `;
+      showHtml("intradayResult", html);
+    }
+
+    // ── 单票面板（图 4 风格） ─────────────────────────────────────────
+    let stockPanelData = null;
+    let stockChart = null;
+    let signalFilter = { period: "all", direction: "all", category: "all", code: null };
+
+    async function runStockPanel() {
+      const ticker = document.getElementById("analyzeTicker").value.trim().toUpperCase();
+      if (!ticker) {
+        showHtml("stockPanelResult", '<p class="hint" style="color:#dc2626">请输入股票代码</p>');
+        return;
+      }
+      const date = document.getElementById("globalDate").value;
+      const bm = selectedBenchmarkTicker();
+      showHtml("stockPanelResult", '<p class="hint">正在加载单票面板...</p>');
+      try {
+        const data = await fetchJson(
+          `/api/v1/stock/panel?ticker=${encodeURIComponent(ticker)}&date=${encodeURIComponent(date)}&benchmark_ticker=${encodeURIComponent(bm)}&period=5`,
+          { timeoutMs: 60000 }
+        );
+        stockPanelData = data;
+        renderStockPanel(data);
+      } catch (error) {
+        showHtml("stockPanelResult", `<p class="hint" style="color:#dc2626">${escapeHtml(formatError(error))}</p>`);
+      }
+    }
+
+    function stockDirectionClass(value) {
+      const n = Number(value || 0);
+      if (n > 0) return "up";
+      if (n < 0) return "down";
+      return "flat";
+    }
+
+    function stockPanelVerdict(data) {
+      const rating = data.rating || {};
+      const signals = data.signals || [];
+      const latest = signals.length ? signals[signals.length - 1] : null;
+      const shortScore = Number(rating.short_term_score ?? 50);
+      const riskCount = signals.filter((s) => s.category === "ma5_risk" || s.direction === "warning" || s.direction === "bearish").slice(-20).length;
+      const ma5Count = signals.filter((s) => s.category === "ma5_strategy").slice(-20).length;
+      if (shortScore >= 75 && riskCount <= 2) {
+        return {
+          tone: "bull",
+          title: "强势看涨",
+          action: "跟踪回踩或突破确认",
+          text: `短期评分 ${shortScore}，近20个信号里 MA5 战法 ${ma5Count} 个，风险信号 ${riskCount} 个。`,
+        };
+      }
+      if (shortScore >= 60) {
+        return {
+          tone: "warm",
+          title: "偏强观察",
+          action: "等关键位确认，不追高",
+          text: latest ? `最新信号：${latest.name}，${latest.note}` : `短期评分 ${shortScore}，信号仍需继续验证。`,
+        };
+      }
+      if (shortScore < 40 || riskCount >= 4) {
+        return {
+          tone: "bear",
+          title: "防守优先",
+          action: "先看止损位和支撑承接",
+          text: `短期评分 ${shortScore}，近20个风险/看跌信号 ${riskCount} 个。`,
+        };
+      }
+      return {
+        tone: "neutral",
+        title: "中性观察",
+        action: "等待方向选择",
+        text: latest ? `最新信号：${latest.name}，${latest.note}` : "暂未形成明确方向信号。",
+      };
+    }
+
+    function renderStockQuoteStrip(rt, basic, sync) {
+      const amount = rt.amount != null ? formatTradeAmount(rt.amount) : "-";
+      return `
+        <div class="sv-quote-strip">
+          <div><span>开盘</span><strong>${escapeHtml(rt.open ?? "-")}</strong></div>
+          <div><span>最高</span><strong class="up">${escapeHtml(rt.high ?? "-")}</strong></div>
+          <div><span>最低</span><strong class="down">${escapeHtml(rt.low ?? "-")}</strong></div>
+          <div><span>成交额</span><strong>${escapeHtml(amount)}</strong></div>
+          <div><span>所属板块</span><strong>${escapeHtml(basic.industry || "-")}</strong></div>
+          <div><span>穿透</span><strong>${escapeHtml((sync || {}).sync_status || "待接入")}</strong></div>
+        </div>
+      `;
+    }
+
+    function renderStockAiBrief(data) {
+      const verdict = stockPanelVerdict(data);
+      const signals = data.signals || [];
+      const latest = signals.length ? signals[signals.length - 1] : null;
+      const confidence = Math.max(0, Math.min(100, Number((data.rating || {}).short_term_score ?? 50)));
+      const riskLabel = verdict.tone === "bear" ? "高" : verdict.tone === "warm" ? "中" : verdict.tone === "bull" ? "低-中" : "中";
+      return `
+        <aside class="sv-ai-brief tone-${verdict.tone}">
+          <div class="sv-ai-kicker">每日 AI 技术结论</div>
+          <h3>${escapeHtml(verdict.title)}</h3>
+          <p>${escapeHtml(verdict.text)}</p>
+          <div class="sv-ai-decision-row">
+            <span><b>${confidence}</b><small>置信度</small></span>
+            <span><b>${escapeHtml(riskLabel)}</b><small>风险等级</small></span>
+          </div>
+          <strong>${escapeHtml(verdict.action)}</strong>
+          ${latest ? `<small>最新事件 ${escapeHtml(latest.date)} · ${escapeHtml(latest.name)}</small>` : "<small>等待更多技术事件确认</small>"}
+        </aside>
+      `;
+    }
+    function stockStrategySnapshot(data) {
+      const lv = data.levels || {};
+      const rt = data.realtime || {};
+      const buy = firstFinitePositive(lv.support, lv.ma5, rt.current);
+      const target = firstFinitePositive(lv.resistance, buy ? buy * 1.08 : null);
+      const stop = firstFinitePositive(lv.stop_loss_long, buy ? buy * 0.96 : null);
+      const rr = candidateRewardRisk({ buy, target }, stop);
+      return { buy, target, stop, rr };
+    }
+    function renderStockStrategyCard(data) {
+      const strategy = stockStrategySnapshot(data);
+      const verdict = stockPanelVerdict(data);
+      return `
+        <section class="sv-strategy-card">
+          <div class="sv-card-kicker">TRADE PLAN · 今日策略</div>
+          <h3>${escapeHtml(verdict.action)}</h3>
+          <div class="sv-strategy-grid">
+            <div><span>买点</span><strong>${formatCandidatePrice(strategy.buy)}</strong><small>支撑/MA 兜底</small></div>
+            <div><span>目标</span><strong>${formatCandidatePrice(strategy.target)}</strong><small>压力位优先</small></div>
+            <div><span>止损</span><strong>${formatCandidatePrice(strategy.stop)}</strong><small>跌破则退出</small></div>
+            <div><span>盈亏比</span><strong>${escapeHtml(strategy.rr)}</strong><small>目标/止损</small></div>
+          </div>
+          <p class="sv-trigger-note">触发条件：次日收盘确认；建议仓位按大盘 gate 与质量分执行。</p>
+        </section>
+      `;
+    }
+    function renderStockEvidenceStrip(data) {
+      const basic = data.basic || {};
+      const rating = data.rating || {};
+      const sync = data.market_sync || {};
+      const active = data.active_buy || {};
+      const summary = data.signal_summary || {};
+      const daily = data.daily_bars || [];
+      const latestDaily = daily.length ? daily[daily.length - 1].date : "";
+      const stale = latestDaily && data.analysis_date && latestDaily < data.analysis_date;
+      return `
+        <div class="sv-evidence-strip">
+          <div><span>趋势</span><strong>${escapeHtml(rating.short_term_label || "-")}</strong><small>短期 ${escapeHtml(rating.short_term_score ?? "-")}</small></div>
+          <div><span>板块</span><strong>${escapeHtml(basic.industry || "-")}</strong><small>${escapeHtml(basic.market || "Tushare 行业")}</small></div>
+          <div><span>资金</span><strong>${escapeHtml(active.label || "待确认")}</strong><small>${active.main_net != null ? `主力净额 ${escapeHtml(active.main_net)}` : "moneyflow 待同步"}</small></div>
+          <div><span>事件</span><strong>${escapeHtml((summary.ma5_strategy_count ?? 0) + " 个战法")}</strong><small>风险 ${escapeHtml(summary.ma5_risk_count ?? 0)} · 通用 ${escapeHtml(summary.generic_count ?? 0)}</small></div>
+          <div class="${stale ? "is-stale" : ""}"><span>日K水位</span><strong>${escapeHtml(latestDaily || "-")}</strong><small>${stale ? `早于 ${escapeHtml(data.analysis_date)}，图表会补实时点` : "已匹配分析日"}</small></div>
+        </div>
+      `;
+    }
+
+    function renderStockPanel(data) {
+      const basic = data.basic || {};
+      const rt = data.realtime || {};
+      const sync = data.market_sync || {};
+      const lv = data.levels || {};
+      const rating = data.rating || {};
+      const ss = data.signal_summary || {};
+
+      const pctChgCls = stockDirectionClass(rt.pct_chg);
+
+      const html = `
+        <div class="sv-page sv-ai-terminal">
+          <div class="sv-header sv-decision-header">
+            ${renderStockAiBrief(data)}
+            ${renderStockStrategyCard(data)}
+            <div class="sv-title-block sv-stock-compact-card">
+              <div class="sv-name-row">
+                <span class="sv-stock-logo">${escapeHtml(String(basic.name || rt.name || data.ticker).slice(0, 1))}</span>
+                <div>
+                  <h2>${escapeHtml(basic.name || rt.name || data.ticker)}</h2>
+                  <p>
+                    <span>${escapeHtml(data.ticker)}</span>
+                    ${basic.market ? `<span>${escapeHtml(basic.market)}</span>` : ""}
+                    ${basic.industry ? `<span class="clickable-sector" onclick="jumpToSectorByName('${String(basic.industry).replace(/'/g,"&#39;")}')" title="点击跳到板块动向">${escapeHtml(basic.industry)} →</span>` : ""}
+                    <span>${escapeHtml(data.benchmark_ticker || "")}</span>
+                  </p>
+                </div>
+              </div>
+              <div class="sv-price-row">
+                <span class="sv-current ${pctChgCls}">${rt.current ?? '-'}</span>
+                <span class="sv-unit muted">元</span>
+                <span class="sv-pct ${pctChgCls}">${rt.pct_chg != null ? ((rt.pct_chg*100).toFixed(2)+'%') : '-'}</span>
+                <span class="sv-meta muted">已收盘/实时 · ${escapeHtml(data.analysis_date || "-")}</span>
+              </div>
+              <div class="sv-header-actions">
+                <button onclick="runStockPanel()" class="secondary">刷新</button>
+                ${rt.update_at ? `<small class="muted">行情 ${escapeHtml(rt.update_at.slice(11, 19))}</small>` : '<small class="muted">行情时间待更新</small>'}
+              </div>
+            </div>
+          </div>
+          ${renderStockEvidenceStrip(data)}
+          ${renderStockQuoteStrip(rt, basic, sync)}
+
+          <div class="sv-body">
+            <div class="sv-container-left">
+              <div class="sv-left-title">
+                <div>
+                  <span class="feature-kicker">AI TECHNICAL ANALYSIS</span>
+                  <h3>走势与信号</h3>
+                </div>
+                <div class="chart-view-switch">
+                  <button class="chart-view-btn active" onclick="switchStockChartView('daily', event)">日 K</button>
+                  <button class="chart-view-btn" onclick="switchStockChartView('minute', event)">5min 分时</button>
+                </div>
+              </div>
+              <div class="sv-left-body">
+                <div class="sv-left-content">
+                  <div class="sv-chart-container">
+                    <canvas id="stockChartCanvas"></canvas>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sv-container-right">
+              <div class="sv-right-top">
+                ${renderSignalEventsPanel(data)}
+              </div>
+              <div class="sv-right-bottom">
+                ${renderSameMarketPlaceholder(data)}
+              </div>
+            </div>
+          </div>
+
+          <section class="sv-section-block">
+            <div class="sv-section-head">
+              <span>DECISION EVIDENCE</span>
+              <h3>核心交易分析</h3>
+              <p>先看评级、关键位、资金结构和穿透强弱，这四块决定今天是否值得行动。</p>
+            </div>
+            <div class="sv-insight-grid sv-insight-grid-primary">
+              ${renderRatingCard(rating)}
+              ${renderLevelsSubCard(lv)}
+              ${renderActiveBuyCard(data.active_buy)}
+              ${renderSyncCard(sync, basic)}
+            </div>
+          </section>
+
+          <section class="sv-section-block sv-section-risk">
+            <div class="sv-section-head">
+              <span>RISK & EXIT</span>
+              <h3>风险与退出</h3>
+              <p>把止损和退出规则单独放置，避免和买点、目标价混在一起。</p>
+            </div>
+            <div class="sv-insight-grid sv-insight-grid-secondary">
+              ${renderStopLossCard(lv, data)}
+            </div>
+          </section>
+
+          ${data.errors && data.errors.length ? `<p class="hint" style="color:#dc2626;padding:0 16px">警告：${escapeHtml(data.errors.join('; '))}</p>` : ''}
+        </div>
+      `;
+      showHtml("stockPanelResult", html);
+      setTimeout(() => drawStockChart("daily"), 50);
+    }
+
+    function switchStockChartView(view, event) {
+      document.querySelectorAll(".chart-view-btn").forEach(b => b.classList.remove("active"));
+      const btn = event ? event.target : null;
+      if (btn) btn.classList.add("active");
+      drawStockChart(view);
+    }
+
+    function rollingAverage(values, size) {
+      return values.map((_, index) => {
+        const start = Math.max(0, index - size + 1);
+        const slice = values.slice(start, index + 1).map(Number).filter(Number.isFinite);
+        if (!slice.length) return null;
+        return Number((slice.reduce((sum, item) => sum + item, 0) / slice.length).toFixed(2));
+      });
+    }
+
+    function drawStockChart(view) {
+      if (!stockPanelData) return;
+      const canvas = document.getElementById("stockChartCanvas");
+      if (!canvas) return;
+      if (stockChart) { stockChart.destroy(); stockChart = null; }
+
+      let bars = view === "minute" ? (stockPanelData.minute_bars || []) : (stockPanelData.daily_bars || []);
+      const dailyView = view !== "minute";
+      if (dailyView) {
+        bars = [...bars];
+        const rt = stockPanelData.realtime || {};
+        const latest = bars.length ? bars[bars.length - 1] : null;
+        const latestDate = latest ? String(latest.date || "") : "";
+        const analysisDate = String(stockPanelData.analysis_date || "");
+        const current = Number(rt.current);
+        if (analysisDate && Number.isFinite(current) && (!latestDate || latestDate < analysisDate)) {
+          const open = Number(rt.open);
+          const high = Number(rt.high);
+          const low = Number(rt.low);
+          bars.push({
+            date: analysisDate,
+            open: Number.isFinite(open) ? open : current,
+            high: Number.isFinite(high) ? Math.max(high, current) : current,
+            low: Number.isFinite(low) ? Math.min(low, current) : current,
+            close: current,
+            realtime_patch: true,
+          });
+        }
+      }
+      if (!bars.length) {
+        canvas.getContext("2d").fillText("暂无数据", 20, 40);
+        return;
+      }
+      const labels = bars.map(b => b.date || b.datetime);
+      const closes = bars.map(b => Number(b.close));
+      const ma5 = dailyView ? rollingAverage(closes, 5) : [];
+      const ma8 = dailyView ? rollingAverage(closes, 8) : [];
+      const lv = stockPanelData.levels || {};
+      const levelLine = (value) => labels.map(() => (value == null || value === "" ? null : Number(value)));
+
+      // 信号点：把日期对应到 index
+      const signals = stockPanelData.signals || [];
+      const filteredSignals = signals.filter(s => {
+        if (view === "minute") return false;  // 分时只画收盘线，不叠信号（信号是日线级别）
+        if (signalFilter.period !== "all" && s.period !== signalFilter.period) return false;
+        if (signalFilter.direction !== "all" && s.direction !== signalFilter.direction) return false;
+        return true;
+      });
+
+      const signalPoints = filteredSignals.map(s => {
+        const idx = bars.findIndex(b => (b.date || b.datetime).startsWith(s.date));
+        if (idx < 0) return null;
+        return { x: bars[idx].date || bars[idx].datetime, y: s.price, sig: s };
+      }).filter(Boolean);
+
+      const bullPts = signalPoints.filter(p => p.sig.direction === "bullish");
+      const bearPts = signalPoints.filter(p => p.sig.direction === "bearish");
+      const warnPts = signalPoints.filter(p => p.sig.direction === "warning");
+
+      const ctx = canvas.getContext("2d");
+      stockChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: view === "minute" ? "现价" : "收盘价",
+              data: closes,
+              borderColor: "#e5484d",
+              backgroundColor: "rgba(229, 72, 77, 0.06)",
+              borderWidth: 1.8,
+              pointRadius: 0,
+              fill: true,
+              tension: 0.22,
+              order: 3,
+            },
+            ...(dailyView ? [
+              {
+                label: "MA5",
+                data: ma5,
+                borderColor: "#f59e0b",
+                backgroundColor: "transparent",
+                borderWidth: 1.2,
+                pointRadius: 0,
+                tension: 0.22,
+                order: 4,
+              },
+              {
+                label: "MA8",
+                data: ma8,
+                borderColor: "#2f80ed",
+                backgroundColor: "transparent",
+                borderWidth: 1.2,
+                pointRadius: 0,
+                tension: 0.22,
+                order: 4,
+              },
+              {
+                label: "支撑",
+                data: levelLine(lv.support),
+                borderColor: "rgba(21, 155, 114, 0.7)",
+                borderDash: [5, 5],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 5,
+              },
+              {
+                label: "压力",
+                data: levelLine(lv.resistance),
+                borderColor: "rgba(229, 72, 77, 0.7)",
+                borderDash: [5, 5],
+                borderWidth: 1,
+                pointRadius: 0,
+                fill: false,
+                order: 5,
+              },
+            ] : []),
+            {
+              label: "看涨事件",
+              data: bullPts,
+              type: "scatter",
+              backgroundColor: "#e5484d",
+              borderColor: "#ffffff",
+              borderWidth: 1.5,
+              pointRadius: 5,
+              pointHoverRadius: 8,
+              pointStyle: "triangle",
+              parsing: false,
+              showLine: false,
+              order: 1,
+            },
+            {
+              label: "看跌事件",
+              data: bearPts,
+              type: "scatter",
+              backgroundColor: "#159b72",
+              borderColor: "#ffffff",
+              borderWidth: 1.5,
+              pointRadius: 5,
+              pointHoverRadius: 8,
+              pointStyle: "rectRot",
+              parsing: false,
+              showLine: false,
+              order: 1,
+            },
+            {
+              label: "警告事件",
+              data: warnPts,
+              type: "scatter",
+              backgroundColor: "#9ca3af",
+              borderColor: "#ffffff",
+              borderWidth: 1.5,
+              pointRadius: 4,
+              pointHoverRadius: 7,
+              parsing: false,
+              showLine: false,
+              order: 2,
+            },
+          ],
+        },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: dailyView ? "nearest" : "index", intersect: false },
+            layout: { padding: { top: 8, right: 10, bottom: 0, left: 4 } },
+            plugins: {
+            legend: { display: true, position: "bottom", labels: { boxWidth: 10, padding: 8, usePointStyle: true, font: { size: 11 }, color: "#7f8fa6" } },
+            tooltip: {
+              backgroundColor: "rgba(255,255,255,0.96)",
+              titleColor: "#172033",
+              bodyColor: "#415066",
+              borderColor: "#dbe5f0",
+              borderWidth: 1,
+              padding: 12,
+              callbacks: {
+                title: (items) => items.length ? items[0].label : "",
+                label: (ctx) => {
+                  if (ctx.datasetIndex <= (dailyView ? 4 : 0)) {
+                    const row = bars[ctx.dataIndex] || {};
+                    const patch = row.realtime_patch ? " · 实时补点" : "";
+                    if (ctx.datasetIndex === 0) {
+                      return [
+                        `${ctx.dataset.label} ${ctx.parsed.y}${patch}`,
+                        `开 ${row.open ?? "-"} / 高 ${row.high ?? "-"} / 低 ${row.low ?? "-"}`,
+                      ];
+                    }
+                    return `${ctx.dataset.label} ${ctx.parsed.y}`;
+                  }
+                  const raw = ctx.raw;
+                  return raw && raw.sig ? [`${raw.sig.name} · ${raw.sig.price}`, raw.sig.note || ""] : "";
+                },
+              },
+            },
+          },
+          scales: {
+            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, font: { size: 11 }, color: "#8da0b8" }, border: { display: false } },
+            y: { grid: { color: "rgba(148, 163, 184, 0.18)" }, ticks: { font: { size: 11 }, color: "#8da0b8" }, border: { display: false } },
+          },
+          onClick: (evt, elements) => {
+            if (elements.length > 0) {
+              const el = elements[0];
+              if (el.datasetIndex >= (dailyView ? 5 : 1)) {
+                const dataset = stockChart.data.datasets[el.datasetIndex];
+                const point = dataset.data[el.index];
+                if (point && point.sig) {
+                  focusSignal(point.sig);
+                }
+              }
+            }
+          },
+        },
+      });
+    }
+
+    function focusSignal(sig) {
+      const panel = document.getElementById("signalEventsList");
+      if (!panel) return;
+      const items = panel.querySelectorAll(".signal-event-item");
+      items.forEach(el => el.classList.remove("focused"));
+      const targetId = `signal-event-${sig.date}-${sig.code}`;
+      const target = document.getElementById(targetId);
+      if (target) {
+        target.classList.add("focused");
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
+    function renderRatingCard(rating) {
+      const st = rating.short_term_score ?? 50;
+      const lt = rating.long_term_score ?? 50;
+      const ratingColor = (score) => {
+        if (score >= 75) return "#dc2626";
+        if (score >= 60) return "#f97316";
+        if (score >= 40) return "#6b7280";
+        if (score >= 25) return "#22c55e";
+        return "#16a34a";
+      };
+      const arc = (score) => {
+        const pct = Math.max(0, Math.min(100, score)) / 100;
+        const angle = 180 * pct;
+        return `<div class="rating-gauge" style="--gauge-color:${ratingColor(score)};--gauge-angle:${angle}deg">
+          <div class="gauge-arc"></div>
+          <div class="gauge-value">${score}</div>
+        </div>`;
+      };
+      return `
+        <div class="sv-sub-card sv-rating-card">
+          <div class="sv-sub-title">
+            <h4>智能评级</h4>
+            <small class="muted">信号 + 趋势</small>
+          </div>
+          <div class="sv-rating-panel">
+          <div class="rating-block">
+            ${arc(st)}
+            <small class="muted">短期</small>
+            <strong style="color:${ratingColor(st)}">${escapeHtml(rating.short_term_label || '-')}</strong>
+          </div>
+          <div class="rating-block">
+            ${arc(lt)}
+            <small class="muted">长期</small>
+            <strong style="color:${ratingColor(lt)}">${escapeHtml(rating.long_term_label || '-')}</strong>
+          </div>
+          <div class="rating-events">
+            <span class="event-count bullish">看涨 ${rating.bull_events ?? 0}</span>
+            <span class="event-count bearish">看跌 ${rating.bear_events ?? 0}</span>
+            <span class="event-count warning">警告 ${rating.warning_events ?? 0}</span>
+          </div>
+          </div>
+        </div>`;
+    }
+
+    function renderLevelsSubCard(lv) {
+      return `
+        <div class="sv-sub-card">
+          <div class="sv-sub-title">
+            <h4>支撑位 / 阻力位</h4>
+            <small class="muted">基于近 ${lv.based_on_bars ?? 60} 根日线</small>
+          </div>
+          <div class="sv-sub-body">
+            <div class="sv-level-row">
+              <span class="metric-label">支撑位</span>
+              <strong class="lv-support">${lv.support ?? '-'}</strong>
+            </div>
+            <div class="sv-level-row">
+              <span class="metric-label">阻力位</span>
+              <strong class="lv-resistance">${lv.resistance ?? '-'}</strong>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderStopLossCard(lv, data) {
+      return `
+        <div class="sv-sub-card">
+          <div class="sv-sub-title">
+            <h4>止损价格</h4>
+            <small class="muted">分析日 ${escapeHtml((data || {}).analysis_date || new Date().toISOString().slice(0,10))}</small>
+          </div>
+          <div class="sv-sub-body">
+            <div class="sv-level-row">
+              <span class="metric-label">针对多头头寸</span>
+              <strong class="lv-stop-long">${lv.stop_loss_long ?? '-'}</strong>
+              <small class="muted">MA5 × 0.98</small>
+            </div>
+            <div class="sv-level-row">
+              <span class="metric-label">针对空头头寸</span>
+              <strong class="lv-stop-short">${lv.stop_loss_short ?? '-'}</strong>
+              <small class="muted">阻力 × 1.02</small>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderSameMarketPlaceholder(data) {
+      const groups = {};
+      (data.signals || []).slice(-40).forEach((signal) => {
+        const key = signal.code || signal.name || "signal";
+        if (!groups[key]) groups[key] = { signal, count: 0 };
+        groups[key].count += 1;
+      });
+      const rows = Object.values(groups).sort((a, b) => b.count - a.count).slice(0, 4);
+      return `
+        <div class="sv-same-market">
+          <div class="sv-sub-title">
+            <h4>同类技术事件 <span class="badge-todo">检索规划中</span></h4>
+          </div>
+          <div class="sv-same-market-list">
+            ${rows.length ? rows.map(({ signal, count }) => `
+              <article>
+                <span class="signal-icon ${signal.direction === "bullish" ? "signal-icon-bull" : signal.direction === "bearish" ? "signal-icon-bear" : "signal-icon-warn"}">${signal.direction === "bullish" ? "▲" : signal.direction === "bearish" ? "▼" : "◆"}</span>
+                <div><strong>${escapeHtml(signal.name || signal.code)}</strong><small>${escapeHtml(signal.category || "generic")} · 本票近40信号 ${count} 次</small></div>
+              </article>
+            `).join("") : `<p class="hint">暂无可聚合信号；同板块检索接口接入后会展示其他个股。</p>`}
+          </div>
+        </div>`;
+    }
+
+    function renderActiveBuyCard(ab) {
+      if (!ab || !ab.active_buy_ratio) {
+        return `
+          <div class="sv-sub-card">
+            <div class="sv-sub-title"><h4>主动买入结构</h4><small class="muted">无资金流数据</small></div>
+            <div class="sv-sub-body"><p class="hint" style="padding:8px 0;font-size:11px;color:var(--muted)">Tushare moneyflow 未覆盖或该日缺失</p></div>
+          </div>`;
+      }
+      const ratio = ab.active_buy_ratio;
+      const structure = ab.active_buy_structure;
+      const labelColor = ratio > 0.55 && structure > 0.1 ? "#dc2626" :
+                        ratio < 0.45 && structure < -0.05 ? "#16a34a" :
+                        (ratio > 0.55 && structure < -0.05) ? "#f97316" : "#64748b";
+
+      // 主散比：>0 = 主力主导（红），<0 = 散户主导（灰）
+      const structCls = structure > 0.05 ? "up" : (structure < -0.05 ? "down" : "flat");
+
+      // 外盘/内盘 bar
+      const ratioPct = ratio * 100;
+      return `
+        <div class="sv-sub-card">
+          <div class="sv-sub-title">
+            <h4>主动买入结构</h4>
+            <small style="color:${labelColor};font-weight:700">${escapeHtml(ab.label || '')}</small>
+          </div>
+          <div class="sv-sub-body">
+            <div class="active-buy-ratio-bar">
+              <div class="ratio-fill" style="width:${ratioPct.toFixed(1)}%"></div>
+              <span class="ratio-label">外盘 ${ratioPct.toFixed(1)}% · 内盘 ${(100-ratioPct).toFixed(1)}%</span>
+            </div>
+            <div class="active-buy-rows">
+              <div class="ab-row">
+                <span class="metric-label">主力主动净</span>
+                <strong class="${(ab.main_net||0) > 0 ? 'up' : 'down'}">${(ab.main_net||0) > 0 ? '+' : ''}${(ab.main_net/10000||0).toFixed(0)}万</strong>
+              </div>
+              <div class="ab-row">
+                <span class="metric-label">散户主动净</span>
+                <strong class="${(ab.retail_net||0) > 0 ? 'up' : 'down'}">${(ab.retail_net||0) > 0 ? '+' : ''}${(ab.retail_net/10000||0).toFixed(0)}万</strong>
+              </div>
+              <div class="ab-row">
+                <span class="metric-label">主散结构差</span>
+                <strong class="${structCls}">${structure > 0 ? '+' : ''}${structure.toFixed(3)}</strong>
+              </div>
+              <div class="ab-row">
+                <span class="metric-label">近5日主力净</span>
+                <strong class="${(ab.cum_main_net_5d||0) > 0 ? 'up' : 'down'}">${(ab.cum_main_net_5d||0) > 0 ? '+' : ''}${(ab.cum_main_net_5d/10000||0).toFixed(0)}万</strong>
+              </div>
+              <div class="ab-row">
+                <span class="metric-label">主力持续买入</span>
+                <strong>${ab.main_active_persist_days_5d || 0}/5 天</strong>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderSyncCard(sync, basic) {
+      const cls = { sync_up: "sync-up", sync_down: "sync-down", diverge_up: "diverge-up", diverge_down: "diverge-down", flat: "" }[sync.sync_direction] || "";
+      const stockPct = sync.stock_pct_chg != null ? sync.stock_pct_chg * 100 : 0;
+      const bmPct = sync.benchmark_pct_chg != null ? sync.benchmark_pct_chg * 100 : 0;
+      // 用相对差值画一个 bar
+      const diff = stockPct - bmPct;
+      const barCls = diff > 0 ? "diff-up" : (diff < 0 ? "diff-down" : "diff-flat");
+      return `
+        <div class="sv-sub-card ${cls}">
+          <div class="sv-sub-title">
+            <h4>穿透分析</h4>
+            <small class="muted">${escapeHtml(sync.sync_status || '-')}</small>
+          </div>
+          <div class="sv-sub-body">
+            <div class="sync-diff-bar ${barCls}">
+              <div class="sync-diff-track">
+                <div class="sync-diff-fill" style="--diff-width:${Math.min(50, Math.abs(diff)*10)}%"></div>
+              </div>
+              <span class="sync-diff-value">${diff >= 0 ? '+' : ''}${diff.toFixed(2)}%</span>
+            </div>
+            <div class="sync-row">
+              <span class="metric-label">${escapeHtml(sync.benchmark_name || '大盘')}</span>
+              <strong>${bmPct.toFixed(2)}%</strong>
+            </div>
+            <div class="sync-row">
+              <span class="metric-label">本股</span>
+              <strong>${stockPct.toFixed(2)}%</strong>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function renderSignalEventsPanel(data) {
+      let signals = (data.signals || []).slice().reverse();
+      // 应用过滤
+      signals = signals.filter(s => {
+        if (signalFilter.period !== "all" && s.period !== signalFilter.period) return false;
+        if (signalFilter.direction !== "all" && s.direction !== signalFilter.direction) return false;
+        if (signalFilter.category && signalFilter.category !== "all" && s.category !== signalFilter.category) return false;
+        return true;
+      });
+
+      const filterHtml = `
+        <div class="signal-filters">
+          <label>类别
+            <select onchange="signalFilter.category=this.value;runFilterSignals()">
+              <option value="all" ${signalFilter.category==='all'?'selected':''}>全部</option>
+              <option value="ma5_strategy" ${signalFilter.category==='ma5_strategy'?'selected':''}>MA5 战法</option>
+              <option value="ma5_risk" ${signalFilter.category==='ma5_risk'?'selected':''}>MA5 风险</option>
+              <option value="generic" ${signalFilter.category==='generic'?'selected':''}>通用形态</option>
+            </select>
+          </label>
+          <label>周期
+            <select onchange="signalFilter.period=this.value;runFilterSignals()">
+              <option value="all" ${signalFilter.period==='all'?'selected':''}>全部</option>
+              <option value="short" ${signalFilter.period==='short'?'selected':''}>短期</option>
+              <option value="mid" ${signalFilter.period==='mid'?'selected':''}>中期</option>
+            </select>
+          </label>
+          <label>方向
+            <select onchange="signalFilter.direction=this.value;runFilterSignals()">
+              <option value="all" ${signalFilter.direction==='all'?'selected':''}>全部</option>
+              <option value="bullish" ${signalFilter.direction==='bullish'?'selected':''}>看涨</option>
+              <option value="bearish" ${signalFilter.direction==='bearish'?'selected':''}>看跌</option>
+              <option value="warning" ${signalFilter.direction==='warning'?'selected':''}>警告</option>
+            </select>
+          </label>
+        </div>`;
+
+      const visibleSignals = signals.slice(0, 5);
+      const hiddenCount = Math.max(0, signals.length - visibleSignals.length);
+      const items = visibleSignals.map(s => {
+        const iconClass = { bullish: "signal-icon-bull", bearish: "signal-icon-bear", warning: "signal-icon-warn" }[s.direction] || "";
+        const icon = { bullish: "▲", bearish: "▼", warning: "◆" }[s.direction] || "●";
+        const periodLabel = { short: "短期", mid: "中期", long: "长期" }[s.period] || s.period;
+        const catBadge = { ma5_strategy: '<span class="cat-badge cat-ma5">MA5</span>', ma5_risk: '<span class="cat-badge cat-risk">风险</span>', generic: '' }[s.category] || '';
+        const qualityBadge = s.entry_quality != null ? `<span class="quality-mini">质量 ${s.entry_quality}</span>` : '';
+        return `
+          <div id="signal-event-${s.date}-${s.code}" class="signal-event-item cat-${s.category || 'generic'}" onclick='focusSignal(${JSON.stringify(s).replace(/'/g, "&#39;")})'>
+            <div class="signal-event-head">
+              <span class="signal-icon ${iconClass}">${icon}</span>
+              <div class="signal-event-body">
+                <strong>${escapeHtml(s.name)} ${catBadge} ${qualityBadge}</strong>
+                <small class="muted">${escapeHtml(s.date)} · ${periodLabel} · 价 ${s.price}</small>
+              </div>
+            </div>
+            <p class="signal-event-note">${escapeHtml(s.note)}</p>
+          </div>`;
+      }).join("");
+
+      const ss = data.signal_summary || {};
+      return `
+        <div class="signal-events-panel">
+          <div class="signal-events-header">
+            <h3>活跃技术事件 <small class="muted">${signals.length}</small></h3>
+            <div class="signal-tabs">
+              <span class="signal-tab-item">战法 ${ss.ma5_strategy_count ?? 0}</span>
+              <span class="signal-tab-item">风险 ${ss.ma5_risk_count ?? 0}</span>
+              <span class="signal-tab-item">通用 ${ss.generic_count ?? 0}</span>
+            </div>
+          </div>
+          ${filterHtml}
+          <div id="signalEventsList" class="signal-events-list">${items || '<p class="hint">当前筛选下暂无信号</p>'}</div>
+          ${hiddenCount ? `<div class="signal-events-more">仅显示最近 5 条，另有 ${hiddenCount} 条可通过筛选查看。</div>` : ""}
+        </div>`;
+    }
+
+    function runFilterSignals() {
+      drawStockChart("daily");
+      if (stockPanelData) renderStockPanel(stockPanelData);
+    }
+
     document.addEventListener("DOMContentLoaded", () => {
-      document.getElementById("allowFallback").addEventListener("change", updateAnalyzeHint);
-      document.getElementById("analyzeTicker").addEventListener("change", loadDataStatus);
-      document.getElementById("globalDate").addEventListener("change", loadDataStatus);
+      const allowFallback = document.getElementById("allowFallback");
+      if (allowFallback) allowFallback.addEventListener("change", updateAnalyzeHint);
+      document.getElementById("analyzeTicker")?.addEventListener("change", loadDataStatus);
+      document.getElementById("globalDate")?.addEventListener("change", loadDataStatus);
+      const autoIntraday = document.getElementById("intradayAutoRefresh");
+      if (autoIntraday) {
+        autoIntraday.addEventListener("change", () => {
+          if (autoIntraday.checked) startIntradayAutoRefresh();
+          else stopIntradayAutoRefresh();
+        });
+      }
       window.addEventListener("scroll", scheduleStorylineDocking, { passive: true });
       window.addEventListener("resize", scheduleStorylineDocking);
       scheduleStorylineDocking();

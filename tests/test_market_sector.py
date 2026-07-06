@@ -107,7 +107,7 @@ class MarketSectorTests(unittest.TestCase):
             top_n=3,
         )
 
-        self.assertEqual("market_sector_v1", result["engine_version"])
+        self.assertEqual("market_sector_v3_ma5_v02_mainline", result["engine_version"])
         self.assertEqual("上证指数", result["benchmark_name"])
         self.assertIn("不是申万", result["sector_source_note"])
         leader_sector = result["top_sectors"][0]
@@ -163,6 +163,30 @@ class MarketSectorTests(unittest.TestCase):
 
         self.assertTrue(result["top_sectors"])
         self.assertTrue(result["trend_sectors"])
+        self.assertEqual(60, result["trend_lookback_days"])
+        trend = result["trend_sectors"][0]
+        self.assertIn("sector_mainline_score", trend)
+        self.assertIn("sector_multiplier", trend)
+        self.assertIn("sector_state", trend)
+        self.assertIn("mainline_rank", trend)
+        self.assertIn("excess_return_20d_score", trend["scores"])
+        self.assertIn("sector_amount_ratio_score", trend["scores"])
+        self.assertTrue(result["candidates"])
+        candidate = result["candidates"][0]
+        self.assertIn("predicted_buy_price", candidate)
+        self.assertIn("support_price", candidate)
+        self.assertIn("pressure_price", candidate)
+        self.assertIn("ma8", candidate)
+        self.assertIn("expected_sell_price", candidate)
+        self.assertIn("trend_boost", candidate)
+        self.assertIn("sector_mainline_score", candidate)
+        self.assertIn("sector_multiplier", candidate)
+        self.assertIn("stock_quality_score", candidate)
+        self.assertIn("trade_timing_score", candidate)
+        self.assertIn("risk_adjustment", candidate)
+        self.assertIn("final_trade_score", candidate)
+        self.assertIn("score_breakdown", candidate)
+        self.assertIn("trade_plan", candidate)
         self.assertEqual([], result["daily_leaders"])
         self.assertEqual([], result["all_sectors"])
 
