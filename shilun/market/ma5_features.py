@@ -99,6 +99,33 @@ def _reclaim_flag(latest: dict[str, Any], prev: dict[str, Any]) -> bool:
     return _f(latest.get("close")) > _f(latest.get("ma5")) and _f(prev.get("close")) <= _f(prev.get("ma5"))
 
 
+def _breakout_flag(latest: dict[str, Any], prev: dict[str, Any]) -> bool:
+    """MA5 突破加速：昨日已收在 MA5 上方，今日实体大幅拉开距离。
+
+    与 _reclaim_flag（昨日 close <= prev_ma5、今日回站上）严格互斥。
+    判定口径参照 v0.2 战法第八章"有效 MA5 突破"：
+      1. 昨日 close > prev_ma5（避免与 reclaim 交叠）
+      2. 今日 close > ma5 * 1.005（突破幅度 >= 0.5% 才算加速，避免贴线噪声）
+      3. real_body_ratio > 0.35（阳线实体健康）
+      4. close_position > 0.55（收在当日中枢以上）
+    """
+    close = _f(latest.get("close"))
+    ma5 = _f(latest.get("ma5"))
+    prev_close = _f(prev.get("close"))
+    prev_ma5 = _f(prev.get("ma5"))
+    if not (close and ma5 and prev_ma5):
+        return False
+    if prev_close <= prev_ma5:
+        return False
+    if close <= ma5 * 1.005:
+        return False
+    if _f(latest.get("real_body_ratio")) <= 0.35:
+        return False
+    if _f(latest.get("close_position"), 0.5) <= 0.55:
+        return False
+    return True
+
+
 def _bullish_engulf_flag(latest: dict[str, Any], prev: dict[str, Any]) -> bool:
     latest_open = _f(latest.get("open"))
     latest_close = _f(latest.get("close"))
@@ -210,7 +237,7 @@ def build_ma_features(bars: list[dict[str, Any]]) -> dict[str, Any]:
         "ma5_reclaim_flag": _reclaim_flag(latest, prev),
         "bullish_engulf_flag": _bullish_engulf_flag(latest, prev),
         "ma5_hold_flag": bool(low >= ma5 * 0.98 and close >= ma5) if ma5 else False,
-        "ma5_breakout_flag": _reclaim_flag(latest, prev),
+        "ma5_breakout_flag": _breakout_flag(latest, prev),
         "ma5_breakout_distance": close_ma5_ratio,
         "breakout_volume_ratio": volume_ratio_20,
         "close_position": close_position,
@@ -365,8 +392,36 @@ def compute_ma5_breakout_score(features: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def compute_breakout_quality_score(features: dict[str, Any]) -> dict[str, Any]:
-    hold = _f(features.get("previous_high_hold_ratio"))
+def compute_breakout_quality_score(
+    features: dict[str, Any],
+    *,
+    breakout_event: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """真假突破分。
+
+    - `breakout_event=None`：退化为当日快照评分（fallback），用于还没被 Job 3
+      落库的票（例如没触发过突破的候选、或者刚起步系统还没建事件表）。
+    - 传入 `breakout_event`：从 `breakout_events` 集合里的追踪字段读取真实的
+      T+1..T+5 表现。此时 `next_day_score` 不再是常量 50，而是从
+      `event["next_day_hold_flag"]` 得到 100 / 0 / 50（未追踪）。
+
+    输出多一个 `source` 字段（"event" | "features"）便于调试和前端展示。
+    """
+    if breakout_event:
+        hold = _f(breakout_event.get("previous_high_hold_ratio"))
+        fall_back = bool(breakout_event.get("fall_back_into_box_flag"))
+        shrink = _f(breakout_event.get("post_breakout_shrink_ratio"), 1.0)
+        next_day_flag = breakout_event.get("next_day_hold_flag")  # True / False / None
+        tracked_days = int(breakout_event.get("tracked_days") or 0)
+        source = "event"
+    else:
+        hold = _f(features.get("previous_high_hold_ratio"))
+        fall_back = bool(features.get("fall_back_into_box_flag"))
+        shrink = _f(features.get("post_breakout_shrink_ratio"), 1.0)
+        next_day_flag = None
+        tracked_days = 0
+        source = "features"
+
     tolerance = _f(features.get("dynamic_tolerance"), 0.01)
     if hold >= 0:
         hold_score = 100
@@ -380,24 +435,46 @@ def compute_breakout_quality_score(features: dict[str, Any]) -> dict[str, Any]:
     else:
         hold_score = 10
         grade = "clear_break"
-    box_score = 0 if features.get("fall_back_into_box_flag") else 80
-    shrink_score = 80 if _f(features.get("post_breakout_shrink_ratio"), 1.0) < 0.9 else 50
-    next_day_score = 50
+    box_score = 0 if fall_back else 80
+    shrink_score = 80 if shrink < 0.9 else 50
+    if next_day_flag is True:
+        next_day_score = 100
+    elif next_day_flag is False:
+        next_day_score = 0
+    else:
+        next_day_score = 50  # 未追踪或数据缺失
+
     score = hold_score * 0.35 + box_score * 0.25 + shrink_score * 0.20 + next_day_score * 0.20
-    return {"score": round(_clip(score), 2), "grade": grade, "parts": {"previous_high_hold": hold_score, "box_hold": box_score, "post_breakout_shrink": shrink_score, "next_day": next_day_score}}
+    return {
+        "score": round(_clip(score), 2),
+        "grade": grade,
+        "source": source,
+        "tracked_days": tracked_days,
+        "breakout_quality": breakout_event.get("breakout_quality") if breakout_event else None,
+        "parts": {
+            "previous_high_hold": hold_score,
+            "box_hold": box_score,
+            "post_breakout_shrink": shrink_score,
+            "next_day": next_day_score,
+        },
+    }
 
 
-def compute_trade_timing_score(features: dict[str, Any]) -> dict[str, Any]:
+def compute_trade_timing_score(
+    features: dict[str, Any],
+    *,
+    breakout_event: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     pullback = compute_ma5_pullback_score(features)
     breakout = compute_ma5_breakout_score(features)
-    breakout_quality = compute_breakout_quality_score(features)
+    breakout_quality = compute_breakout_quality_score(features, breakout_event=breakout_event)
     volume = compute_volume_price_score(features)
     volume_confirm = _clip(volume["score"] + (10 if features.get("strong_real_body_flag") else 0))
     score = pullback["score"] * 0.35 + breakout["score"] * 0.25 + breakout_quality["score"] * 0.20 + volume_confirm * 0.20
     if pullback["score"] >= breakout["score"] and pullback["score"] >= 60:
         buy_point_type = "ma5_pullback"
         buy_point_label = "MA5回踩确认"
-    elif breakout["score"] >= 60:
+    elif features.get("ma5_breakout_flag") and breakout["score"] >= 60:
         buy_point_type = "ma5_breakout"
         buy_point_label = "MA5突破确认"
     elif features.get("ma5_reclaim_flag"):

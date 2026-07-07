@@ -828,6 +828,16 @@
       line-height: 1.65;
       margin: 0 0 12px;
     }
+    .stale-cache-warning {
+      margin: 12px 0 16px;
+      padding: 12px 14px;
+      border: 1px solid rgba(245, 158, 11, .28);
+      border-radius: 14px;
+      color: #b45309;
+      background: rgba(245, 158, 11, .08);
+      font-size: 14px;
+      line-height: 1.6;
+    }
     .trend-score-breakdown {
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1588,6 +1598,12 @@
     .quality-low  { background: rgba(157, 152, 143, 0.14); color: var(--muted); }
     .badge-zhusheng { display: inline-block; margin-left: 4px; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(143, 230, 196, 0.18); color: var(--accent); vertical-align: middle; }
     .risk-flag { display: inline-block; margin-top: 3px; padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 700; background: rgba(255, 160, 80, 0.18); color: #f5a623; }
+    /* Job 7：真假突破追踪徽章。四挡颜色对应 breakout_events 的 breakout_quality。 */
+    .breakout-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; vertical-align: middle; border: 1px solid transparent; cursor: help; }
+    .breakout-valid                { background: rgba(46, 204, 113, 0.18); color: #10b981; border-color: rgba(46, 204, 113, 0.35); }
+    .breakout-pending_confirmation { background: rgba(157, 152, 143, 0.14); color: var(--muted); border-color: rgba(157, 152, 143, 0.3); }
+    .breakout-suspicious           { background: rgba(255, 160, 80, 0.18); color: #f5a623; border-color: rgba(255, 160, 80, 0.4); }
+    .breakout-failed               { background: rgba(232, 67, 67, 0.18); color: var(--color-up); border-color: rgba(232, 67, 67, 0.4); }
     /* 形态识别 + 明日关键点位 */
     .pattern-forecast-section { border-left: 3px solid var(--accent); }
     .pattern-signal-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; vertical-align: middle; }
@@ -4274,6 +4290,11 @@
       min-height: 0;
       border-radius: 9px;
       font-size: 12px;
+    }
+    .sv-header-actions .sv-monitor-button.is-active {
+      border-color: #bfdbfe;
+      color: #1d4ed8;
+      background: #eff6ff;
     }
 
     .sv-evidence-strip {

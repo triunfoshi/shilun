@@ -433,6 +433,9 @@ class MongoSnapshotStore:
             ("moneyflow", [("ts_code", 1), ("trade_date", 1)], "uniq_moneyflow_scope", True),
             ("moneyflow", [("trade_date", 1), ("ts_code", 1)], "idx_moneyflow_date_ticker", False),
             ("sync_state", [("dataset", 1), ("scope", 1)], "uniq_sync_state_scope", True),
+            ("breakout_events", [("ticker", 1), ("breakout_date", 1)], "uniq_breakout_event_scope", True),
+            ("breakout_events", [("status", 1), ("breakout_date", 1)], "idx_breakout_event_status_date", False),
+            ("breakout_events", [("breakout_date", -1)], "idx_breakout_event_date_desc", False),
         ]
         for collection_name, keys, name, unique in index_specs:
             self._create_index(collection_name, keys, name=name, unique=unique)

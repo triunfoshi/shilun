@@ -364,6 +364,8 @@ def build_candidates(
     analysis_date: str,
     market_gate: dict[str, Any] | None = None,
     trend_sectors: list[dict[str, Any]] | None = None,
+    *,
+    breakout_events_lookup: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     从 top_sectors 的 leader_candidates + zhongjun_candidates 中筛出 MA5 趋势战法候选。
@@ -371,6 +373,13 @@ def build_candidates(
 
     market_gate 由 PART1 输出，用于降级候选的信号（不删除候选，只把 signal 映射到
     降级后的 final_signal，并提供 size_hint / allowed_new_position 等机器可执行字段）。
+
+    breakout_events_lookup（Job 6）：形如 {ticker: latest_breakout_event_doc}。
+    调用方（API 层）负责从 `breakout_events` 集合批量拉最近事件；这里只做纯查表 +
+    注入评分。当某只票有事件时，事件里的 `previous_high_hold_ratio` /
+    `fall_back_into_box_flag` / `post_breakout_shrink_ratio` / `next_day_hold_flag`
+    会覆写到 `ma5_features` 快照，让前端展示的特征就是"追踪后真实值"，而不是当日快照。
+    没有事件的票走 Job 5 的 features fallback，行为完全向后兼容。
     """
     if stock_frame.empty:
         return []
@@ -494,12 +503,25 @@ def build_candidates(
         sector_multiplier = _f(sector_multiplier)
         trading_levels = _build_trading_levels(signal_bars, sig["signal"])
         ma5_features = build_ma_features(feature_bars)
+
+        # Job 6：如果这只票已经有落库的突破事件，就用事件里的追踪字段覆写
+        # `ma5_features` 里的真假突破相关特征，确保特征快照对外和评分对内都用真实值。
+        breakout_event = (breakout_events_lookup or {}).get(ticker)
+        if breakout_event:
+            for field in (
+                "previous_high_hold_ratio",
+                "fall_back_into_box_flag",
+                "post_breakout_shrink_ratio",
+            ):
+                if breakout_event.get(field) is not None:
+                    ma5_features[field] = breakout_event.get(field)
+
         trade_plan = build_trade_plan(ma5_features)
         stock_quality = compute_stock_quality_score(
             ma5_features,
             sector_score=mainline_score or trend_score or resonance or 50.0,
         )
-        trade_timing = compute_trade_timing_score(ma5_features)
+        trade_timing = compute_trade_timing_score(ma5_features, breakout_event=breakout_event)
         risk_adjustment = compute_risk_adjustment(
             ma5_features,
             market_gate=market_gate,
@@ -575,7 +597,25 @@ def build_candidates(
                 "real_body_ratio": ma5_features.get("real_body_ratio"),
                 "atr_pct_14": ma5_features.get("atr_pct_14"),
                 "dynamic_tolerance": ma5_features.get("dynamic_tolerance"),
+                # Job 6：真假突破追踪的快照（有 event 时来自 breakout_events）
+                "previous_high_hold_ratio": ma5_features.get("previous_high_hold_ratio"),
+                "fall_back_into_box_flag": ma5_features.get("fall_back_into_box_flag"),
+                "post_breakout_shrink_ratio": ma5_features.get("post_breakout_shrink_ratio"),
             },
+            "breakout_tracking": (
+                {
+                    "breakout_date": breakout_event.get("breakout_date"),
+                    "status": breakout_event.get("status"),
+                    "tracked_days": breakout_event.get("tracked_days"),
+                    "breakout_quality": breakout_event.get("breakout_quality"),
+                    "next_day_hold_flag": breakout_event.get("next_day_hold_flag"),
+                    "previous_high_hold_ratio": breakout_event.get("previous_high_hold_ratio"),
+                    "post_breakout_shrink_ratio": breakout_event.get("post_breakout_shrink_ratio"),
+                    "fall_back_into_box_flag": breakout_event.get("fall_back_into_box_flag"),
+                }
+                if breakout_event
+                else None
+            ),
             "trade_plan": trade_plan,
         })
 

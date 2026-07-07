@@ -12,7 +12,7 @@ import pandas as pd
 from shilun.market.part1 import DEFAULT_BENCHMARK_TICKER, benchmark_index_meta
 
 
-SECTOR_ENGINE_VERSION = "market_sector_v3_ma5_v02_mainline"
+SECTOR_ENGINE_VERSION = "market_sector_v4_ma5_v02_relative_mainline"
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,7 @@ def evaluate_sector_trends(
     include_all_sectors: bool = True,
     market_gate: dict[str, Any] | None = None,
     trend_lookback_days: int = 60,
+    breakout_events_lookup: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Evaluate Part2 sector/theme momentum from synced daily data.
 
@@ -324,6 +325,7 @@ def evaluate_sector_trends(
             "sector_amount_ratio_score",
             "leader_zhongjun_score",
             "score_breakdown",
+            "score_references",
         ):
             if score_key in (trend.get("scores") or {}):
                 item["scores"][score_key] = (trend.get("scores") or {}).get(score_key)
@@ -354,6 +356,7 @@ def evaluate_sector_trends(
         analysis_date=analysis_date,
         market_gate=market_gate,
         trend_sectors=trend_sectors,
+        breakout_events_lookup=breakout_events_lookup,
     )
     return {
         "engine_version": SECTOR_ENGINE_VERSION,
@@ -1419,6 +1422,72 @@ def _percentile_score(value: Any, values: list[Any]) -> float:
     return _clip_score((lower + equal * 0.5) / len(valid_values) * 100.0)
 
 
+def _reference_stats(values: list[Any], *, min_scale: float) -> dict[str, float | int | None]:
+    valid_values = [_float(item, 0.0) for item in values if item is not None and not pd.isna(item)]
+    if not valid_values:
+        return {
+            "sample_count": 0,
+            "median": None,
+            "mean": None,
+            "std": None,
+            "mad": None,
+            "scale": None,
+        }
+    series = pd.Series(valid_values, dtype="float64")
+    median = float(series.median())
+    mean = float(series.mean())
+    std = float(series.std(ddof=0)) if len(series) > 1 else 0.0
+    mad = float((series - median).abs().median()) if len(series) > 1 else 0.0
+    robust_scale = mad * 1.4826
+    scale = max(float(min_scale), std, robust_scale)
+    return {
+        "sample_count": int(len(series)),
+        "median": median,
+        "mean": mean,
+        "std": std,
+        "mad": mad,
+        "scale": scale,
+    }
+
+
+def _relative_reference_score(
+    value: Any,
+    values: list[Any],
+    *,
+    min_scale: float,
+    higher_is_better: bool = True,
+) -> tuple[float, dict[str, Any]]:
+    """Score one sector against the cross-sector median/mean reference.
+
+    Median is the neutral 50-point anchor. Dispersion uses the larger of
+    standard deviation, MAD-derived robust scale, and a metric-specific floor,
+    so a narrow distribution does not push every strong-looking sector to 100.
+    """
+
+    stats = _reference_stats(values, min_scale=min_scale)
+    if not stats.get("sample_count"):
+        payload = {**stats, "raw_value": None, "z_score": None}
+        return 0.0, payload
+    number = _float(value, 0.0)
+    median = _float(stats.get("median"), 0.0)
+    scale = max(_float(stats.get("scale"), min_scale), float(min_scale))
+    z_score = (number - median) / scale
+    if not higher_is_better:
+        z_score *= -1.0
+    score = _clip_score(50.0 + z_score * 18.0)
+    payload = {
+        "sample_count": stats["sample_count"],
+        "median": _round(stats.get("median"), 4),
+        "mean": _round(stats.get("mean"), 4),
+        "std": _round(stats.get("std"), 4),
+        "mad": _round(stats.get("mad"), 4),
+        "scale": _round(stats.get("scale"), 4),
+        "raw_value": _round(number, 4),
+        "z_score": _round(z_score, 4),
+    }
+    return score, payload
+
+
 def _sector_mainline_state(
     *,
     score: float,
@@ -1587,6 +1656,7 @@ def _build_trend_sectors(
         repair_days_5 = sum(1 for point in recent_points if point.get("repair"))
         resonance_days_5 = sum(1 for point in recent_points if point.get("resonance"))
         moneyflow_days_5 = sum(1 for point in recent_points if _float(point.get("main_net_inflow"), 0.0) > 0)
+        outperform_days_5_ratio = strong_days_5 / max(1, len(recent_points))
         outperform_days_5_score = _ratio_score(strong_days_5, len(recent_points))
         current_health_score = _clip_score(
             0.45 * sector_score
@@ -1620,7 +1690,7 @@ def _build_trend_sectors(
                     "current_health_score": _round(current_health_score, 2),
                     "leader_zhongjun_raw_score": _round(leader_zhongjun_raw, 2),
                     "risk_penalty": _round(risk_penalty, 2),
-                    "formula": "sector_mainline_score = 35%*20日相对强度分位 + 25%*60日相对强度分位 + 15%*近5日跑赢分 + 15%*成交额活跃分位 + 10%*龙头/中军反馈分位",
+                    "formula": "sector_mainline_score = 35%*20日相对强度参考分 + 25%*60日相对强度参考分 + 15%*近5日跑赢参考分 + 15%*成交额活跃参考分 + 10%*龙头/中军反馈参考分；参考分以全板块中位数为50，结合均值/离散度计算。",
                 },
                 "metrics": {
                     "return_5d": _round(return_5d, 4),
@@ -1649,6 +1719,7 @@ def _build_trend_sectors(
                 "_mainline_raw": {
                     "relative_return_20d": relative_return_20d,
                     "relative_return_60d": relative_return_60d,
+                    "outperform_days_5_ratio": outperform_days_5_ratio,
                     "amount_ratio_5": amount_ratio_5,
                     "leader_zhongjun": leader_zhongjun_raw,
                     "short_heat_score": short_heat_score,
@@ -1659,17 +1730,38 @@ def _build_trend_sectors(
 
     rel20_values = [row["_mainline_raw"]["relative_return_20d"] for row in trend_items]
     rel60_values = [row["_mainline_raw"]["relative_return_60d"] for row in trend_items]
+    outperform_ratio_values = [row["_mainline_raw"]["outperform_days_5_ratio"] for row in trend_items]
     amount_values = [row["_mainline_raw"]["amount_ratio_5"] for row in trend_items]
     leader_values = [row["_mainline_raw"]["leader_zhongjun"] for row in trend_items]
     for row in trend_items:
         raw = row["_mainline_raw"]
         scores = row["scores"]
         metrics = row["metrics"]
-        excess_20_score = _percentile_score(raw["relative_return_20d"], rel20_values)
-        excess_60_score = _percentile_score(raw["relative_return_60d"], rel60_values)
-        amount_ratio_score = _percentile_score(raw["amount_ratio_5"], amount_values)
-        leader_zhongjun_score = _percentile_score(raw["leader_zhongjun"], leader_values)
-        outperform_days_5_score = _float(scores.get("outperform_days_5_score"), 0.0)
+        excess_20_score, excess_20_ref = _relative_reference_score(
+            raw["relative_return_20d"],
+            rel20_values,
+            min_scale=0.025,
+        )
+        excess_60_score, excess_60_ref = _relative_reference_score(
+            raw["relative_return_60d"],
+            rel60_values,
+            min_scale=0.035,
+        )
+        outperform_days_5_score, outperform_days_5_ref = _relative_reference_score(
+            raw["outperform_days_5_ratio"],
+            outperform_ratio_values,
+            min_scale=0.18,
+        )
+        amount_ratio_score, amount_ratio_ref = _relative_reference_score(
+            raw["amount_ratio_5"],
+            amount_values,
+            min_scale=0.12,
+        )
+        leader_zhongjun_score, leader_zhongjun_ref = _relative_reference_score(
+            raw["leader_zhongjun"],
+            leader_values,
+            min_scale=10.0,
+        )
         sector_mainline_score = _clip_score(
             0.35 * excess_20_score
             + 0.25 * excess_60_score
@@ -1694,8 +1786,16 @@ def _build_trend_sectors(
                     "成交额活跃": _round(amount_ratio_score, 2),
                     "龙头中军反馈": _round(leader_zhongjun_score, 2),
                 },
+                "score_references": {
+                    "20日相对强度": excess_20_ref,
+                    "60日相对强度": excess_60_ref,
+                    "近5日跑赢": outperform_days_5_ref,
+                    "成交额活跃": amount_ratio_ref,
+                    "龙头中军反馈": leader_zhongjun_ref,
+                },
             }
         )
+        metrics["outperform_days_5_ratio"] = _round(raw["outperform_days_5_ratio"], 4)
         metrics["short_heat_score"] = _round(raw["short_heat_score"], 2)
 
     trend_items = sorted(
@@ -1760,7 +1860,8 @@ def _build_trend_sectors(
         row["trend_meaning"] = trend_meaning
         scores = row["scores"]
         row["evidence"] = [
-            f"主线分 {row['sector_mainline_score']}：20日相对分 {scores['excess_return_20d_score']}、60日相对分 {scores['excess_return_60d_score']}、近5日跑赢分 {scores['outperform_days_5_score']}、成交额分 {scores['sector_amount_ratio_score']}、龙头/中军分 {scores['leader_zhongjun_score']}。",
+            f"主线分 {row['sector_mainline_score']}：20日相对参考分 {scores['excess_return_20d_score']}、60日相对参考分 {scores['excess_return_60d_score']}、近5日跑赢参考分 {scores['outperform_days_5_score']}、成交额参考分 {scores['sector_amount_ratio_score']}、龙头/中军参考分 {scores['leader_zhongjun_score']}。",
+            f"参考系：所有板块横截面中位数作为 50 分锚点；20日相对中位数 {_pct_text((scores.get('score_references') or {}).get('20日相对强度', {}).get('median'))}、60日相对中位数 {_pct_text((scores.get('score_references') or {}).get('60日相对强度', {}).get('median'))}、成交额5日比中位数 {_float((scores.get('score_references') or {}).get('成交额活跃', {}).get('median'), 0.0):.2f}x。",
             f"近{metrics['actual_days']}/{window}个交易日跑赢/强势 {metrics['strong_days']} 天；60日相对大盘 {_pct_text(metrics.get('relative_return_60d'))}，20日相对大盘 {_pct_text(metrics.get('relative_return_20d'))}。",
             f"近5日相对大盘 {_pct_text(metrics.get('relative_return_5d'))}，只作为短线热度参考；状态 {state['sector_state_label']}，乘数 {state['sector_multiplier']}。",
         ]

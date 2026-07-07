@@ -1277,7 +1277,7 @@ objective = 0.5 * win_rate + 0.3 * reward_risk_ratio + 0.2 * sharpe_ratio
 | `sector_trends_cache` | 板块动向预计算缓存 | date + benchmark | 30 天 |
 | `market_part1_cache` | 大盘权限缓存 | date + benchmark | 30 天 |
 | `signal_events` | 每日信号事件流 | ticker + date | 永久 |
-| `breakout_events` | 突破事件追踪 | ticker + breakout_date | 90 天 |
+| `breakout_events` | 突破事件追踪（状态机：pending/tracking/settled/expired），见 20 章 Job 2 | ticker + breakout_date | 30 天（expired 之后不再回填） |
 | `holdings` | 持仓记录 | ticker | 永久 |
 | `holding_events` | 每日持仓状态 | ticker + date | 永久 |
 | `trades` | 完成的交易记录 | trade_id | 永久 |
@@ -1291,6 +1291,7 @@ objective = 0.5 * win_rate + 0.3 * reward_risk_ratio + 0.2 * sharpe_ratio
 
 **新增**：
 - `POST /api/v1/data/precompute-sectors`（已有）
+- `POST /api/v1/data/precompute-breakout-events`（Job 8，已上线）
 - `POST /api/v1/holdings`
 - `GET /api/v1/holdings`
 - `PATCH /api/v1/holdings/{ticker}`
@@ -1416,6 +1417,20 @@ objective = 0.5 * win_rate + 0.3 * reward_risk_ratio + 0.2 * sharpe_ratio
 | 静态资源版本 | 已完成 | `shilun/static/index.html`、`tests/test_ui_route.py` | 静态资源版本更新为 `20260706-ma5-v02-sector-trend`，避免浏览器继续使用旧趋势图脚本和样式。 |
 | 单元测试 | 已完成 MVP | `tests/test_market_sector.py` | 更新 engine version 断言，并新增 `mainline_rank`、20 日相对强度分、成交额活跃分等字段断言，保证趋势板块输出能解释排名。 |
 
+### 2026-07-06 · MVP-1 修正：主线分改为全板块参考值评分
+
+**完成状态**：已完成。修正“多个趋势板块主线分同时显示 100、20/60 日相对子分为空时仍像有效结果”的误导问题。
+
+**完成内容**：
+
+| PRD 阶段 | 状态 | 修改文件 | 修改内容 |
+|---|---|---|---|
+| 阶段 6：主线分参考系 | 已完成 | `shilun/market/sector.py` | `sector_mainline_score` 从分位/绝对阈值感评分升级为“全板块中位数/均值参考评分”：每个子分以横截面中位数为 50 分锚点，结合均值、标准差与 MAD 离散度计算相对强弱，避免所有热门板块同时被顶到 100。 |
+| 阶段 6：评分证据 | 已完成 | `shilun/market/sector.py` | 新增 `score_references`，返回每个子分的当前值、样本数、中位数、均值、标准差、MAD、标准化强度；证据文案同步说明参考系。 |
+| 阶段 6：缓存失效 | 已完成 | `shilun/market/sector.py` | `SECTOR_ENGINE_VERSION` 升级为 `market_sector_v4_ma5_v02_relative_mainline`，强制板块预计算重新生成，避免读取旧缓存。 |
+| 趋势板块展示 | 已完成 | `shilun/static/app.js`、`shilun/static/app.css` | 子分 chip hover 展示全板块参考值；若接口返回旧 `market_sector_v1` 或缺少新字段，页面展示旧缓存/旧后台警告，避免空指标继续误导。 |
+| 静态资源版本与测试 | 已完成 | `shilun/static/index.html`、`tests/test_ui_route.py`、`tests/test_market_sector.py` | 静态资源版本更新为 `20260706-ma5-v02-sector-relative`；测试新增 v4 引擎和 `score_references` 断言。 |
+
 **本次未完成但已留好接口的内容**：
 
 - 阶段 3：三大买点完整指标化，目前仅完成 `trade_timing_score` 的 MVP 评分和 `buy_point_type` 基础分类，尚未输出 PRD 要求的完整 6 条规则明细。
@@ -1431,3 +1446,484 @@ objective = 0.5 * win_rate + 0.3 * reward_risk_ratio + 0.2 * sharpe_ratio
 - 页面候选卡片应展示“最终 / 股票 / 买点 / 风险系数”四个新评分字段。
 - `final_trade_score` 使用公式：`trade_timing_score * market_multiplier * sector_multiplier * risk_adjustment`。
 - `graphify update .` 已纳入本次完成后的必跑步骤，用于同步知识图谱。
+
+---
+
+### 2026-07-06 · 阶段 4 Job 1：拆开 `ma5_breakout_flag` 与 `ma5_reclaim_flag`
+
+**背景**：在阅读现有实现时发现 `shilun/market/ma5_features.py:213` 处 `ma5_breakout_flag` 直接复用了 `_reclaim_flag()`，与 `ma5_reclaim_flag` 完全同源。这导致 `compute_trade_timing_score()` 里的 `buy_point_type` 分支永远走不到 `ma5_reclaim`（因为一旦 reclaim 成立、breakout 也一定成立，且 breakout 判定分支在前）。这是 v0.2 战法文档本身留下的一个歧义（第 8 章表格里两者的判定公式写法相同），需要在实现层拉开语义。
+
+**判定拆分**：
+
+| Flag | 语义 | 判定条件 |
+|---|---|---|
+| `ma5_reclaim_flag` | 从下方站回 MA5（假跌破修复） | `prev_close <= prev_ma5` 且 `close > ma5` |
+| `ma5_breakout_flag` | 已在 MA5 上方进一步加速走强 | `prev_close > prev_ma5` **且** `close > ma5 * 1.005` **且** `real_body_ratio > 0.35` **且** `close_position > 0.55` |
+
+两者语义严格互斥（`prev_close` 相对 `prev_ma5` 的相对位置决定命中哪一个），保证任何一天最多命中其中一个。突破 flag 的四条约束对应 v0.2 第 8 章"有效 MA5 突破规则"的第 2/4/5 条（第 3 条 `breakout_volume_ratio > 1.2` 在 `compute_ma5_breakout_score()` 里作为独立子项打分，不再做硬门槛，避免因为量能贴阈值就把整个 flag 打成 False）。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/market/ma5_features.py` | 新增 `_breakout_flag(latest, prev)`（line 102-127）；`build_ma_features()` 里 `ma5_breakout_flag` 从 `_reclaim_flag` 改为 `_breakout_flag`；`compute_trade_timing_score()` 的 `elif breakout["score"] >= 60` 分支加 `features.get("ma5_breakout_flag")` 前置条件，确保 `ma5_reclaim` 分支能被命中 |
+| `tests/test_ma5_features.py`（新） | 7 条测试覆盖：`_reclaim_flag` 正例、`_breakout_flag` 正例、`_breakout_flag` 的三条反例（收盘位置低 / 实体薄 / 突破幅度不足）、`compute_trade_timing_score` 在两种 flag 下的 buy_point_type 分支 |
+
+**验证**：
+- `pytest tests/test_ma5_features.py` 7 passed
+- `pytest tests/test_market_sector.py tests/test_candidate_rules.py` 5 passed（无回归）
+
+**遗留说明**：`ma5_features.py:225` 的 `post_breakout_shrink_ratio = volume_ratio_20`（当日量比伪装成突破后缩量）和 `ma5_features.py:385` 的 `next_day_score = 50`（固定值）两处占位仍在，需要 Job 2 引入 `breakout_events` 集合后才能替换成真实追踪数据。
+
+---
+
+### 2026-07-06 · 阶段 4 Job 2：新建 `breakout_events` 集合与数据层
+
+**背景**：Job 1 拆分了两个 flag，但 `compute_breakout_quality_score()` 里的 `next_day_score = 50` 和 `build_ma_features()` 里 `post_breakout_shrink_ratio = volume_ratio_20` 仍是占位。这两处都需要跨日追踪，必须先落地一张事件表。
+
+**Schema 与状态机**：
+
+| 字段类 | 字段 | 说明 |
+|---|---|---|
+| 基线 | `ticker` + `breakout_date`（唯一主键） | 突破发生日 |
+| 基线 | `breakout_close`、`breakout_ma5`、`breakout_volume`、`breakout_volume_ratio` | 突破当日基线 |
+| 基线 | `previous_high_20`、`previous_high_60`、`box_upper` | 突破前的阻力位 |
+| 基线 | `close_position`、`real_body_ratio` | 突破日 K 线质量 |
+| 追踪 | `post_bars: [{date, n, close, low, high, volume, volume_shrink_ratio, hold_ratio, fell_back_into_box}]` | T+1~T+5 逐日追加 |
+| 追踪 | `status ∈ {pending, tracking, settled, expired}` | 状态机 |
+| 聚合 | `post_breakout_drawdown_5d`、`post_breakout_shrink_ratio`、`next_day_hold_flag`、`previous_high_hold_ratio`、`fall_back_into_box_flag` | 每次追加 `post_bar` 时重算 |
+| 聚合 | `breakout_quality ∈ {valid, pending_confirmation, suspicious, failed}` | 四挡分类 |
+| 元 | `created_at`、`updated_at`、`engine_version = "breakout_v1"` | 版本管理 |
+
+**状态机迁移规则**：
+
+```
+Job 3 落库 baseline           →  status = "pending" (tracked_days=0)
+Job 4 追加第 1 根 post_bar    →  status = "tracking"
+Job 4 追加第 5 根 post_bar    →  status = "settled"
+Job 4 扫到超 30 自然日未 settle →  status = "expired"
+```
+
+只有 `status ∈ {pending, tracking}` 的事件会被 Job 4 每日回填任务扫到；`settled` 与 `expired` 冻结不动。
+
+**`breakout_quality` 分档规则**（Job 5 会直接读这个字段）：
+
+```
+failed              fall_back_into_box_flag == True 或 previous_high_hold_ratio < -2%
+suspicious          next_day_hold_flag == False 或 previous_high_hold_ratio 在 [-2%, -1%)
+pending_confirmation tracked_days < 5 且没有明确坏信号
+valid                前高守住 (>= 0) + 缩量 (< 1.0) + 次日守住 + tracked_days == 5
+```
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/common/db.py` | `ensure_indexes()` 新增三条：`uniq_breakout_event_scope (ticker, breakout_date)`、`idx_breakout_event_status_date`、`idx_breakout_event_date_desc` |
+| `shilun/market/breakout_events.py`（新） | 数据层：`BreakoutBaseline` / `PostBreakoutBar` dataclass；`upsert_breakout_event`（幂等）、`append_post_bar`（含状态迁移与聚合重算）、`classify_breakout_quality`、`get_breakout_event`、`get_latest_breakout_event`、`find_events_needing_backfill`（自动 expire 超龄事件）、`bulk_insert_baselines`；导出常量 `BREAKOUT_ENGINE_VERSION`、`TRACK_DAYS`、`COLLECTION_NAME` |
+| `tests/test_breakout_events.py`（新） | 13 条测试，用 in-memory `FakeCollection` 桩覆盖：baseline 首次 upsert / 重跑不清空 post_bars、批量插入计数、append 迁移状态、5 根后 settle、重复 T+n 拒绝、settled 事件拒绝再追加、`classify_breakout_quality` 四种分档、超龄 expire 逻辑 |
+
+**关键设计取舍**：
+
+1. **幂等 upsert**：`upsert_breakout_event()` 检测到已存在事件时只更新基线字段（不动 `post_bars/status/tracked_days/created_at`）。这是为了让 Job 3 可以安全重跑（例如脚本挂掉重启），不会把已经追踪到的 T+n 数据抹掉。
+2. **聚合字段在写入时算，不在读取时算**：每次 `append_post_bar()` 重算全部聚合字段。理由是 Job 5 和 Job 6 每天要读几百到几千次，写入侧算好比读取侧临时算更划算，也让 `breakout_quality` 字段本身就是"权威结论"。
+3. **`box_upper` 暂时等于 `previous_high_20`**：v0.2 战法文档里的箱体上沿定义偏模糊，MVP 期先用 20 日前高近似；Job 4 完成后再看是否要引入独立的箱体识别算法。
+4. **过期阈值 30 自然日**：`find_events_needing_backfill(max_age_days=30)` 会把超过 30 天仍未 settle 的事件标记为 `expired`。这个阈值考虑到节假日 + 停牌，比 T+5 * 5（周一到周五 = 7 自然日）宽松很多。
+
+**验证**：
+- `pytest tests/test_breakout_events.py` 13 passed
+- `pytest tests/test_ma5_features.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py` 14 passed（无回归）
+
+**Job 3 待办**：写一个函数 `detect_daily_breakouts(market_bars, analysis_date)` 遍历全市场，在 `analysis_date` 当天满足 `ma5_breakout_flag=True` 且量能达标的票，构造 `BreakoutBaseline` 批量入库。
+
+---
+
+### 2026-07-06 · 阶段 4 Job 3：突破日检测 + 事件落库
+
+**背景**：Job 2 完成了数据层，但没人往里写。Job 3 负责在每个交易日结束后扫全市场，找出当天新触发的突破，构造 `BreakoutBaseline` 落库。
+
+**判定口径**（比 `ma5_features._breakout_flag` 更严格：多加一条量能硬门槛）：
+
+| 阈值常量 | 值 | 说明 |
+|---|---|---|
+| `BREAKOUT_MIN_DISTANCE` | 0.005 | `close / ma5 - 1 >= 0.5%` |
+| `BREAKOUT_MIN_REAL_BODY_RATIO` | 0.35 | 阳线实体健康 |
+| `BREAKOUT_MIN_CLOSE_POSITION` | 0.55 | 收在当日中枢以上 |
+| `BREAKOUT_MIN_VOLUME_RATIO` | 1.2 | v0.2 第 8 章"有效 MA5 突破"第 3 条 |
+| `BREAKOUT_MIN_HISTORY_BARS` | 25 | 需足够历史算 `previous_high_20` |
+
+**为什么 Job 3 加量能硬门槛、`ma5_features._breakout_flag` 不加**：`breakout_events` 是要长期追踪的持久事件，宁缺毋滥；而 per-bar 特征提取里，量能作为 `compute_ma5_breakout_score()` 的独立子项参与打分，如果量能贴阈值就把整个 flag 打成 False，会让评分失去梯度。两处判定共用前四条约束，量能约束只加在落库侧。
+
+**函数分层**：
+
+```
+detect_daily_breakouts(stock_frame, analysis_date) -> list[BreakoutBaseline]   # 纯 pandas 逻辑，无 IO
+    ↓ 调用方决定是否落库
+bulk_insert_baselines(collection, baselines) -> {inserted, existing}           # 已有，Job 2
+    ↑ 上层入口
+precompute_breakout_events(store, analysis_date, ...) -> dict                  # 组装：读 Mongo → _prepare_stock_frame → detect → 落库
+```
+
+这样纯逻辑层独立可测（走 in-memory DataFrame），上层入口只是薄薄一层 IO 组装，Job 8 的 API 端点直接调 `precompute_breakout_events` 就行。
+
+**关键实现细节**：
+
+1. **只扫"当日就是这只票最新一根"的股票**：`if pd.Timestamp(latest_row["date"]) != target_ts: continue`，避免把停牌票的历史突破日误当成"今天新触发"。
+2. **`_prepare_stock_frame` 复用**：`precompute_breakout_events` 直接调 `sector._prepare_stock_frame`，共享 sector 已经算好的 `ma5/volume_ratio_20/close_position/real_body_ratio` 列，不会重复计算。
+3. **`box_upper = previous_high_20`**：MVP 期简化，Job 4 完成后再决定要不要独立识别箱体。
+4. **保护 dataclass 模块无 pandas 依赖**：`detect_daily_breakouts` 和 `precompute_breakout_events` 里的 `import pandas as pd` 是函数内局部导入，让 `breakout_events` 模块在没有 pandas 的环境（例如单纯需要状态机的场景）依然可以 import。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/market/breakout_events.py` | 顶部新增 5 个阈值常量；追加 `_previous_high`、`_is_breakout_bar`、`detect_daily_breakouts(stock_frame, analysis_date)`、`precompute_breakout_events(store, analysis_date, ...)` 四个函数 |
+| `tests/test_breakout_events.py` | 新增 `DetectDailyBreakoutsTest` 6 条测试：正例、量能不足、prev 破位、历史不足、跳过非当日最新的票、检测+落库联动 |
+
+**验证**：
+- `pytest tests/test_breakout_events.py` 19 passed
+- `pytest tests/test_ma5_features.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 19 passed（无回归）
+
+**Job 4 待办**：写 `backfill_post_bars(store, up_to_date)` —— 从 Mongo 读所有 `status ∈ {pending, tracking}` 的事件，按 `breakout_date` 后的每根新交易日追加到 `post_bars`，直至 T+5 或 30 日过期。这个函数应该幂等，可以每日多次跑。
+
+---
+
+### 2026-07-07 · 阶段 4 Job 4：T+1~T+5 日线回填
+
+**背景**：Job 3 落库了突破基线，但 `post_bars` 是空的、`breakout_quality` 只能是 `pending_confirmation`。Job 4 负责每日扫所有 pending/tracking 事件，把突破日之后的日线追加进去，直到 T+5 结算或 30 天过期。
+
+**关键实现细节**：
+
+1. **T+n 用交易日序号，不用日期差**：如果按 `date - breakout_date` 算 n，遇到周末/节假日就会跳号。正确做法是：取该 ticker 在 `breakout_date` 之后（严格大于）的所有 Mongo 日线，按日期升序，第一根就是 T+1，第二根 T+2……取前 5 根即为 T+1..T+5。这样节假日不影响 n 的连续性。
+
+2. **批量拉日线，一次 mongo query**：先从事件列表算出 `tickers` 集合与 `earliest_breakout`，然后 `store.raw_market.find_daily_bars(start_date=earliest_breakout, end_date=up_to_date, tickers=[...])` 一次拉全。避免 N 个事件 N 次查询。
+
+3. **幂等**：`append_post_bar` 会在同一 `n` 已存在时返回 False，函数内部也用 `existing_ns` 集合提前过滤。同一天多次跑不会重复写、不会破坏聚合字段。
+
+4. **超龄自动 expire**：`find_events_needing_backfill(max_age_days=30)` 会在扫描时就把超过 30 自然日仍未 settle 的事件置为 `expired`（Job 2 逻辑），Job 4 就自动不处理它们了。所以本函数返回的 `scanned` 数已经排除掉超龄事件。
+
+5. **`settled` 计数在最后重新读一次**：`append_post_bar` 内部会推进 status，但函数级返回需要单独统计"本次 backfill 让多少事件从 tracking 走到 settled"，所以在追加完所有 bar 后 `get_breakout_event` 复查一次。
+
+**函数签名与返回**：
+
+```python
+def backfill_post_bars(
+    store: Any,
+    *,
+    up_to_date: str,           # 追赶到哪天为止（含）
+    max_age_days: int = 30,    # 突破日距 up_to_date 超过这个天数就 expire
+) -> dict[str, Any]:
+    # 返回：{up_to_date, scanned, appended, settled}
+    #   scanned  - 本次实际处理的事件数（不含 expired）
+    #   appended - 本次新追加的 post_bar 总数（跨所有事件）
+    #   settled  - 本次从 tracking 迈进 settled 的事件数
+```
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/market/breakout_events.py` | 新增 `backfill_post_bars(store, *, up_to_date, max_age_days=30)`（约 70 行），插在 `precompute_breakout_events` 上方 |
+| `tests/test_breakout_events.py` | 新增 `FakeRawMarket` / `FakeStore` 桩 + `BackfillPostBarsTest` 7 条测试：一次跑完 pending→settled、幂等、部分回填、T+5 截断、多事件批处理、无日线时保持 pending、超龄事件自动 expire |
+
+**验证**：
+- `pytest tests/test_breakout_events.py` 26 passed（7 条新增全绿）
+- `pytest tests/test_ma5_features.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 19 passed（无回归）
+
+**Job 5 待办**：`compute_breakout_quality_score()` 在 `ma5_features.py:385` 处的 `next_day_score = 50` 是常量占位，需要改成读 `breakout_events` 集合里的 `breakout_quality` 字段（Job 2 已经算好了 valid/pending/suspicious/failed）。这要求 `compute_breakout_quality_score` 能拿到 store 或者预先注入的事件字典。设计选项在下一 Job 时再谈。
+
+---
+
+### 2026-07-07 · 阶段 4 Job 5：`compute_breakout_quality_score` 接入 `breakout_events`
+
+**背景**：`ma5_features.py` 里的 `compute_breakout_quality_score(features)` 有 4 个子分，其中 3 个原本读 features 层的当日快照字段（`previous_high_hold_ratio` / `fall_back_into_box_flag` / `post_breakout_shrink_ratio`），最后一个 `next_day_score` 直接是常量 50。这四个子分全部都应反映"突破后 5 天的真实追踪表现"，而不是"当日快照"。Job 5 把它们全部改成能从 `breakout_events` 读。
+
+**设计选择：keyword-only 可选参数注入，而不是让评分函数持有 store 句柄**
+
+方案对比：
+
+| 方案 | 优点 | 缺点 |
+|---|---|---|
+| A. 评分函数直接持 store 句柄 | 调用方省事 | 评分函数变成有状态、难单测，且每次评分都读 Mongo |
+| B. 上层调用方查好事件、注入 dict（选定） | 评分函数纯计算、可单测；调用方可批量查一次 Mongo | 调用方多一步组装 |
+
+选 B：`compute_breakout_quality_score(features, *, breakout_event=None)`。`breakout_event=None` 时保留原逻辑，作为"未追踪 / 系统刚上线 / 事件表还没建"时的 fallback，避免破坏没有事件的候选票。
+
+**改造细节**：
+
+| 子分 | 原来 | 现在（有 event 时） |
+|---|---|---|
+| `hold_score` | 读 `features["previous_high_hold_ratio"]`（当日 `low/前高-1`） | 读 `event["previous_high_hold_ratio"]`（追踪后 `min(low_n)/前高-1`） |
+| `box_score` | 读 `features["fall_back_into_box_flag"]`（当日是否跌回） | 读 `event["fall_back_into_box_flag"]`（追踪 5 天内是否跌回） |
+| `shrink_score` | 读 `features["post_breakout_shrink_ratio"]`（当日量比） | 读 `event["post_breakout_shrink_ratio"]`（追踪后 5 天均量/突破日量） |
+| `next_day_score` | 固定 50 | `next_day_hold_flag=True → 100, False → 0, None → 50` |
+
+输出多两个字段供前端和调试使用：
+
+```python
+{
+    "score": ...,
+    "grade": ...,
+    "source": "event" | "features",        # 新增：这次评分是不是接了真实追踪
+    "tracked_days": int,                   # 新增：event 里已经追踪几天
+    "breakout_quality": "valid" | "pending_confirmation" | "suspicious" | "failed" | None,  # 新增：直接透传 Job 2 分档
+    "parts": {...},
+}
+```
+
+`compute_trade_timing_score(features, *, breakout_event=None)` 也加了同样的 keyword-only 参数，把 event 透传给 `compute_breakout_quality_score`。因为是 keyword-only，`candidates.py:502` 现有的 `compute_trade_timing_score(ma5_features)` 单参数调用完全向后兼容，Job 6 再让 candidates 从 Mongo 查 event 传进来。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/market/ma5_features.py` | `compute_breakout_quality_score()` 与 `compute_trade_timing_score()` 各加 `breakout_event` keyword-only 参数；四个子分改成事件优先、features 回退；输出多 3 字段 |
+| `tests/test_ma5_features.py` | 新增 `BreakoutQualityScoreTest` 5 条测试：无事件时 fallback、有事件时覆盖 features、next_day_hold_flag=False→0、next_day_hold_flag=None→50、`compute_trade_timing_score` 正确透传 event |
+
+**验证**：
+- `pytest tests/test_ma5_features.py` 12 passed（5 条新增全绿）
+- `pytest tests/test_ma5_features.py tests/test_breakout_events.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 50 passed（无回归）
+
+**遗留说明**：`ma5_features.py:225` 的 `post_breakout_shrink_ratio = volume_ratio_20` 仍是 features 层占位。Job 6 会让 candidates.py 层在拿到 event 后直接把 event 的 `post_breakout_shrink_ratio` 覆写进 features，或者在评分时同时走 event 通道——两条路径必须一致，避免特征层和评分层数据不同步。
+
+**Job 6 待办**：`build_candidates()`（`shilun/market/candidates.py:361`）里，在跑 `compute_trade_timing_score(ma5_features)` 之前，用 `get_latest_breakout_event(collection, ticker, on_or_before=analysis_date)` 查一下最近事件，传给评分函数；同时把 event 里的 `post_breakout_shrink_ratio` 覆写到 `ma5_features`，让特征快照对外展示时也是真实值。
+
+---
+
+### 2026-07-07 · 阶段 4 Job 6：候选池接入 `breakout_events`
+
+**背景**：Job 5 让评分函数支持事件注入，但真正在 `build_candidates` 里跑评分的调用还是单参数（无事件）。同时 `ma5_features` 输出的 `post_breakout_shrink_ratio = volume_ratio_20`（当日量比）和 `previous_high_hold_ratio`（当日 `low/前高`）也仍是"当日快照"，前端看不到追踪后的真实值。Job 6 把 Job 2/4 落库+回填出来的 event 数据打通到候选池评分层和前端快照。
+
+**关键设计**：不让评分函数持 store 句柄，也不让 `build_candidates` 内部逐票发 Mongo query。改成 API 层批量拉一次 lookup，函数层只做纯查表 + 注入。
+
+```
+API 层 (shilun/api/__init__.py)                              纯 IO
+    ↓ build_latest_events_lookup(collection, on_or_before=date, lookback=30) → {ticker: event}
+sector.evaluate_sector_trends(..., breakout_events_lookup=lookup)   透传
+    ↓
+candidates.build_candidates(..., breakout_events_lookup=lookup)     纯查表 + 注入
+    ↓ 每只票：
+      event = lookup.get(ticker)
+      if event:
+          ma5_features[<追踪字段>] = event[<追踪字段>]   # 覆写快照
+      trade_timing = compute_trade_timing_score(ma5_features, breakout_event=event)
+```
+
+**覆写到 features 的字段**（Job 6 明确的 3 项）：
+
+| 字段 | features 层（覆写前） | event 层（覆写后） |
+|---|---|---|
+| `previous_high_hold_ratio` | 当日 `low / 前高 - 1` | 追踪后 `min(low_1..low_n) / 前高 - 1` |
+| `fall_back_into_box_flag` | 当日 `close < box_upper` | 追踪 5 天内是否至少有一天 `close < box_upper` |
+| `post_breakout_shrink_ratio` | 当日 `volume_ratio_20`（占位） | 追踪后 5 天均量 / 突破日量 |
+
+覆写发生在 `build_trade_plan()` 与 `compute_stock_quality_score()` 之前，让整条评分链条都看到真实值，避免"评分接了 event、特征快照还是老数据"的不一致。
+
+**候选卡输出新增字段 `breakout_tracking`**（供 Job 7 前端徽章使用）：
+
+```json
+{
+  "breakout_date": "2026-06-20",
+  "status": "settled" | "tracking" | "pending" | "expired",
+  "tracked_days": 5,
+  "breakout_quality": "valid" | "pending_confirmation" | "suspicious" | "failed",
+  "next_day_hold_flag": true,
+  "previous_high_hold_ratio": 0.008,
+  "post_breakout_shrink_ratio": 0.7,
+  "fall_back_into_box_flag": false
+}
+```
+
+无事件时 `breakout_tracking = None`（前端徽章直接不显示）。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/market/breakout_events.py` | 顶部 `datetime` import 补 `timedelta`；新增 `build_latest_events_lookup(collection, tickers=None, on_or_before=None, lookback_days=30)`：一次 Mongo query 拉出多只票各自最近一条事件，按 `breakout_date` 倒序遍历，同一 ticker 只保留最新一条 |
+| `shilun/market/candidates.py` | `build_candidates()` 加 keyword-only 参数 `breakout_events_lookup`；跑评分前把 event 的三个追踪字段覆写到 `ma5_features`；`compute_trade_timing_score(ma5_features, breakout_event=event)`；候选卡 dict 加 `breakout_tracking` 字段；`ma5_feature_snapshot` 补出三个追踪字段方便前端查看 |
+| `shilun/market/sector.py` | `evaluate_sector_trends()` 加 `breakout_events_lookup` 参数并透传给 `build_candidates()` |
+| `shilun/api/__init__.py` | `_compute_sector_trends_full()` 在调 `evaluate_sector_trends` 前调用新增的 `_load_breakout_events_lookup(store, target_date)`（内部封装 `build_latest_events_lookup`，集合不存在时静默返回 `{}`） |
+| `tests/test_breakout_events.py` | `FakeCollection._match` 补 `$gte / $gt` 支持；新增 `BuildLatestEventsLookupTest` 3 条测试：返回最新一条、超期过滤、ticker 过滤 |
+| `tests/test_market_sector.py` | `test_sector_trends_support_lightweight_initial_response` 增加"默认无 lookup 时 `breakout_tracking=None` 且评分 `source="features"`"断言；新增 `test_sector_trends_injects_breakout_events_lookup` 端到端验证注入路径 |
+
+**关键设计取舍**：
+
+1. **API 层批量查、函数层无 IO**：`_load_breakout_events_lookup` 用 `try/except` 包住 Mongo 调用，集合不存在或读失败静默返回 `{}`——这样 Job 3/4 还没跑过、事件表还空的时候 candidates 完全兼容，返回的候选池行为跟改造前一致（评分层走 features fallback）。
+2. **`ma5_features` 覆写而不是新增 `_from_event` 字段**：如果覆写而不是新增，`compute_stock_quality_score` / `compute_ma5_pullback_score` / `build_trade_plan` 等所有下游函数都自动看到真实值，不需要一处处改。
+3. **候选卡加独立 `breakout_tracking` 字段**：前端不用去 `score_breakdown` 深处翻，Job 7 加徽章直接读顶层这个字段即可。
+4. **lookup 用 `lookback_days=30`**：与 Job 2 的 `max_age_days` 保持一致，超期事件本来就是 `expired`，也不该覆写候选票的评分。
+
+**验证**：
+- `pytest tests/test_breakout_events.py` 29 passed（3 条新增全绿）
+- `pytest tests/test_market_sector.py` 5 passed（1 条新增 + 现有测试补断言全绿）
+- `pytest tests/test_ma5_features.py tests/test_breakout_events.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 54 passed（无回归；`tests/test_market_part1.py::test_attack_permission_...` 单独在本次修改前就已存在的失败，与 Job 6 无关）
+
+**Job 7 待办**：前端候选池卡片：读 `candidate.breakout_tracking`，加一个色块徽章（`valid=绿`、`pending_confirmation=灰`、`suspicious=橙`、`failed=红`），hover 展示 `tracked_days / next_day_hold_flag / previous_high_hold_ratio / post_breakout_shrink_ratio` 明细。同时 `index.html` 静态资源版本号要升级避免浏览器缓存。
+
+---
+
+### 2026-07-07 · 阶段 4 Job 7：前端真假突破徽章
+
+**背景**：Job 6 已经把 `breakout_tracking` 顶层字段挂到候选卡上，但前端还没渲染。用户看不到"这只票的突破是不是真的稳住了"。Job 7 加一颗色块徽章。
+
+**渲染位置**：候选卡评分行末尾，紧跟"风险系数"。选这里因为：
+
+- `breakout_quality` 语义上是评分类信息（"这次突破算多有效"），跟旁边的 `最终 / 股票 / 买点 / 风险系数` 是同一维度
+- 不占独立行，紧凑模式下也不额外挤空间
+- 只有在有事件时才出现，没有事件时评分行行长完全不变，视觉稳定
+
+**四挡颜色与文案**：
+
+| breakout_quality | 徽章文案 | 颜色（背景 / 文字） |
+|---|---|---|
+| `valid` | 突破有效 | 绿（`rgba(46,204,113,0.18)` / `#10b981`） |
+| `pending_confirmation` | 突破待确认 | 灰（`rgba(157,152,143,0.14)` / `var(--muted)`） |
+| `suspicious` | 突破可疑 | 橙（`rgba(255,160,80,0.18)` / `#f5a623`） |
+| `failed` | 突破失败 | 红（`rgba(232,67,67,0.18)` / `var(--color-up)`） |
+
+（红对应"失败"、绿对应"有效"，与 A 股 UI 上"绿跌红涨"的口径无关——这里是通用状态色。）
+
+**Hover tooltip**（用 `title` 原生实现，避免额外弹层组件）：
+
+```
+突破日 2026-06-20 · T+5 · 前高守 0.80% · 缩量比 0.70 · 次日 守 · 未跌回 · 状态 settled
+```
+
+包含 7 个字段：突破日、追踪进度、前高守 %、缩量比、次日守/破/-、是否跌回箱体、当前状态。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/static/app.js` | `renderCandidates()` 里新增局部函数 `breakoutQualityBadge(tracking)`，接受 `candidate.breakout_tracking`；候选卡评分行末尾拼接徽章 HTML |
+| `shilun/static/app.css` | 新增 5 条样式：`.breakout-badge` 基础样式 + 四挡颜色 `.breakout-valid` / `.breakout-pending_confirmation` / `.breakout-suspicious` / `.breakout-failed` |
+| `shilun/static/index.html` | 静态资源版本 `20260706-ma5-v02-sector-relative` → `20260707-ma5-v02-breakout-tracking`（CSS + JS 两处） |
+| `tests/test_ui_route.py` | 更新版本号断言 |
+
+**关键设计取舍**：
+
+1. **`title` 原生 tooltip 而不是 hover 弹层**：不引入新的 JS 组件，PC 端就能用；移动端长按也能触发。够用不折腾。
+2. **CSS class 名直接拼 `breakout_quality` 值**：`breakout-${grade}`，字段和类名一一对应，将来后端 `breakout_quality` 枚举扩展时前端只加 CSS 就行，不用改 JS 逻辑。
+3. **`escapeHtml(tooltipParts.join(" · "))`**：拼 tooltip 之前统一 escape，避免用户数据里出现 `<` 之类字符污染 DOM。
+4. **有 `tracking` 但 `breakout_quality` 空时返回空串**：保守起见，只信任事件里明确写了 `breakout_quality` 分档的情况才展示徽章。刚落库还没算过分档的 pending 事件不显示徽章。
+
+**验证**：
+- `node --check shilun/static/app.js`：语法 OK
+- `pytest tests/test_ui_route.py tests/test_ma5_features.py tests/test_breakout_events.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py` 54 passed（无回归）
+
+**Job 8 待办**：加 `POST /api/v1/data/precompute-breakout-events` 端点，方便日终手动触发 Job 3 检测和 Job 4 回填。返回 `{detected, inserted, existing, appended, settled}`，供运维日志留档。同时补一条 `/api/v1/data/status` 里的 `breakout_events` 集合健康度指标。
+
+---
+
+### 2026-07-07 · 阶段 4 Job 8：API 触发端点 + 集合健康度
+
+**背景**：Job 3/4 已经有独立的 Python 函数 `precompute_breakout_events` / `backfill_post_bars`，但没有 HTTP 入口，日终必须写脚本才能触发。同时 `/api/v1/data/status` 只报了 Tushare / akshare 相关的原始数据集，PART3 是否有可用的 `breakout_events` 表在页面上看不见。Job 8 把这两个洞补上，收尾整个阶段 4。
+
+**新端点：`POST /api/v1/data/precompute-breakout-events`**
+
+Query 参数（都可选，均有合理默认值）：
+
+| 参数 | 默认 | 说明 |
+|---|---|---|
+| `date` | 今天（避周末） | 分析日 |
+| `lookback_days` | 90 | 检测时向前拉多少个自然日日线（够算 `previous_high_60`） |
+| `max_age_days` | 30 | 回填时事件超龄阈值，超过就 `expired` 并跳过 |
+| `exclude_st` | true | 是否剔除 ST |
+| `skip_detect` | false | 只跑回填，不检测新突破（快速补 T+n 用） |
+| `skip_backfill` | false | 只跑检测，不做回填（突破日当晚，T+1 还没数据） |
+
+工作流：
+
+```
+1. precompute_breakout_events(store, date, ...)   → Job 3 检测 + 落库
+   ↓ 返回 {detected, inserted, existing, ...}
+2. backfill_post_bars(store, up_to_date=date, ...) → Job 4 回填 T+1..T+5
+   ↓ 返回 {scanned, appended, settled}
+3. HTTP 200: {status, detect_time_seconds, backfill_time_seconds, detect, backfill, message}
+```
+
+`message` 字段合成一句人类可读日志，例如：
+
+```
+检测 12 条（新增 5，已存在 7） · 回填扫描 34 条，追加 42 根 T+n，本次 6 条 settled
+```
+
+方便运维直接把 message 贴到日志系统里做检索。
+
+**扩展 `/api/v1/data/status` 的数据集清单**
+
+新增一条 dataset 项：
+
+```json
+{
+  "key": "breakout_events",
+  "label": "突破事件追踪（Job 3/4 输出）",
+  "tier": "enhanced",
+  "source": "shilun.market.breakout_events",
+  "value": <total>,
+  "ok": <total > 0 且有 latest_breakout_date>,
+  "detail": "共 N 条（settled S · 追踪中 T），最新突破日 YYYY-MM-DD",
+  "impact_on_miss": "PART3 候选池 breakout_quality 徽章缺失，评分退化为 features 层 fallback",
+  "extras": {
+    "settled": <settled_count>,
+    "tracking": <pending_or_tracking_count>,
+    "latest_breakout_date": "YYYY-MM-DD"
+  }
+}
+```
+
+`tier = enhanced` 有意选的：事件表缺失不会阻断 PART3 主流程（Job 5 的 features fallback 兜底），所以它归到"缺失后功能降级"档，而不是"blocked"。
+
+**修改文件**：
+
+| 文件 | 修改 |
+|---|---|
+| `shilun/api/__init__.py` | 新增 `@ui_router.post("/api/v1/data/precompute-breakout-events")` 端点函数 `precompute_breakout_events_endpoint`（约 80 行），内部按顺序调 `precompute_breakout_events` + `backfill_post_bars`，支持 `skip_detect / skip_backfill` 分支；`data_status()` 里加 `breakout_events_col.count_documents` 三条统计 + 一条 dataset entry |
+| `tests/test_breakout_events_api.py`（新） | 4 条集成测试：`skip_both`、`skip_detect` 仍跑回填、Mongo 未配置返回 400、事件表全空时 `message` 说明；`FakeStore` 打桩不需要真 Mongo |
+| `docs/ma5_v0.2_改造PRD.md` | 附录 C 补 `POST /api/v1/data/precompute-breakout-events`；Section 20 追加本 Job 记录 |
+
+**关键设计取舍**：
+
+1. **检测在前、回填在后，一次 HTTP 请求跑完两阶段**：日终只需要一次调用。运维不用记两个端点，也避免检测/回填之间时间差导致的时序 bug。
+2. **`skip_detect` / `skip_backfill` 双开关**：给两种真实场景各留一个入口——白天想快速补 T+n 时 `skip_detect=true`；突破日当晚想立刻检测但当日还没结算日线时 `skip_backfill=true`。默认两个都跑，最常用。
+3. **两阶段独立计时和返回**：`detect_time_seconds` / `backfill_time_seconds` 分开，方便定位到底是哪一阶段慢。
+4. **`data_status` 里 breakout_events 归为 enhanced**：事件表缺失只导致 `breakout_quality` 徽章消失、评分降级为 features 层 fallback，不阻断候选池主流程——归 `blocked` 会误导用户以为系统不能用。
+5. **端点函数不写缓存**：Job 3/4 的落库本身就是"权威结果"，不需要 sector_trends_cache 那种额外的 payload 缓存。
+
+**验证**：
+- `pytest tests/test_breakout_events_api.py` 4 passed
+- `pytest tests/test_ma5_features.py tests/test_breakout_events.py tests/test_breakout_events_api.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 58 passed（无回归）
+- `ui_router.routes` 里能查到 `/api/v1/data/precompute-breakout-events` 路径注册成功
+
+**阶段 4 收尾**：Job 1-8 全部完成。整条链路打通：
+
+```
+每日交易日结束：
+    POST /api/v1/data/precompute-breakout-events?date=YYYY-MM-DD
+        ↓ Job 3：detect_daily_breakouts()  → breakout_events 落库
+        ↓ Job 4：backfill_post_bars()      → 回填 T+1..T+5
+        ↓ Job 2：状态推进 pending → tracking → settled
+        ↓ classify_breakout_quality()      → valid/pending/suspicious/failed
+    ↓
+    GET /api/v1/market/sectors?date=...
+        ↓ Job 6：_load_breakout_events_lookup(store, date) → {ticker: event}
+        ↓ build_candidates(..., breakout_events_lookup)
+        ↓ Job 5：compute_breakout_quality_score(features, breakout_event=event)
+        ↓ 每个候选卡输出 breakout_tracking 字段
+    ↓
+    前端候选池 Tab：
+        ↓ Job 7：candidate.breakout_tracking → 色块徽章 + tooltip
+```
+
+Job 1 拆开的 flag 保证突破/站回分辨清；Job 2-4 让追踪数据落库；Job 5-6 让评分接真实数据；Job 7 让用户能看见；Job 8 提供触发和监控入口。三处占位（`ma5_breakout_flag = _reclaim_flag` / `post_breakout_shrink_ratio = volume_ratio_20` / `next_day_score = 50`）全部被真实追踪数据替换。
+
+**下一阶段建议**（PRD 里未做的）：
+- 阶段 3 补齐：三大买点 6 条规则明细化（`buy_point_type` 从 MVP 分类升到详细命中规则）
+- 阶段 5：前端量价 8 个 chip 标签
+- 阶段 7（★关键缺口）：卖出信号 + 持仓管理，让系统从"选股"跨到"交易闭环"
+- 阶段 8：账户破窗
+- 阶段 10：回测框架
+
+---
+

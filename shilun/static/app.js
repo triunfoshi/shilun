@@ -53,6 +53,44 @@ let runtimeStatus = {};
     function selectedTrendPoolTickers() {
       return Object.keys(selectedTrendPool).filter(Boolean);
     }
+    function normalizeTrendPoolTicker(ticker) {
+      return String(ticker || "").trim().toUpperCase();
+    }
+    function updateTrendPoolControlState(ticker) {
+      const normalized = normalizeTrendPoolTicker(ticker);
+      if (!normalized) return;
+      document.querySelectorAll(".trend-pool-check").forEach((input) => {
+        if (normalizeTrendPoolTicker(input.dataset && input.dataset.ticker) === normalized) {
+          input.checked = Boolean(selectedTrendPool[normalized]);
+        }
+      });
+      document.querySelectorAll("[data-trend-pool-button]").forEach((button) => {
+        if (normalizeTrendPoolTicker(button.dataset && button.dataset.ticker) !== normalized) return;
+        const active = Boolean(selectedTrendPool[normalized]);
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+        button.textContent = active ? "已加入盘中监控" : "加入盘中监控";
+      });
+      const summary = document.getElementById("trendPoolSummary");
+      if (summary) summary.innerHTML = renderTrendPoolSummary();
+    }
+    function setTrendPoolCandidate(payload, selected) {
+      const ticker = normalizeTrendPoolTicker(payload && payload.ticker);
+      if (!ticker) return;
+      if (selected) {
+        selectedTrendPool[ticker] = {
+          ticker,
+          name: payload.name || ticker,
+          sector_name: payload.sector_name || "",
+          source: payload.source || "manual",
+          selected_at: new Date().toISOString(),
+        };
+      } else {
+        delete selectedTrendPool[ticker];
+      }
+      saveTrendPool();
+      updateTrendPoolControlState(ticker);
+    }
     const chineseJsonLabels = {
       target_date: "同步目标日期", sync_trade_date: "实际同步交易日", start_date: "同步起始日期", end_date: "同步结束日期",
       calendar_start: "交易日历起始日期", calendar_end: "交易日历结束日期", daily_trade_date: "日线探测交易日",
@@ -1463,8 +1501,17 @@ let runtimeStatus = {};
         </div>
       `;
     }
+    function trendReferenceTitle(label, ref) {
+      if (!ref || typeof ref !== "object" || !ref.sample_count) return "";
+      const median = ref.median === null || ref.median === undefined ? "-" : Number(ref.median).toFixed(4);
+      const mean = ref.mean === null || ref.mean === undefined ? "-" : Number(ref.mean).toFixed(4);
+      const raw = ref.raw_value === null || ref.raw_value === undefined ? "-" : Number(ref.raw_value).toFixed(4);
+      const z = ref.z_score === null || ref.z_score === undefined ? "-" : Number(ref.z_score).toFixed(2);
+      return `${label}：当前值 ${raw}；全板块中位数 ${median}，均值 ${mean}，样本 ${ref.sample_count}，标准化 ${z}`;
+    }
     function renderTrendScoreBreakdown(item) {
       const scores = item.scores || {};
+      const references = scores.score_references || {};
       const parts = [
         ["20日相对", scores.excess_return_20d_score],
         ["60日相对", scores.excess_return_60d_score],
@@ -1474,18 +1521,30 @@ let runtimeStatus = {};
       ];
       return `
         <div class="trend-score-breakdown" aria-label="主线分拆解">
-          ${parts.map(([label, value]) => `
-            <span class="trend-score-chip">
+          ${parts.map(([label, value]) => {
+            const refKey = label === "20日相对" ? "20日相对强度"
+              : label === "60日相对" ? "60日相对强度"
+              : label === "成交额" ? "成交额活跃"
+              : label === "龙头中军" ? "龙头中军反馈"
+              : label;
+            const title = trendReferenceTitle(refKey, references[refKey]);
+            return `
+            <span class="trend-score-chip" ${title ? `title="${escapeHtml(title)}"` : ""}>
               <b>${escapeHtml(label)}</b>
               <strong>${escapeHtml(value === null || value === undefined ? "-" : Number(value).toFixed(1))}</strong>
-            </span>
-          `).join("")}
+            </span>`;
+          }).join("")}
         </div>
       `;
     }
     function renderTrendSectors(data) {
       const trends = data.trend_sectors || [];
       const lookback = data.trend_lookback_days || (trends[0] && trends[0].metrics && trends[0].metrics.lookback_days) || 60;
+      const engineVersion = String(data.engine_version || "");
+      const stalePayload = engineVersion === "market_sector_v1" || trends.some((item) => {
+        const scores = item.scores || {};
+        return !scores.score_breakdown || !scores.score_references || !item.sector_state_label || item.sector_mainline_score === null || item.sector_mainline_score === undefined;
+      });
       return `
         <section id="sector-trends" class="sector-feature">
           <div class="feature-kicker">功能区二 · ${escapeHtml(lookback)}-Day Trend</div>
@@ -1495,6 +1554,11 @@ let runtimeStatus = {};
               <p>用过去 ${escapeHtml(lookback)} 个交易日的 20日相对强度、60日相对强度、近5日跑赢、成交额活跃和龙头/中军反馈综合排序；5日收益只作为短线热度参考。</p>
             </div>
           </div>
+          ${stalePayload ? `
+            <div class="stale-cache-warning">
+              当前板块趋势仍是旧缓存或旧后台输出（${escapeHtml(engineVersion || "unknown")}），缺少 MA5 v0.2 相对参考分。请重启后台后点击“预计算板块数据”，再重新查询。
+            </div>
+          ` : ""}
           ${trends.length ? `
             <div class="trend-board">
               ${trends.slice(0, 6).map((item, index) => `
@@ -1625,19 +1689,12 @@ let runtimeStatus = {};
     function toggleTrendPoolCandidate(checkbox) {
       const ticker = checkbox && checkbox.dataset ? checkbox.dataset.ticker : "";
       if (!ticker) return;
-      if (checkbox.checked) {
-        selectedTrendPool[ticker] = {
-          ticker,
-          name: checkbox.dataset.name || ticker,
-          sector_name: checkbox.dataset.sector || "",
-          selected_at: new Date().toISOString(),
-        };
-      } else {
-        delete selectedTrendPool[ticker];
-      }
-      saveTrendPool();
-      const summary = document.getElementById("trendPoolSummary");
-      if (summary) summary.innerHTML = renderTrendPoolSummary();
+      setTrendPoolCandidate({
+        ticker,
+        name: checkbox.dataset.name || ticker,
+        sector_name: checkbox.dataset.sector || "",
+        source: "sector_candidate",
+      }, checkbox.checked);
     }
     function renderCandidates(candidates) {
       const card = document.getElementById("candidatesCard");
@@ -1667,6 +1724,34 @@ let runtimeStatus = {};
       const riskTags = (flags) => {
         if (!flags || !flags.length) return "";
         return flags.map((f) => `<span class="risk-flag">${escapeHtml(f)}</span>`).join(" ");
+      };
+
+      // Job 7：真假突破追踪徽章。读 candidate.breakout_tracking，四挡颜色 + hover 明细。
+      const breakoutQualityBadge = (tracking) => {
+        if (!tracking || !tracking.breakout_quality) return "";
+        const labels = {
+          valid: "突破有效",
+          pending_confirmation: "突破待确认",
+          suspicious: "突破可疑",
+          failed: "突破失败",
+        };
+        const grade = String(tracking.breakout_quality || "").toLowerCase();
+        const label = labels[grade] || "突破追踪";
+        const pct = (v) => (v == null || Number.isNaN(Number(v)))
+          ? "-"
+          : (Number(v) * 100).toFixed(2) + "%";
+        const nextDay = tracking.next_day_hold_flag === true ? "守"
+          : tracking.next_day_hold_flag === false ? "破" : "-";
+        const tooltipParts = [
+          `突破日 ${tracking.breakout_date || "-"}`,
+          `T+${tracking.tracked_days ?? 0}`,
+          `前高守 ${pct(tracking.previous_high_hold_ratio)}`,
+          `缩量比 ${tracking.post_breakout_shrink_ratio == null ? "-" : Number(tracking.post_breakout_shrink_ratio).toFixed(2)}`,
+          `次日 ${nextDay}`,
+          tracking.fall_back_into_box_flag ? "跌回箱体" : "未跌回",
+          `状态 ${tracking.status || "-"}`,
+        ];
+        return `<span class="breakout-badge breakout-${grade}" title="${escapeHtml(tooltipParts.join(" · "))}">${escapeHtml(label)}</span>`;
       };
 
       // 判断整体是否有任何一只候选发生了 gate 降级；决定是否显示"降级"列
@@ -1754,7 +1839,7 @@ let runtimeStatus = {};
             <div><span>RR</span><strong>${escapeHtml(rr)}</strong><small>收益/风险</small></div>
           </div>
           <div class="candidate-scan-lines">
-            <p><b>评分</b><span>最终 ${qualityBadge(c.final_trade_score ?? c.entry_quality ?? 0)} · 股票 ${escapeHtml(String(c.stock_quality_score ?? "-"))} · 买点 ${escapeHtml(String(c.trade_timing_score ?? "-"))} · 风险系数 ${escapeHtml(String(c.risk_adjustment ?? "-"))}</span></p>
+            <p><b>评分</b><span>最终 ${qualityBadge(c.final_trade_score ?? c.entry_quality ?? 0)} · 股票 ${escapeHtml(String(c.stock_quality_score ?? "-"))} · 买点 ${escapeHtml(String(c.trade_timing_score ?? "-"))} · 风险系数 ${escapeHtml(String(c.risk_adjustment ?? "-"))} ${breakoutQualityBadge(c.breakout_tracking)}</span></p>
             <p><b>趋势</b><span>MA5 ${escapeHtml(String(c.ma5 ?? "-"))} · MA8 ${formatCandidatePrice(plan.ma8)} · RSI ${Number.isFinite(Number(c.rsi)) ? Number(c.rsi).toFixed(1) : "-"} · 旧质量 ${qualityBadge(c.entry_quality ?? 0)} · 5日 ${colorPercent(c.return_5d)}</span></p>
             <p><b>位置</b><span>收盘 ${escapeHtml(String(c.close ?? "-"))} · 支撑 ${formatCandidatePrice(plan.support)} · 压力 ${formatCandidatePrice(plan.pressure)}</span></p>
           </div>
@@ -3119,6 +3204,38 @@ let runtimeStatus = {};
       const rr = candidateRewardRisk({ buy, target }, stop);
       return { buy, target, stop, rr };
     }
+    function stockPanelTrendPoolPayload(data) {
+      const basic = (data && data.basic) || {};
+      const rt = (data && data.realtime) || {};
+      const ticker = normalizeTrendPoolTicker(data && data.ticker);
+      return {
+        ticker,
+        name: basic.name || rt.name || ticker,
+        sector_name: basic.industry || "",
+        source: "stock_panel",
+      };
+    }
+    function renderStockMonitorButton(data) {
+      const payload = stockPanelTrendPoolPayload(data);
+      if (!payload.ticker) return "";
+      const active = Boolean(selectedTrendPool[payload.ticker]);
+      return `
+        <button
+          type="button"
+          class="secondary sv-monitor-button ${active ? "is-active" : ""}"
+          data-trend-pool-button="stock-panel"
+          data-ticker="${escapeHtml(payload.ticker)}"
+          onclick="toggleStockPanelTrendPool()"
+          aria-pressed="${active ? "true" : "false"}"
+        >${active ? "已加入盘中监控" : "加入盘中监控"}</button>
+      `;
+    }
+    function toggleStockPanelTrendPool() {
+      if (!stockPanelData) return;
+      const payload = stockPanelTrendPoolPayload(stockPanelData);
+      if (!payload.ticker) return;
+      setTrendPoolCandidate(payload, !selectedTrendPool[payload.ticker]);
+    }
     function renderStockStrategyCard(data) {
       const strategy = stockStrategySnapshot(data);
       const verdict = stockPanelVerdict(data);
@@ -3191,6 +3308,7 @@ let runtimeStatus = {};
                 <span class="sv-meta muted">已收盘/实时 · ${escapeHtml(data.analysis_date || "-")}</span>
               </div>
               <div class="sv-header-actions">
+                ${renderStockMonitorButton(data)}
                 <button onclick="runStockPanel()" class="secondary">刷新</button>
                 ${rt.update_at ? `<small class="muted">行情 ${escapeHtml(rt.update_at.slice(11, 19))}</small>` : '<small class="muted">行情时间待更新</small>'}
               </div>
@@ -3277,6 +3395,12 @@ let runtimeStatus = {};
         return Number((slice.reduce((sum, item) => sum + item, 0) / slice.length).toFixed(2));
       });
     }
+    function stockChartTickLabel(label, dailyView) {
+      const text = String(label || "");
+      if (dailyView) return text;
+      if (text.includes("T")) return text.slice(11, 16);
+      return text.length > 8 ? text.slice(-8) : text;
+    }
 
     function drawStockChart(view) {
       if (!stockPanelData) return;
@@ -3328,9 +3452,19 @@ let runtimeStatus = {};
       });
 
       const signalPoints = filteredSignals.map(s => {
-        const idx = bars.findIndex(b => (b.date || b.datetime).startsWith(s.date));
+        const signalDate = String(s.date || "");
+        const idx = bars.findIndex(b => String(b.date || b.datetime || "").startsWith(signalDate));
         if (idx < 0) return null;
-        return { x: bars[idx].date || bars[idx].datetime, y: s.price, sig: s };
+        const price = Number(s.price);
+        const close = Number(bars[idx].close);
+        const yValue = Number.isFinite(price) ? price : close;
+        if (!Number.isFinite(yValue)) return null;
+        return {
+          x: labels[idx],
+          y: yValue,
+          sig: { ...s, date: signalDate || String(labels[idx] || "") },
+          barIndex: idx,
+        };
       }).filter(Boolean);
 
       const bullPts = signalPoints.filter(p => p.sig.direction === "bullish");
@@ -3454,7 +3588,11 @@ let runtimeStatus = {};
               borderWidth: 1,
               padding: 12,
               callbacks: {
-                title: (items) => items.length ? items[0].label : "",
+                title: (items) => {
+                  const signalItem = items.find((item) => item.raw && item.raw.sig);
+                  if (signalItem) return signalItem.raw.sig.date || signalItem.raw.x || signalItem.label || "";
+                  return items.length ? items[0].label : "";
+                },
                 label: (ctx) => {
                   if (ctx.datasetIndex <= (dailyView ? 4 : 0)) {
                     const row = bars[ctx.dataIndex] || {};
@@ -3474,7 +3612,25 @@ let runtimeStatus = {};
             },
           },
           scales: {
-            x: { grid: { display: false }, ticks: { maxTicksLimit: 7, font: { size: 11 }, color: "#8da0b8" }, border: { display: false } },
+            x: {
+              grid: { display: false },
+              ticks: {
+                autoSkip: false,
+                maxRotation: 0,
+                font: { size: 11 },
+                color: "#8da0b8",
+                callback: function(value) {
+                  const lastIndex = labels.length - 1;
+                  if (lastIndex <= 0) return stockChartTickLabel(this.getLabelForValue(value), dailyView);
+                  const step = Math.max(1, Math.ceil(lastIndex / 6));
+                  if (value === 0 || value === lastIndex || value % step === 0) {
+                    return stockChartTickLabel(this.getLabelForValue(value), dailyView);
+                  }
+                  return "";
+                },
+              },
+              border: { display: false },
+            },
             y: { grid: { color: "rgba(148, 163, 184, 0.18)" }, ticks: { font: { size: 11 }, color: "#8da0b8" }, border: { display: false } },
           },
           onClick: (evt, elements) => {

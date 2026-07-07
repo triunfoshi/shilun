@@ -444,6 +444,17 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
         )
         north_latest_date = north_latest_doc[0].get("trade_date") if north_latest_doc else None
 
+        # ── 增强：突破事件表（Job 8） ─────────────────────────────────
+        breakout_events_col = store.collection("breakout_events")
+        breakout_total = breakout_events_col.count_documents({})
+        breakout_settled = breakout_events_col.count_documents({"status": "settled"})
+        breakout_tracking = breakout_events_col.count_documents({"status": {"$in": ["pending", "tracking"]}})
+        breakout_latest_doc = list(
+            breakout_events_col.find({}, {"_id": 0, "breakout_date": 1})
+            .sort("breakout_date", -1).limit(1)
+        )
+        breakout_latest_date = breakout_latest_doc[0].get("breakout_date") if breakout_latest_doc else None
+
         # ── 汇总：每类数据状态 ─────────────────────────────────────────
         datasets = [
             {
@@ -522,6 +533,25 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
                 "ok": north_total > 100,
                 "detail": f"北向资金 {north_total} 条历史，最新 {north_latest_date or '暂无'}",
                 "impact_on_miss": "PART1 北向资金维度缺失",
+            },
+            {
+                "key": "breakout_events",
+                "label": "突破事件追踪（Job 3/4 输出）",
+                "tier": "enhanced",
+                "source": "shilun.market.breakout_events",
+                "value": breakout_total,
+                # 有事件 + 最新一条不早于 15 天，才算健康
+                "ok": bool(breakout_total > 0 and breakout_latest_date),
+                "detail": (
+                    f"共 {breakout_total} 条（settled {breakout_settled} · 追踪中 {breakout_tracking}）"
+                    f"，最新突破日 {breakout_latest_date or '暂无'}"
+                ),
+                "impact_on_miss": "PART3 候选池 breakout_quality 徽章缺失，评分退化为 features 层 fallback",
+                "extras": {
+                    "settled": breakout_settled,
+                    "tracking": breakout_tracking,
+                    "latest_breakout_date": breakout_latest_date,
+                },
             },
         ]
 
@@ -718,6 +748,10 @@ def _compute_sector_trends_full(
         store.raw_market.find_moneyflow(start_date=moneyflow_start, end_date=target_date)
     )
     gate = _load_market_gate(store, target_date, bm_ticker)
+    # Job 6：把 breakout_events 集合里 target_date 之前 30 天内所有事件按 ticker
+    # 一次拉进内存，`build_candidates` 里对每只候选票直接查表注入。避免每只票单发一次
+    # Mongo query，也避免评分函数持有 store 句柄。
+    breakout_events_lookup = _load_breakout_events_lookup(store, target_date)
     return evaluate_sector_trends(
         analysis_date=target_date,
         benchmark_ticker=bm_ticker,
@@ -733,7 +767,25 @@ def _compute_sector_trends_full(
         include_all_sectors=include_all_sectors,
         market_gate=gate,
         trend_lookback_days=trend_lookback_days,
+        breakout_events_lookup=breakout_events_lookup,
     )
+
+
+def _load_breakout_events_lookup(store, target_date: str, lookback_days: int = 30) -> dict[str, dict[str, Any]]:
+    """从 breakout_events 集合批量拉最近事件，供 build_candidates 注入评分。
+
+    集合不存在或空表时静默返回 {}，不影响主流程。
+    """
+    try:
+        from shilun.market.breakout_events import build_latest_events_lookup, COLLECTION_NAME
+        return build_latest_events_lookup(
+            store.collection(COLLECTION_NAME),
+            tickers=None,
+            on_or_before=target_date,
+            lookback_days=lookback_days,
+        )
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def _sector_cache_key(target_date: str, bm_ticker: str, trend_lookback_days: int) -> dict[str, Any]:
@@ -894,6 +946,96 @@ def precompute_sectors(
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"预计算失败：{error}") from error
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/data/precompute-breakout-events")
+def precompute_breakout_events_endpoint(
+    date: str | None = None,
+    lookback_days: int = 90,
+    max_age_days: int = 30,
+    exclude_st: bool = True,
+    skip_detect: bool = False,
+    skip_backfill: bool = False,
+) -> dict[str, Any]:
+    """Job 8：日终手动触发突破事件的检测（Job 3）+ 回填（Job 4）。
+
+    工作流：
+      1. `detect_daily_breakouts` 扫全市场，把 `date` 当天新触发的突破按
+         `BreakoutBaseline` 落库到 `breakout_events`（幂等）
+      2. `backfill_post_bars` 扫所有 pending/tracking 事件，把 T+1..T+5 从
+         `market_daily_bars` 追加进去（幂等）
+
+    参数：
+      - `skip_detect=true`：只跑回填，不检测新突破（例如白天想快速补 T+n 时用）
+      - `skip_backfill=true`：只跑检测，不做回填（比如突破日当晚，还没有 T+1 日线）
+
+    返回两阶段独立统计，便于运维日志留档。
+    """
+    import time
+    from shilun.common.db import MongoSnapshotStore
+    from shilun.market.breakout_events import (
+        backfill_post_bars,
+        precompute_breakout_events as _precompute_breakout_events,
+    )
+
+    target_date = normalize_analysis_date(date)
+    config = load_config()
+    if not config.mongo_uri:
+        raise HTTPException(status_code=400, detail="Mongo 未配置。")
+    try:
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Mongo 连接失败：{error}") from error
+
+    detect_result: dict[str, Any] | None = None
+    backfill_result: dict[str, Any] | None = None
+    try:
+        t0 = time.time()
+        if not skip_detect:
+            detect_result = _precompute_breakout_events(
+                store,
+                target_date,
+                lookback_days=lookback_days,
+                exclude_st=exclude_st,
+            )
+        t1 = time.time()
+        if not skip_backfill:
+            backfill_result = backfill_post_bars(
+                store,
+                up_to_date=target_date,
+                max_age_days=max_age_days,
+            )
+        t2 = time.time()
+
+        message_parts: list[str] = []
+        if detect_result:
+            message_parts.append(
+                f"检测 {detect_result.get('detected', 0)} 条（新增 {detect_result.get('inserted', 0)}，已存在 {detect_result.get('existing', 0)}）"
+            )
+        elif skip_detect:
+            message_parts.append("已跳过检测")
+        if backfill_result:
+            message_parts.append(
+                f"回填扫描 {backfill_result.get('scanned', 0)} 条，追加 {backfill_result.get('appended', 0)} 根 T+n，本次 {backfill_result.get('settled', 0)} 条 settled"
+            )
+        elif skip_backfill:
+            message_parts.append("已跳过回填")
+
+        return {
+            "status": "ok",
+            "analysis_date": target_date,
+            "detect_time_seconds": round(t1 - t0, 2),
+            "backfill_time_seconds": round(t2 - t1, 2),
+            "detect": detect_result,
+            "backfill": backfill_result,
+            "message": " · ".join(message_parts) or "no-op",
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"突破事件预计算失败：{error}") from error
     finally:
         store.close()
 

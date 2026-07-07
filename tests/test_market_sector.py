@@ -107,7 +107,7 @@ class MarketSectorTests(unittest.TestCase):
             top_n=3,
         )
 
-        self.assertEqual("market_sector_v3_ma5_v02_mainline", result["engine_version"])
+        self.assertEqual("market_sector_v4_ma5_v02_relative_mainline", result["engine_version"])
         self.assertEqual("上证指数", result["benchmark_name"])
         self.assertIn("不是申万", result["sector_source_note"])
         leader_sector = result["top_sectors"][0]
@@ -171,6 +171,8 @@ class MarketSectorTests(unittest.TestCase):
         self.assertIn("mainline_rank", trend)
         self.assertIn("excess_return_20d_score", trend["scores"])
         self.assertIn("sector_amount_ratio_score", trend["scores"])
+        self.assertIn("score_references", trend["scores"])
+        self.assertIn("20日相对强度", trend["scores"]["score_references"])
         self.assertTrue(result["candidates"])
         candidate = result["candidates"][0]
         self.assertIn("predicted_buy_price", candidate)
@@ -187,8 +189,63 @@ class MarketSectorTests(unittest.TestCase):
         self.assertIn("final_trade_score", candidate)
         self.assertIn("score_breakdown", candidate)
         self.assertIn("trade_plan", candidate)
+        # Job 6：默认无 lookup 时，breakout_tracking=None，特征快照不含事件字段覆写
+        self.assertIsNone(candidate.get("breakout_tracking"))
+        breakout_quality_source = candidate["score_breakdown"]["trade_timing_score"]["parts"]["breakout_quality"]["source"]
+        self.assertEqual(breakout_quality_source, "features")
         self.assertEqual([], result["daily_leaders"])
         self.assertEqual([], result["all_sectors"])
+
+    def test_sector_trends_injects_breakout_events_lookup(self) -> None:
+        """Job 6：传入 breakout_events_lookup 时，候选卡带 breakout_tracking 且评分接了事件。"""
+        market_bars, stock_basic, daily_basic = _market_rows()
+
+        # 找一只票，把它假设为已落库的突破，构造 event
+        sample_ticker = str(market_bars["ticker"].iloc[0])
+        event = {
+            "ticker": sample_ticker,
+            "breakout_date": "2026-03-24",
+            "status": "settled",
+            "tracked_days": 5,
+            "breakout_quality": "valid",
+            "next_day_hold_flag": True,
+            "previous_high_hold_ratio": 0.008,
+            "post_breakout_shrink_ratio": 0.7,
+            "fall_back_into_box_flag": False,
+        }
+        lookup = {sample_ticker: event}
+
+        result = evaluate_sector_trends(
+            analysis_date="2026-03-25",
+            benchmark_ticker="000001.SH",
+            benchmark_bars=_benchmark_bars(),
+            market_bars=market_bars,
+            stock_basic=stock_basic,
+            daily_basic=daily_basic,
+            top_n=3,
+            include_daily_leaders=False,
+            include_all_sectors=False,
+            breakout_events_lookup=lookup,
+        )
+
+        matched = next(
+            (c for c in result["candidates"] if c["ticker"] == sample_ticker),
+            None,
+        )
+        if matched is None:
+            self.skipTest(f"{sample_ticker} 未进入候选池，跳过 lookup 注入验证。")
+        self.assertIsNotNone(matched["breakout_tracking"])
+        self.assertEqual(matched["breakout_tracking"]["breakout_quality"], "valid")
+        self.assertEqual(matched["breakout_tracking"]["tracked_days"], 5)
+        # 评分层显示 source=event
+        bq = matched["score_breakdown"]["trade_timing_score"]["parts"]["breakout_quality"]
+        self.assertEqual(bq["source"], "event")
+        self.assertEqual(bq["breakout_quality"], "valid")
+        # 特征快照的追踪字段应从事件覆写而来
+        snapshot = matched["ma5_feature_snapshot"]
+        self.assertAlmostEqual(snapshot["previous_high_hold_ratio"], 0.008)
+        self.assertAlmostEqual(snapshot["post_breakout_shrink_ratio"], 0.7)
+        self.assertFalse(snapshot["fall_back_into_box_flag"])
 
     def test_daily_leaders_can_be_calculated_separately(self) -> None:
         market_bars, stock_basic, daily_basic = _market_rows()
