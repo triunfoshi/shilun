@@ -1581,6 +1581,8 @@ def stock_panel(
         signals: list[dict[str, Any]] = []
         signal_summary: dict[str, Any] = {}
         levels: dict[str, Any] = {}
+        trade_plan: dict[str, Any] = {}
+        buy_point_pattern_info: dict[str, Any] = {"pattern": "none", "label": "-"}
         active_buy_context: dict[str, Any] = {}
 
         if not intraday_only:
@@ -1664,25 +1666,80 @@ def stock_panel(
                         "amount": _round_num(r.get("amount"), 0),
                     })
 
-                # 从日线算支撑压力（简化版：取近 500 根的高低点为压力支撑）
+                # 从日线算支撑压力
                 closes = dfd["close"].astype(float)
                 highs = dfd["high"].astype(float)
                 lows = dfd["low"].astype(float)
+                opens = dfd["open"].astype(float)
+                volumes = dfd["volume"].astype(float) if "volume" in dfd.columns else None
                 latest_close = float(closes.iloc[-1])
                 # 阻力：最近 60 根内高于当前的历史高点
                 recent_high = float(highs.tail(60).max())
-                # 支撑：最近 60 根内低于当前的历史低点
-                recent_low = float(lows.tail(60).min())
-                # MA5 × 0.98 作为止损位
+                # 支撑分层（对齐 PRD 阶段 9）：MA5 > MA10 > MA20。
+                # 60 日历史低点在这里**不再当作 support**——一旦价格穿破 MA5、MA10 到达
+                # 60 日最低价，MA5 战法的入场时机就已经错过（东山精密 126 元 bug 的根源）。
                 ma5 = float(closes.tail(5).mean())
+                ma10 = float(closes.tail(10).mean()) if len(closes) >= 10 else ma5
+                ma20 = float(closes.tail(20).mean()) if len(closes) >= 20 else ma10
+                # support 取 close 之下最近的一层均线；如果全在 close 上方（弱势反弹），退回到 MA5
+                support_candidates = [(ma5, "MA5"), (ma10, "MA10"), (ma20, "MA20")]
+                below = [(v, l) for v, l in support_candidates if v > 0 and v <= latest_close * 1.005]
+                if below:
+                    support_value, support_source = max(below, key=lambda item: item[0])
+                else:
+                    support_value, support_source = ma5, "MA5"
+                # PRD 阶段 9 权威买点 = 当前 close（trade_plan.entry_price）
+                # 顺便把完整 trade_plan 也生成好，前端可以直接读，避免再从 levels 猜。
+                # previous_high_60 / median_abs_return_20d 供 build_trade_plan 算 target/add_point
+                previous_high_60 = float(highs.tail(60).max()) if len(highs) >= 20 else 0.0
+                pct_chg = closes.pct_change().fillna(0.0)
+                median_abs_return_20d = float(pct_chg.abs().tail(20).median()) if len(pct_chg) >= 5 else 0.02
+                from shilun.market.ma5_features import build_trade_plan
+                trade_plan_features = {
+                    "close": latest_close,
+                    "open": float(opens.iloc[-1]),
+                    "ma5": ma5,
+                    "ma8": float(closes.tail(8).mean()) if len(closes) >= 8 else ma5,
+                    "ma10": ma10,
+                    "ma20": ma20,
+                    "previous_high_60": previous_high_60,
+                    "median_abs_return_20d": median_abs_return_20d,
+                }
+                trade_plan = build_trade_plan(trade_plan_features)
                 levels = {
                     "resistance": _round_num(recent_high, 2),
-                    "support": _round_num(recent_low, 2),
+                    # support 现在语义是"MA5/MA10/MA20 里 close 之下最近一层"，不再是历史低点
+                    "support": _round_num(support_value, 2),
+                    "support_source": support_source,
                     "stop_loss_long": _round_num(ma5 * 0.98, 2),
                     "stop_loss_short": _round_num(recent_high * 1.02, 2),
                     "ma5": _round_num(ma5, 2),
+                    "ma10": _round_num(ma10, 2),
+                    "ma20": _round_num(ma20, 2),
+                    # 权威买点：直接从 trade_plan 暴露，前端优先读它，不再靠 support 兜底
+                    "entry_price": trade_plan.get("entry_price"),
                     "based_on_bars": len(dfd),
                 }
+
+                # Job C（§4.7 五买点体系）：stock_panel 直接从 sector_trends_cache 里
+                # 查这只票的 buy_point_pattern，避免在这里重复算完整 features。
+                # 缓存里没有（例如票不在候选池） → pattern="none"，前端徽章不显示。
+                try:
+                    cached_sectors = _load_sector_cache(store, target_date, bm_ticker, trend_lookback_days=60)
+                    if cached_sectors and cached_sectors.get("payload"):
+                        for c in (cached_sectors["payload"].get("candidates") or []):
+                            if str(c.get("ticker") or "").upper() == ticker_norm:
+                                pattern = c.get("buy_point_pattern") or "none"
+                                buy_point_pattern_info = {
+                                    "pattern": pattern,
+                                    "label": c.get("buy_point_pattern_label") or "-",
+                                    "context": c.get("buy_point_pattern_context"),
+                                    "note": c.get("buy_point_pattern_note"),
+                                    "strength": c.get("buy_point_pattern_strength"),
+                                }
+                                break
+                except Exception:  # noqa: BLE001
+                    pass
 
         # 3. 实时报价（Tushare 新浪源，最稳定）
         realtime = None
@@ -1768,6 +1825,14 @@ def stock_panel(
             "realtime": realtime,
             "market_sync": market_sync,
             "levels": levels,
+            "trade_plan": trade_plan,
+            # Job C（§4.7 五买点体系）：从 sector_trends_cache 查到的 buy_point_pattern。
+            # 没有对应缓存时 pattern="none"，前端徽章不显示。
+            "buy_point_pattern": buy_point_pattern_info.get("pattern"),
+            "buy_point_pattern_label": buy_point_pattern_info.get("label"),
+            "buy_point_pattern_context": buy_point_pattern_info.get("context"),
+            "buy_point_pattern_note": buy_point_pattern_info.get("note"),
+            "buy_point_pattern_strength": buy_point_pattern_info.get("strength"),
             "rating": rating,
             "daily_bars": daily_bars,
             "minute_bars": minute_bars,
@@ -2053,13 +2118,40 @@ def _first_positive_number(*values: Any) -> float | None:
     return None
 
 
+_STALE_PRICE_TOLERANCE = 0.15  # 老候选缓存里价格偏离当前 close 超过 15% 视为陈旧不可用
+
+
+def _sanity_price(value: float | None, close: float | None, tolerance: float = _STALE_PRICE_TOLERANCE) -> float | None:
+    """把陈旧候选缓存里的价格与当前 close 做 sanity check。
+
+    A 股正常波动一周之内不会偏离 15%，因此偏离过大的多是 stale cache 或者
+    除权除息前的老口径（例如 603986.SH 曾在 243 元区间、现在 603 元），
+    继续用它们做支撑/买点/压力会得到荒谬的结果。返回 None 表示丢弃这个值，
+    让上游走 fallback（重新算 MA5/MA10）。
+    """
+    if value is None or close is None:
+        return None
+    try:
+        v = float(value)
+        c = float(close)
+    except (TypeError, ValueError):
+        return None
+    if v <= 0 or c <= 0:
+        return None
+    lower = c * (1.0 - tolerance)
+    upper = c * (1.0 + tolerance)
+    if v < lower or v > upper:
+        return None
+    return v
+
+
 def _nearest_below(price: float | None, candidates: list[tuple[float | None, str]]) -> tuple[float | None, str]:
     if not price:
         return None, ""
     valid = [(float(v), label) for v, label in candidates if v and float(v) > 0 and float(v) <= price * 1.012]
     if not valid:
-        valid = [(float(v), label) for v, label in candidates if v and float(v) > 0]
-    if not valid:
+        # 曾经在 fallback 里无差别接受所有 > 0 的候选，会让 stale 缓存里的 243 元支撑
+        # 在当前 close=603 时被选出。改为不 fallback：返回 None，让上游用兜底 MA5。
         return None, ""
     return max(valid, key=lambda item: item[0])
 
@@ -2069,8 +2161,7 @@ def _nearest_above(price: float | None, candidates: list[tuple[float | None, str
         return None, ""
     valid = [(float(v), label) for v, label in candidates if v and float(v) >= price * 0.995]
     if not valid:
-        valid = [(float(v), label) for v, label in candidates if v and float(v) > 0]
-    if not valid:
+        # 同理，压力位的 fallback 也应该收紧：返回 None，让上游用 close*1.08 兜底。
         return None, ""
     return min(valid, key=lambda item: item[0])
 
@@ -2121,27 +2212,47 @@ def _enrich_intraday_candidate_plans(store, target_date: str, candidates: list[d
         close = _first_positive_number(item.get("close"), latest.get("close"))
         ma5 = _first_positive_number(item.get("ma5"), _mean_last(closes, 5))
         ma8 = _first_positive_number(item.get("ma8"), _mean_last(closes, 8), ma5)
+        ma10_val = _mean_last(closes, 10)
+        ma20_val = _mean_last(closes, 20)
         high20 = max(highs[-20:]) if highs else None
-        low20 = min(lows[-20:]) if lows else None
 
+        # sanity check：老候选缓存里的 support/pressure/buy 可能是几周前的老口径，
+        # 偏离当前 close 超过 15% 就丢弃，避免出现 close=603 时用 support=243 的荒谬情形。
+        cached_support = _sanity_price(_first_positive_number(item.get("support_price")), close)
+        cached_pressure = _sanity_price(_first_positive_number(item.get("pressure_price")), close)
+        cached_predicted_buy = _sanity_price(_first_positive_number(item.get("predicted_buy_price"), item.get("entry_price")), close)
+
+        # 支撑口径：只用均线（MA5/MA8/MA10/MA20），不用 20 日低点。
+        # 因为一旦价格穿破 MA5 到达 20 日低点，MA5 战法的入场时机已经错过。
         support_price, support_source = _nearest_below(
             close,
             [
-                (_first_positive_number(item.get("support_price")), item.get("support_source") or "候选支撑"),
-                (ma8, "MA8"),
+                (cached_support, item.get("support_source") or "候选支撑"),
                 (ma5, "MA5"),
-                (low20, "20日低点"),
+                (ma8, "MA8"),
+                (ma10_val, "MA10"),
+                (ma20_val, "MA20"),
             ],
         )
+        # 如果所有均线都在 close 上方（弱势反弹），退化到 MA5 作参考。
+        if support_price is None and ma5:
+            support_price, support_source = ma5, "MA5"
         pressure_price, pressure_source = _nearest_above(
             close,
             [
-                (_first_positive_number(item.get("pressure_price")), item.get("pressure_source") or "候选压力"),
+                (cached_pressure, item.get("pressure_source") or "候选压力"),
                 (high20, "20日高点"),
                 (close * 1.08 if close else None, "8%目标"),
             ],
         )
-        predicted_buy = _first_positive_number(item.get("predicted_buy_price"), item.get("entry_price"), support_price, ma8, ma5, close)
+        # 压力兜底：如果没有任何候选高于 close，用 close*1.08。
+        if pressure_price is None and close:
+            pressure_price, pressure_source = close * 1.08, "8%目标"
+        # 买点下界：v0.2 战法要求买点不能显著低于 MA5，允许 MA5*0.995 的小幅低吸。
+        ma5_floor = ma5 * 0.995 if ma5 else None
+        predicted_buy = _first_positive_number(cached_predicted_buy, support_price, ma5, close)
+        if ma5_floor and predicted_buy and predicted_buy < ma5_floor:
+            predicted_buy = ma5_floor
         stop_loss = _first_positive_number(item.get("stop_loss"), support_price * 0.98 if support_price else None, ma5 * 0.97 if ma5 else None)
         expected_sell = _first_positive_number(
             item.get("expected_sell_price"),

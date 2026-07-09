@@ -73,11 +73,11 @@ class UIRouteTests(unittest.TestCase):
         self.assertIn("ACTION · 研究交付", text)
         self.assertIn('class="card wide story-aligned-card fs-secondary-card" id="candidatesCard"', text)
         self.assertIn("MA5 趋势战法候选", text)
-        self.assertIn("20260707-monitor-chart-fix", text)
+        self.assertIn("20260709-crosshair-hover-retry", text)
         self.assertIn("查询并更新解读", text)
         self.assertIn("同步缺失数据", text)
-        self.assertIn("查询板块动向", text)
-        self.assertIn("同步板块预计算", text)
+        self.assertIn("查询板块动向", text)  # 主按钮："查询板块动向 · 读缓存 · 秒回"
+        self.assertIn("强制重新计算", text)  # 次按钮：改名（原"同步板块预计算"）
         self.assertIn('/static/app.css', text)
         self.assertIn('/static/app.js', text)
 

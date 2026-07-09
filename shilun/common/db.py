@@ -436,6 +436,10 @@ class MongoSnapshotStore:
             ("breakout_events", [("ticker", 1), ("breakout_date", 1)], "uniq_breakout_event_scope", True),
             ("breakout_events", [("status", 1), ("breakout_date", 1)], "idx_breakout_event_status_date", False),
             ("breakout_events", [("breakout_date", -1)], "idx_breakout_event_date_desc", False),
+            # 阶段 7 Job 1：持仓表。ticker 唯一——一只票同时只能有一条 active/reduced/closed 记录，
+            # 重新开仓时按 upsert 覆盖老 closed 记录（老记录会归档到 trades，见阶段 8）。
+            ("holdings", [("ticker", 1)], "uniq_holdings_ticker", True),
+            ("holdings", [("status", 1), ("entry_date", -1)], "idx_holdings_status_entry_date", False),
         ]
         for collection_name, keys, name, unique in index_specs:
             self._create_index(collection_name, keys, name=name, unique=unique)

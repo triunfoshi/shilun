@@ -134,6 +134,151 @@ def _bullish_engulf_flag(latest: dict[str, Any], prev: dict[str, Any]) -> bool:
     return latest_close > latest_open and prev_close < prev_open and latest_open <= prev_close and latest_close >= prev_open
 
 
+# PRD §4.7 五买点体系专用：距最近一次谓词命中的 K 线过了几个交易日。
+# 语义：0 = 当日命中；1 = 昨日命中；999 = 回溯 max_lookback 根内都没命中。
+_DAYS_SINCE_NOT_FOUND = 999
+
+
+def _days_since(
+    bars: list[dict[str, Any]],
+    predicate,
+    *,
+    max_lookback: int = 20,
+) -> int:
+    """回溯最近 `max_lookback` 根 bars，找到最近一次 predicate(latest, prev) = True 的位置，
+    返回距离。predicate 接受 (bar_i, bar_{i-1})，跟 `_breakout_flag` 等函数签名一致。
+
+    - 距离 = 0 表示最新一根命中
+    - 距离 = 1 表示前一根命中
+    - 找不到返回 999（`_DAYS_SINCE_NOT_FOUND`）——按用户口径这就是"没有近期上下文"
+    """
+    if not bars or len(bars) < 2:
+        return _DAYS_SINCE_NOT_FOUND
+    lookback = min(max_lookback, len(bars) - 1)
+    n = len(bars)
+    for i in range(lookback + 1):
+        idx = n - 1 - i
+        if idx < 1:
+            break
+        try:
+            if predicate(bars[idx], bars[idx - 1]):
+                return i
+        except (TypeError, ValueError):
+            continue
+    return _DAYS_SINCE_NOT_FOUND
+
+
+def _pullback_depth_at(bars: list[dict[str, Any]], end_idx: int, lookback: int = 8) -> float:
+    """给定 end_idx 位置，从该位置向前算 `lookback` 根内的最大回撤。
+    等价于 `_pullback_depth(bars[end_idx - lookback + 1 : end_idx + 1])`。
+    """
+    start = max(0, end_idx - lookback + 1)
+    window = bars[start : end_idx + 1]
+    highs = [_f(bar.get("high") or bar.get("close")) for bar in window]
+    lows = [_f(bar.get("low") or bar.get("close")) for bar in window]
+    highs = [value for value in highs if value > 0]
+    lows = [value for value in lows if value > 0]
+    if not highs or not lows:
+        return 0.0
+    return max(0.0, 1.0 - min(lows) / max(highs))
+
+
+def _pullback_low_predicate(features_snapshot: dict[str, Any]):
+    """构造一个谓词：当日 pullback_depth 落在动态区间内时命中。
+
+    需要一个"快照"传入 dynamic_pullback_min/max（因为 pullback_depth 的动态阈值
+    从 latest bar 的 features 里取，回溯时保持同一套阈值）。
+    """
+    dyn_min = _f(features_snapshot.get("dynamic_pullback_min"), 0.01)
+    dyn_max = _f(features_snapshot.get("dynamic_pullback_max"), 0.05)
+
+    def _predicate(bars: list[dict[str, Any]], idx: int) -> bool:
+        depth = _pullback_depth_at(bars, idx)
+        return dyn_min <= depth <= dyn_max
+
+    return _predicate
+
+
+def _days_since_pullback_low(
+    bars: list[dict[str, Any]],
+    features_snapshot: dict[str, Any],
+    *,
+    max_lookback: int = 20,
+) -> int:
+    """跟 `_days_since` 类似，但谓词依赖 bars 的索引位置而不是 (latest, prev) 两点，
+    因为 pullback_depth 是一个窗口内的最大回撤，需要在扫描时改变窗口位置。
+    """
+    if not bars:
+        return _DAYS_SINCE_NOT_FOUND
+    predicate = _pullback_low_predicate(features_snapshot)
+    lookback = min(max_lookback, len(bars) - 1)
+    n = len(bars)
+    for i in range(lookback + 1):
+        idx = n - 1 - i
+        if idx < 0:
+            break
+        if predicate(bars, idx):
+            return i
+    return _DAYS_SINCE_NOT_FOUND
+
+
+def _is_local_low_10d(bars: list[dict[str, Any]]) -> bool:
+    """当日 low 是最近 10 根内最低点。用于抄底点判定的"局部谷底"元素。"""
+    if len(bars) < 3:
+        return False
+    window = bars[-10:] if len(bars) >= 10 else bars
+    lows = [_f(bar.get("low") or bar.get("close")) for bar in window]
+    lows = [v for v in lows if v > 0]
+    if not lows:
+        return False
+    latest_low = _f(bars[-1].get("low") or bars[-1].get("close"))
+    if latest_low <= 0:
+        return False
+    return latest_low <= min(lows) + 1e-9
+
+
+def _macd_w_pattern_flag(bars: list[dict[str, Any]], *, lookback: int = 5) -> bool:
+    """MACD 走出向上倾斜的 W 形态：抄底点确认信号。
+
+    判定条件（PRD §4.7）：
+      - dif 从下方转向上（近 `lookback` 根内出现由降转升的拐点）
+      - dea 上翘（今日 dea > 前一日 dea）
+      - hist 连续 2 根 > 0（当日 + 前一日 histogram 都为正）
+
+    需要 bars 里已经带上 macd_dif / macd_dea / macd_hist 三列（由
+    `_prepare_stock_frame` 计算）。缺列时返回 False，不阻断主流程。
+    """
+    if len(bars) < 3:
+        return False
+    latest = bars[-1]
+    prev = bars[-2]
+    dif_now = _f(latest.get("macd_dif"))
+    dif_prev = _f(prev.get("macd_dif"))
+    dea_now = _f(latest.get("macd_dea"))
+    dea_prev = _f(prev.get("macd_dea"))
+    hist_now = _f(latest.get("macd_hist"))
+    hist_prev = _f(prev.get("macd_hist"))
+    if dif_now == 0 and dea_now == 0 and hist_now == 0:
+        # 上游没喂 MACD 列（features 缺失），保守返回 False
+        return False
+    if not (hist_now > 0 and hist_prev > 0):
+        return False
+    if not (dea_now > dea_prev):
+        return False
+    # dif 从下方转向上：找最近 lookback 根里 dif 是否曾经下降后又转升
+    dif_series = [_f(b.get("macd_dif")) for b in bars[-lookback - 2 :]]
+    if len(dif_series) < 3:
+        return False
+    turned_up = False
+    for i in range(1, len(dif_series) - 1):
+        # dif[i] 是局部极小：dif[i-1] > dif[i] < dif[i+1]
+        if dif_series[i - 1] > dif_series[i] < dif_series[i + 1]:
+            turned_up = True
+            break
+    # 或者当前就在向上（dif_now > dif_prev）也算，覆盖已经跨过底部的情形
+    return turned_up or (dif_now > dif_prev)
+
+
 def _previous_high(bars: list[dict[str, Any]], window: int) -> float:
     prior = bars[-window - 1:-1] if len(bars) > 1 else bars[-window:]
     highs = [_f(bar.get("high") or bar.get("close")) for bar in prior]
@@ -270,6 +415,24 @@ def build_ma_features(bars: list[dict[str, Any]]) -> dict[str, Any]:
         "return_60d": return_60d,
         "rsi": _calc_rsi([_f(bar.get("close")) for bar in bars]),
     }
+
+    # ── PRD §4.7 五买点体系专用字段 ──────────────────────────────
+    # 上下文（days_since_*）：0 = 今日命中，1 = 昨日命中，999 = 近 20 根内无命中。
+    # 供 Job B 的 `detect_buy_point_pattern` 判定起涨点/追涨点的位置上下文。
+    features["ma7"] = _f(latest.get("ma7"))
+    features["macd_dif"] = _f(latest.get("macd_dif"))
+    features["macd_dea"] = _f(latest.get("macd_dea"))
+    features["macd_hist"] = _f(latest.get("macd_hist"))
+    features["is_local_low_10d"] = _is_local_low_10d(bars)
+    features["macd_w_pattern_flag"] = _macd_w_pattern_flag(bars)
+    features["days_since_bullish_engulf"] = _days_since(bars, _bullish_engulf_flag)
+    features["days_since_breakout"] = _days_since(bars, _breakout_flag)
+    features["days_since_pullback_low"] = _days_since_pullback_low(bars, features)
+    # chao_di_flag 由 Job B 的 detect_buy_point_pattern 输出。Job A 阶段这里
+    # 无法回填历史 chao_di_flag（因为形态识别函数还没写），先给 999 占位。
+    # Job B 会用 bars 里回溯识别历史 chao_di 事件并覆盖此值。
+    features["days_since_chao_di"] = _DAYS_SINCE_NOT_FOUND
+
     return {key: _round(value) if isinstance(value, float) else value for key, value in features.items()}
 
 

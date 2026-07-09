@@ -234,6 +234,19 @@
       transform: none;
       filter: saturate(0.72);
     }
+    /* 按钮里的次要说明，字号小、透明度低，用于区分主操作和辅助操作 */
+    .button-hint {
+      display: inline-block;
+      margin-left: 6px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      color: inherit;
+      font-size: 10px;
+      font-weight: 700;
+      opacity: 0.85;
+      vertical-align: middle;
+    }
     button.secondary, .link-button.secondary {
       color: var(--ink);
       background: linear-gradient(135deg, rgba(48, 50, 56, 0.96), rgba(31, 33, 38, 0.96));
@@ -377,11 +390,14 @@
       white-space: normal;
       overflow-wrap: anywhere;
     }
+    /* 定义说明 popover：hover / focus 悬停展示，避免 <details> 的点击语义 */
     .info-popover {
       position: relative;
       display: inline-flex;
+      cursor: help;
+      outline: none;
     }
-    .info-popover summary {
+    .info-popover-marker {
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -392,12 +408,10 @@
       color: var(--accent);
       font-size: 12px;
       font-weight: 950;
-      cursor: pointer;
-      list-style: none;
       background: rgba(143, 230, 196, 0.08);
     }
-    .info-popover summary::-webkit-details-marker { display: none; }
-    .info-popover[open] summary { background: var(--accent); color: #061511; }
+    .info-popover:hover .info-popover-marker,
+    .info-popover:focus-visible .info-popover-marker { background: var(--accent); color: #061511; }
     .info-panel {
       position: absolute;
       z-index: 10;
@@ -406,13 +420,27 @@
       width: min(320px, calc(100vw - 56px));
       padding: 12px;
       border-radius: 16px;
-      color: var(--ink);
+      /* 深色背景固定：文字颜色也硬编码浅色，避免亮色主题下变成黑底黑字 */
+      color: #f4f0e8;
       background: rgba(18, 19, 23, 0.98);
       border: 1px solid rgba(143, 230, 196, 0.28);
       box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
       font-size: 13px;
       line-height: 1.7;
       letter-spacing: 0;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity 140ms ease, transform 140ms ease, visibility 140ms;
+    }
+    .info-popover:hover .info-panel,
+    .info-popover:focus-visible .info-panel,
+    .info-popover:focus-within .info-panel {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transform: translateY(0);
     }
     .info-panel a {
       display: inline-flex;
@@ -869,9 +897,11 @@
     }
     .trend-line-chart {
       position: relative;
-      height: 218px;
-      margin: 8px 0 14px;
-      padding: 10px 12px 14px;
+      height: 240px;
+      /* 容器右侧留出足够空间容纳最右点的 tooltip（宽 232px 的一半），避免溢出板块卡片。
+         左侧留少量给最左点的 tooltip。padding 收紧让 label 更贴合坐标。 */
+      margin: 8px 24px 20px 8px;
+      padding: 10px 12px 20px;
       border: 1px solid rgba(244, 240, 232, 0.08);
       border-radius: 16px;
       background:
@@ -915,6 +945,8 @@
     .trend-y-tick,
     .trend-chart-legend text {
       fill: var(--muted);
+      /* SVG viewBox 会随容器等比缩放，字号用相对 viewBox 高的 em 值，
+         保证图表变大变小时文本比例始终合适、不会超出坐标范围 */
       font-size: 12px;
       font-weight: 800;
       letter-spacing: 0.02em;
@@ -927,6 +959,8 @@
       text-anchor: end;
       font-size: 10px;
     }
+    .trend-chart-legend text { font-size: 11px; }
+    .trend-chart-legend { pointer-events: none; }
     .trend-bar {
       rx: 3;
       fill: #2f80ed;
@@ -949,106 +983,83 @@
       stroke-width: 3;
       vector-effect: non-scaling-stroke;
     }
-    .trend-point-hit {
-      position: absolute;
-      width: 14px;
-      height: 14px;
-      min-width: 0;
-      margin: 0;
-      padding: 0;
-      border-radius: 999px;
-      border: 0;
-      background: transparent;
-      box-shadow: none;
-      transform: translate(-50%, -50%);
-      z-index: 3;
-    }
-    .trend-point-hit::after {
-      content: "";
-      position: absolute;
-      inset: 3px;
-      border-radius: inherit;
-      background: rgba(47, 128, 237, .92);
-      box-shadow: 0 0 0 3px rgba(47, 128, 237, .10);
-      opacity: .15;
-      transition: opacity 140ms ease, transform 140ms ease;
-    }
-    .trend-point-hit.is-negative::after { background: rgba(223, 101, 83, .92); }
-    .trend-point-hit:hover, .trend-point-hit:focus-visible {
-      transform: translate(-50%, -50%) scale(1.12);
-      filter: none;
-      box-shadow: none;
-      outline: none;
-    }
-    .trend-point-hit:hover::after, .trend-point-hit:focus-visible::after {
-      opacity: 1;
-      transform: scale(1.2);
-    }
-    .trend-point-label {
-      position: absolute;
-      left: 50%;
-      bottom: 16px;
-      transform: translateX(-50%);
-      color: var(--ink);
+    /* 关键点静态标签（最高/最低/最后 3 个） */
+    .trend-key-label {
+      fill: var(--ink);
       font-size: 10px;
-      font-weight: 900;
-      white-space: nowrap;
-      text-shadow: none;
+      font-weight: 700;
       font-variant-numeric: tabular-nums;
-      z-index: 2;
-    }
-    .trend-date-label {
-      position: absolute;
-      bottom: 7px;
-      transform: translateX(-50%);
-      color: var(--muted);
-      font-size: 10px;
-      white-space: nowrap;
-    }
-    .trend-point-tooltip {
-      position: absolute;
-      left: 50%;
-      bottom: 28px;
-      width: 232px;
-      padding: 12px;
-      border: 1px solid rgba(143, 230, 196, 0.26);
-      border-radius: 15px;
-      color: var(--soft);
-      background: rgba(10, 13, 15, 0.98);
-      box-shadow: 0 20px 46px rgba(0, 0, 0, 0.46);
-      transform: translateX(-50%) translateY(6px);
-      opacity: 0;
-      visibility: hidden;
       pointer-events: none;
-      transition: opacity 140ms ease, transform 140ms ease;
-      text-align: left;
+    }
+    /* 十字准星（初始 display:none 由 JS 控制显隐） */
+    .trend-crosshair-v, .trend-crosshair-h {
+      stroke: rgba(120, 130, 150, 0.55);
+      stroke-width: 1;
+      stroke-dasharray: 3 3;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+    .trend-crosshair-dot {
+      fill: #2f80ed;
+      stroke: #fff;
+      stroke-width: 1.5;
+      vector-effect: non-scaling-stroke;
+      pointer-events: none;
+    }
+    /* 十字准星联动的 tooltip：白底浅色主题下用深字，深色主题下用浅字 —
+       通过硬编码"白底 + 深字"保证亮色主题可读；深色主题下页面容器普遍
+       是深色，浅字变成深字会看不清 —— 但当前应用背景是白色（用户实测），
+       所以这里就锁定白底深字。 */
+    .trend-crosshair-tooltip {
+      position: absolute;
+      /* 白色不透明背景，加轻微阴影，浮在图表上 */
+      color: #1f2937;
+      background: rgba(255, 255, 255, 0.98);
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      line-height: 1.5;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.14);
+      pointer-events: none;
+      z-index: 40;
+      max-width: 210px;
+      font-variant-numeric: tabular-nums;
+    }
+    .trend-crosshair-tooltip .tooltip-date {
+      display: block;
+      margin-bottom: 6px;
+      color: #0f172a;
       font-size: 12px;
-      line-height: 1.6;
-      z-index: 20;
+      font-weight: 700;
     }
-    .trend-point-hit.align-left .trend-point-tooltip { left: -6px; transform: translateY(6px); }
-    .trend-point-hit.align-right .trend-point-tooltip { left: auto; right: -6px; transform: translateY(6px); }
-    .trend-point-hit:hover .trend-point-tooltip,
-    .trend-point-hit:focus-visible .trend-point-tooltip {
-      opacity: 1;
-      visibility: visible;
-      transform: translateX(-50%) translateY(0);
+    .trend-crosshair-tooltip .tooltip-grid {
+      display: grid;
+      grid-template-columns: auto auto;
+      gap: 3px 12px;
     }
-    .trend-point-hit.align-left:hover .trend-point-tooltip,
-    .trend-point-hit.align-left:focus-visible .trend-point-tooltip,
-    .trend-point-hit.align-right:hover .trend-point-tooltip,
-    .trend-point-hit.align-right:focus-visible .trend-point-tooltip { transform: translateY(0); }
-    .trend-point-tooltip strong { display: block; margin-bottom: 6px; color: var(--ink); font-size: 13px; }
-    .trend-tooltip-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
-    .trend-tooltip-grid span:nth-child(even) { color: var(--ink); text-align: right; }
-    .trend-signal-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-    .trend-signal {
-      padding: 3px 7px;
+    .trend-crosshair-tooltip .tooltip-grid > span:nth-child(odd) {
+      color: #64748b;
+      font-size: 11px;
+    }
+    .trend-crosshair-tooltip .tooltip-grid > span:nth-child(even) {
+      color: #0f172a;
+      text-align: right;
+      font-weight: 600;
+    }
+    .trend-crosshair-tooltip .tt-up-color { color: #dc2626; }   /* 涨=红（A 股口径） */
+    .trend-crosshair-tooltip .tt-down-color { color: #16a34a; } /* 跌=绿 */
+    .trend-crosshair-tooltip .tooltip-signals {
+      display: flex; flex-wrap: wrap; gap: 4px;
+      margin-top: 6px;
+    }
+    .trend-crosshair-tooltip .tooltip-signals .tt-signal {
+      padding: 1px 6px;
       border-radius: 999px;
-      color: #061511;
-      background: rgba(143, 230, 196, 0.88);
+      color: #065f46;
+      background: rgba(16, 185, 129, 0.18);
       font-size: 10px;
-      font-weight: 900;
+      font-weight: 700;
     }
     .leader-status {
       display: flex;
@@ -1331,7 +1342,8 @@
       padding: 12px;
       border: 1px solid rgba(143, 230, 196, 0.24);
       border-radius: 14px;
-      color: var(--soft);
+      /* 深色背景固定：文字颜色也硬编码，避免亮色主题下变成黑底黑字 */
+      color: #c9c1b4;
       background: rgba(8, 10, 12, 0.98);
       box-shadow: 0 18px 48px rgba(0, 0, 0, 0.44);
       opacity: 0;
@@ -1342,10 +1354,24 @@
       text-align: left;
       z-index: 30;
     }
-    .market-chart-tooltip strong { grid-column: 1 / -1; color: var(--ink); }
-    .market-chart-tooltip b { color: var(--ink); text-align: right; }
+    .market-chart-tooltip strong { grid-column: 1 / -1; color: #f4f0e8; }
+    .market-chart-tooltip b { color: #f4f0e8; text-align: right; }
+    /* 边界对齐：靠近容器左右边缘时 tooltip 换到另一侧展开，避免溢出图表卡片 */
+    .market-chart-point.align-left .market-chart-tooltip,
+    .stock-chart-point.align-left .market-chart-tooltip { left: 0; right: auto; transform: translateY(5px); }
+    .market-chart-point.align-right .market-chart-tooltip,
+    .stock-chart-point.align-right .market-chart-tooltip { left: auto; right: 0; transform: translateY(5px); }
     .market-chart-point:hover .market-chart-tooltip, .market-chart-point:focus-visible .market-chart-tooltip,
     .stock-chart-point:hover .market-chart-tooltip, .stock-chart-point:focus-visible .market-chart-tooltip { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0); }
+    /* 边界对齐后 hover 时也不再走 translateX(-50%) */
+    .market-chart-point.align-left:hover .market-chart-tooltip,
+    .market-chart-point.align-left:focus-visible .market-chart-tooltip,
+    .stock-chart-point.align-left:hover .market-chart-tooltip,
+    .stock-chart-point.align-left:focus-visible .market-chart-tooltip,
+    .market-chart-point.align-right:hover .market-chart-tooltip,
+    .market-chart-point.align-right:focus-visible .market-chart-tooltip,
+    .stock-chart-point.align-right:hover .market-chart-tooltip,
+    .stock-chart-point.align-right:focus-visible .market-chart-tooltip { transform: translateY(0); }
     .market-chart-start, .market-chart-end { position: absolute; bottom: 0; color: var(--muted); font-size: 10px; }
     .market-chart-start { left: 5px; }
     .market-chart-end { right: 5px; }
@@ -1604,6 +1630,14 @@
     .breakout-pending_confirmation { background: rgba(157, 152, 143, 0.14); color: var(--muted); border-color: rgba(157, 152, 143, 0.3); }
     .breakout-suspicious           { background: rgba(255, 160, 80, 0.18); color: #f5a623; border-color: rgba(255, 160, 80, 0.4); }
     .breakout-failed               { background: rgba(232, 67, 67, 0.18); color: var(--color-up); border-color: rgba(232, 67, 67, 0.4); }
+    /* Job D（§4.7 五买点体系）：形态识别徽章。5 挡颜色对应买点强弱。
+       突破/起涨/回踩三种入场点用暖色（红/橙红/蓝），抄底/追涨两种谨慎点用灰色。 */
+    .pattern-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; vertical-align: middle; border: 1px solid transparent; cursor: help; }
+    .pattern-tu_po      { background: rgba(232, 67, 67, 0.18);  color: var(--color-up); border-color: rgba(232, 67, 67, 0.4); }
+    .pattern-qi_zhang   { background: rgba(255, 120, 80, 0.20); color: #ff7850;         border-color: rgba(255, 120, 80, 0.4); }
+    .pattern-hui_cai    { background: rgba(47, 128, 237, 0.18); color: #2f80ed;         border-color: rgba(47, 128, 237, 0.35); }
+    .pattern-chao_di    { background: rgba(157, 152, 143, 0.14); color: var(--muted);   border-color: rgba(157, 152, 143, 0.3); }
+    .pattern-zhui_zhang { background: rgba(157, 152, 143, 0.10); color: var(--muted);   border-color: rgba(157, 152, 143, 0.25); font-style: italic; }
     /* 形态识别 + 明日关键点位 */
     .pattern-forecast-section { border-left: 3px solid var(--accent); }
     .pattern-signal-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; vertical-align: middle; }
@@ -2798,8 +2832,10 @@
     .market-line-secondary, .stock-ma20-line { stroke: #8aa5d7; }
     .stock-ma5-line { stroke: #d89a33; }
     .market-chart-point, .stock-chart-point { background: #2f80ed; border-color: #fff; box-shadow: 0 0 0 1px #a9c8f7; }
-    .market-chart-tooltip, .trend-point-tooltip { border-color: #d5e1f1; color: #64748b; background: #fff; box-shadow: 0 8px 22px rgba(15,23,42,.14); }
+    .market-chart-tooltip { border-color: #d5e1f1; color: #64748b; background: #fff; box-shadow: 0 8px 22px rgba(15,23,42,.14); }
     .market-chart-tooltip strong, .market-chart-tooltip b { color: #263449; }
+    /* 亮色主题下的十字准星 tooltip：白底深字，覆盖 SVG 中的准星线颜色更淡一点 */
+    .trend-crosshair-v, .trend-crosshair-h { stroke: rgba(100, 116, 139, 0.5); }
     .temperature-ring { background: radial-gradient(circle, #fff 57%, transparent 59%), conic-gradient(#2f80ed var(--temperature), #e9eff7 0); box-shadow: none; }
     .insight-conclusion { color: #24324a; font-size: clamp(18px, 2vw, 25px); font-weight: 780; line-height: 1.4; }
     .insight-row-card { padding: 14px; border-color: #e2e8f0; border-radius: 7px; background: #fbfcfe; }
@@ -2820,9 +2856,7 @@
     .trend-card h4 { color: #263449; font-size: 17px; }
     .trend-line-chart { border-color: #e4ebf2; border-radius: 7px; background: #fbfcfe; }
     .trend-line-path { stroke: #2f80ed; filter: none; }
-    .trend-point-hit { background: transparent; border-color: transparent; box-shadow: none; }
-    .trend-point-hit.is-negative { background: transparent; }
-    .trend-point-label { color: #334155; text-shadow: none; }
+    .trend-key-label { fill: #334155; }
     .leader-view-tabs { padding: 3px; border-color: #dce5ef; border-radius: 7px; background: #f8fafc; }
     .leader-view-tab { min-height: 34px; padding: 7px 10px; border-radius: 5px; color: #718096; }
     .leader-view-tab.is-active { color: #2368c9; background: #fff; box-shadow: 0 1px 2px rgba(15,23,42,.08); }
@@ -3537,30 +3571,10 @@
     .stock-chart-point.align-right:focus-visible .market-chart-tooltip {
       transform: translateY(0);
     }
-    .trend-point-tooltip {
-      width: min(218px, calc(100vw - 56px));
-      max-width: 218px;
+    /* 移动端十字准星 tooltip 收窄一点 */
+    .trend-crosshair-tooltip {
+      max-width: min(200px, calc(100vw - 56px));
       font-size: 11px;
-    }
-    .trend-point-label {
-      max-width: 74px;
-      padding: 1px 4px;
-      overflow: hidden;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .86);
-      text-overflow: ellipsis;
-    }
-    .trend-point-hit.align-left .trend-point-label {
-      left: 0;
-      transform: translateX(0);
-    }
-    .trend-point-hit.align-right .trend-point-label {
-      right: 0;
-      left: auto;
-      transform: translateX(0);
-    }
-    .trend-date-label:first-of-type {
-      transform: none;
     }
 
     /* Wave/key-level cards: make the actionable number the visual anchor, not the label. */

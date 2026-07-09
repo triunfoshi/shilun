@@ -193,6 +193,13 @@ class MarketSectorTests(unittest.TestCase):
         self.assertIsNone(candidate.get("breakout_tracking"))
         breakout_quality_source = candidate["score_breakdown"]["trade_timing_score"]["parts"]["breakout_quality"]["source"]
         self.assertEqual(breakout_quality_source, "features")
+        # Job C（§4.7 五买点体系）：每张候选卡都带 buy_point_pattern 字段（可为 "none"）
+        self.assertIn("buy_point_pattern", candidate)
+        self.assertIn(
+            candidate["buy_point_pattern"],
+            {"tu_po", "qi_zhang", "hui_cai", "chao_di", "zhui_zhang", "none"},
+        )
+        self.assertIn("buy_point_pattern_label", candidate)
         self.assertEqual([], result["daily_leaders"])
         self.assertEqual([], result["all_sectors"])
 

@@ -480,8 +480,22 @@ def _prepare_stock_frame(
     frame["pct_chg"] = frame.groupby("ticker", group_keys=False)["close"].pct_change()
     fallback = (frame["close"] / frame["open"]) - 1.0
     frame["pct_chg"] = frame["pct_chg"].fillna(fallback).fillna(0.0)
-    for window in (5, 8, 10, 20):
+    # ma7 用于五买点体系里的抄底点判定（PRD §4.7），其他窗口不变。
+    for window in (5, 7, 8, 10, 20):
         frame[f"ma{window}"] = frame.groupby("ticker", group_keys=False)["close"].transform(lambda series: series.rolling(window, min_periods=1).mean())
+    # MACD 三件套：标准公式 (12, 26, 9)，用于五买点体系的抄底点 W 形判定。
+    # dif = EMA12 - EMA26, dea = EMA(dif, 9), hist = 2 * (dif - dea)
+    ema12 = frame.groupby("ticker", group_keys=False)["close"].transform(
+        lambda series: series.ewm(span=12, adjust=False).mean()
+    )
+    ema26 = frame.groupby("ticker", group_keys=False)["close"].transform(
+        lambda series: series.ewm(span=26, adjust=False).mean()
+    )
+    frame["macd_dif"] = ema12 - ema26
+    frame["macd_dea"] = frame.groupby("ticker", group_keys=False)["macd_dif"].transform(
+        lambda series: series.ewm(span=9, adjust=False).mean()
+    )
+    frame["macd_hist"] = 2.0 * (frame["macd_dif"] - frame["macd_dea"])
     frame["volume_ma5"] = frame.groupby("ticker", group_keys=False)["volume"].transform(lambda series: series.rolling(5, min_periods=1).mean())
     frame["amount_ma5"] = frame.groupby("ticker", group_keys=False)["amount"].transform(lambda series: series.rolling(5, min_periods=1).mean())
     frame["atr_14"] = _compute_atr_series(frame, period=14)
@@ -2058,11 +2072,20 @@ def _build_leader_summary(
 
 def _build_summary(top_sectors: list[dict[str, Any]]) -> dict[str, Any]:
     leader = top_sectors[0]
+    leader_scores = leader.get("scores") or {}
+    mainline_score = leader.get("sector_mainline_score")
+    if mainline_score is None:
+        mainline_score = leader_scores.get("sector_mainline_score")
+    health_score = leader_scores.get("sector_score")
     hot = [item for item in top_sectors if item["stage"] in {"confirm", "main_uptrend", "accelerate", "repair"}]
     divergent = [item for item in top_sectors if item["stage"] == "divergence"]
     has_moneyflow = any((item.get("fund_flow") or {}).get("data_status") == "implemented" for item in top_sectors)
     return {
-        "headline": f"最强板块：{leader['sector_name']}，阶段 {leader['stage_label']}，评分 {leader['scores']['sector_score']}。",
+        # "headline": f"最强板块：{leader['sector_name']}，阶段 {leader['stage_label']}，评分 {leader['scores']['sector_score']}。",
+        "headline": (
+            f"最强板块：{leader['sector_name']}，阶段 {leader['stage_label']}"
+            f"板块主线分 {_round(mainline_score,2)}，当日健康分 {_round(health_score,2)}。"
+        ),
         "conclusion": (
             f"{leader['sector_name']} 当前按 {leader['sector_source']} 代理口径排名第一；"
             f"动作建议：{leader['action']}"

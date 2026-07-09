@@ -4,6 +4,10 @@ from typing import Any
 
 import pandas as pd
 
+from shilun.market.buy_point_patterns import (
+    backfill_days_since_chao_di,
+    detect_buy_point_pattern,
+)
 from shilun.market.ma5_features import (
     build_ma_features,
     build_trade_plan,
@@ -242,7 +246,20 @@ def detect_ma5_signal(bars: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _build_trading_levels(bars: list[dict[str, Any]], signal: str) -> dict[str, Any]:
-    """为 MA5 趋势战法输出可执行价位，避免只展示形态分。"""
+    """老函数：为 MA5 趋势战法计算"信号命中价位"和辅助支撑/压力。
+
+    ⚠️ 语义已降级（Bug 修复期）：本函数输出的 `predicted_buy_price` **不再**是
+    对外的权威推荐买点。PRD 阶段 9 规定 `trade_plan.entry_price = close` 才是
+    权威口径（见 `build_trade_plan()`）。候选池向前端暴露的 `predicted_buy_price`
+    现在从 `trade_plan.entry_price` 取，本函数保留是为了：
+
+      1. 支撑/压力的兜底：`support_price` / `pressure_price` 仍供前端展示
+      2. 老 stop_loss 兜底：如果 trade_plan 里没有 stop_loss_1，用本函数的输出
+      3. 向后兼容：老 API 消费方（例如盘中监控）仍读这些字段
+
+    v0.2 支撑分层：MA5 > MA8 > MA10 > MA20。**不取 20 日低点作为支撑候选**——
+    穿破 MA5 到达 20 日低点时 MA5 战法入场时机已错过。
+    """
     latest = bars[-1] if bars else {}
     close = _f(latest.get("close"))
     ma5 = _f(latest.get("ma5"))
@@ -250,35 +267,38 @@ def _build_trading_levels(bars: list[dict[str, Any]], signal: str) -> dict[str, 
     ma10 = _f(latest.get("ma10"))
     ma20 = _f(latest.get("ma20"))
     highs = [_f(b.get("high") or b.get("close")) for b in bars if _f(b.get("high") or b.get("close")) > 0]
-    lows = [_f(b.get("low") or b.get("close")) for b in bars if _f(b.get("low") or b.get("close")) > 0]
     recent_high = max(highs) if highs else close
-    recent_low = min(lows[-10:]) if lows else close
 
+    # 支撑候选池：只有均线，不包含 20 日低点（bug 修复时移除）。
     support_candidates = [
-        ("MA8", ma8),
         ("MA5", ma5),
+        ("MA8", ma8),
         ("MA10", ma10),
         ("MA20", ma20),
-        ("10日低点", recent_low),
     ]
-    below_supports = [(label, value) for label, value in support_candidates if value > 0 and value <= close * 1.01]
-    support_label, support_price = max(below_supports, key=lambda item: item[1]) if below_supports else ("MA5", ma5 or close)
+    below_supports = [(label, value) for label, value in support_candidates if value > 0 and value <= close * 1.005]
+    if below_supports:
+        support_label, support_price = max(below_supports, key=lambda item: item[1])
+    else:
+        support_label, support_price = ("MA5", ma5 or close)
 
     pressure_price = recent_high if recent_high > close * 1.01 else close * 1.08
     pressure_label = "20日高点" if recent_high > close * 1.01 else "8%目标位"
 
+    # 信号命中价（保留，但对外语义变为"信号触发参考价"，不再叫"买点"）。
+    # 对齐 PRD 阶段 9：候选池对外的 predicted_buy_price 会用 trade_plan.entry_price 覆盖。
     if signal == "pullback_to_ma5":
-        buy_price = max(support_price, min(close, (ma5 or close) * 1.01))
-        buy_label = "回踩确认买点"
+        buy_price = max(support_price, min(close, (ma5 or close) * 1.005))
+        buy_label = "回踩确认信号价"
     elif signal == "breakout_confirm":
         buy_price = close
-        buy_label = "突破确认买点"
+        buy_label = "突破确认信号价"
     elif signal == "gentle_rise":
         buy_price = max(ma5 or close, ma8 or 0)
-        buy_label = "放量确认买点"
+        buy_label = "放量确认信号价"
     else:
         buy_price = support_price
-        buy_label = "观察低吸买点"
+        buy_label = "观察参考价"
 
     stop_loss = support_price * 0.98 if support_price else (ma5 * 0.98 if ma5 else None)
     expected_sell = pressure_price if pressure_price > buy_price * 1.02 else buy_price * 1.08
@@ -516,6 +536,11 @@ def build_candidates(
                 if breakout_event.get(field) is not None:
                     ma5_features[field] = breakout_event.get(field)
 
+        # Job C（§4.7 五买点体系）：先回填 days_since_chao_di，再识别五买点形态。
+        # 顺序不能反：detect_buy_point_pattern 里 qi_zhang 判定要用最新的 days_since_chao_di。
+        ma5_features["days_since_chao_di"] = backfill_days_since_chao_di(feature_bars)
+        buy_point_pattern_info = detect_buy_point_pattern(ma5_features)
+
         trade_plan = build_trade_plan(ma5_features)
         stock_quality = compute_stock_quality_score(
             ma5_features,
@@ -547,17 +572,26 @@ def build_candidates(
             "return_20d": sig.get("return_20d"),
             "entry_quality": sig.get("entry_quality", 0),
             "risk_flags": sig.get("risk_flags", []),
-            "entry_price": trading_levels["predicted_buy_price"],
-            "predicted_buy_price": trading_levels["predicted_buy_price"],
-            "predicted_buy_label": trading_levels["predicted_buy_label"],
-            "support_price": trading_levels["support_price"],
-            "support_source": trading_levels["support_source"],
+            # 对齐 PRD 阶段 9：权威买点用 trade_plan.entry_price（= 当前 close），
+            # 而不是 _build_trading_levels 输出的"信号命中价"。老字段 predicted_buy_price
+            # 保留是为了向后兼容，也用同一个值。
+            "entry_price": trade_plan.get("entry_price"),
+            "predicted_buy_price": trade_plan.get("entry_price"),
+            "predicted_buy_label": "MA5 战法交易计划入场价",
+            # 支撑/压力：trade_plan 的 support_1 更权威（= MA5 当前值），前端展示时优先用
+            "support_price": trade_plan.get("support_1") or trading_levels["support_price"],
+            "support_source": trade_plan.get("support_1_source") or trading_levels["support_source"],
             "pressure_price": trading_levels["pressure_price"],
             "pressure_source": trading_levels["pressure_source"],
-            "expected_sell_price": trading_levels["expected_sell_price"],
-            "expected_sell_label": trading_levels["expected_sell_label"],
-            "risk_reward_ratio": trading_levels["risk_reward_ratio"],
-            "stop_loss": round((trading_levels["support_price"] or ma5_val) * 0.98, 2) if (trading_levels["support_price"] or ma5_val) else None,
+            # 目标价与止损：同样对齐 PRD 阶段 9，用 trade_plan 里的权威口径
+            "expected_sell_price": trade_plan.get("target_price") or trading_levels["expected_sell_price"],
+            "expected_sell_label": "MA5 战法目标位（前高/波动率）",
+            "risk_reward_ratio": trade_plan.get("reward_risk_ratio") or trading_levels["risk_reward_ratio"],
+            "stop_loss": trade_plan.get("stop_loss_1") or (
+                round((trading_levels["support_price"] or ma5_val) * 0.98, 2)
+                if (trading_levels["support_price"] or ma5_val)
+                else None
+            ),
             "reason": sig["reason"],
             "leader_score": candidate.get("leader_score"),
             "return_5d": candidate.get("return_5d"),
@@ -616,6 +650,14 @@ def build_candidates(
                 if breakout_event
                 else None
             ),
+            # Job C（§4.7 五买点体系）：形态识别层输出。
+            # buy_point_pattern ∈ {tu_po, qi_zhang, hui_cai, chao_di, zhui_zhang, none}
+            # 跟指标层 buy_point_type 并存，前端 Job D 用它出五色徽章。
+            "buy_point_pattern": buy_point_pattern_info.get("pattern"),
+            "buy_point_pattern_label": buy_point_pattern_info.get("label"),
+            "buy_point_pattern_context": buy_point_pattern_info.get("context"),
+            "buy_point_pattern_note": buy_point_pattern_info.get("note"),
+            "buy_point_pattern_strength": buy_point_pattern_info.get("strength"),
             "trade_plan": trade_plan,
         })
 
