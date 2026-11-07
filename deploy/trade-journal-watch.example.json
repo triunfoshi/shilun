@@ -1,0 +1,17 @@
+{
+  "version": "journal-statement-watch-v1",
+  "enabled": false,
+  "inbox": "/Users/shibicheng/shilun_standalone/runtime/trade-statements/inbox",
+  "account_alias": "primary",
+  "encoding": null,
+  "min_file_age_seconds": 60,
+  "profile_confirmed": false,
+  "profile_sample_sha256": null,
+  "expected_headers": {},
+  "mapping": {
+    "tables": [],
+    "ignored_sheets": [],
+    "ignored_rows": [],
+    "corroboration_pairs": []
+  }
+}

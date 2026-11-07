@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>短线周期组件状态预览</title>
+<link rel="stylesheet" href="/static/tokens.css"><link rel="stylesheet" href="/static/execution-workbench.tokens.css">
+<link rel="stylesheet" href="/static/app.css"><link rel="stylesheet" href="/static/market-v2.css">
+<link rel="stylesheet" href="/static/review-dashboard.css"><link rel="stylesheet" href="/static/workspace-controls.css">
+<link rel="stylesheet" href="/static/workbench-density.css"><link rel="stylesheet" href="/static/theme-cycles.css">
+<style>body{display:block}main{max-width:1100px;margin:auto;padding:var(--wb-space-3);font:var(--terminal-font)/1.5 var(--terminal-font-family)}main h1{font:650 var(--terminal-title)/1.5 var(--terminal-font-family);margin-block:var(--wb-space-2)}.preview-states{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:var(--wb-space-2)}</style>
+</head><body><main><h1>短线题材周期 · 组件验收</h1><p>上方为真实日期归档，下方只演示控件状态，不代表行情结果。</p>
+<section id="cyclePreview" aria-label="真实周期归档"></section>
+<div class="preview-states">
+<section class="theme-cycles"><h3>默认</h3><button>重新读取</button></section>
+<section class="theme-cycles"><h3>悬停</h3><button>移动鼠标检查</button></section>
+<section class="theme-cycles"><h3>键盘焦点</h3><button>Tab 定位检查</button></section>
+<section class="theme-cycles"><h3>按下</h3><button>按住检查</button></section>
+<section class="theme-cycles"><h3>禁用</h3><button disabled>读取中…</button></section>
+<section class="theme-cycles" data-state="loading" aria-busy="true"><h3>加载</h3><div class="tc-body" role="status">正在读取所选日周期归档…</div></section>
+<section class="theme-cycles" data-state="error"><h3>失败</h3><p class="tc-message">读取超时，请重试。</p><button>重新读取</button></section>
+<section class="theme-cycles" data-state="success"><h3>成功</h3><p>所选日归档读取完成。</p><button>重新读取</button></section>
+</div></main><script src="/static/theme-cycles.js"></script><script>ThemeCycles.mount('cyclePreview','2026-09-22');</script></body></html>

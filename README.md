@@ -16,6 +16,8 @@
 - `03_核心模块接口与伪代码.md`：模块接口说明
 - `04_前端方案说明.md`：前端规划说明
 - `docs/volume_stage_quant_spec.md`：量价模式、筹码地形与趋势初中末期的量化规范
+- `docs/交易体系/右侧主线套利交易系统_v1.0.md`：当前统一交易系统，覆盖套利、预期管理、市场姿态、角色与三战法
+- `docs/alicloud_migration_runbook.md`：ECS + 云 MongoDB + 容器化迁移、验证与回滚手册
 - `docs/trading_system_detailed_spec.md`：当前交易系统的详细实现方案文档，包含指标公式、权重口径、模型与执行层规则
 - `docs/market_snapshot_records_spec.md`：二期研究输入表 `market_snapshot_records` 的字段规范与索引策略
 - `docs/factor_pool.md`：三期因子池清单，约束新增字段必须归属到因子组
@@ -46,6 +48,10 @@ shilun-api
 
 默认服务地址为 `http://127.0.0.1:8000`。
 
+如需迁移到阿里云，使用 `deploy/compose.yaml`，并先阅读
+`docs/alicloud_migration_runbook.md`。公网部署必须开启 HTTPS 与
+`SHILUN_AUTH_REQUIRED=true`，MongoDB 只走 VPC 私网。
+
 启动后可直接打开控制台页面：
 
 ```text
@@ -56,6 +62,10 @@ http://127.0.0.1:8000/
 数据链路区会先检查 Mongo 是否已有目标日期数据：已有则提示“已更新”，没有则可手动同步 Tushare 最新交易日，或切换到 Mongo 最近历史日期分析。
 
 ## 当前能力
+
+- 默认“指数复盘”页按四大指数、量能、广度、关键位、机构旁证和次日验证组织收盘复盘
+- 提供红K净流入、结构修复520、周K突破三种冻结战法的确定性候选计算
+- 日终全市场计算物化为 `daily_review_snapshots`，浏览器刷新只读快照
 
 - 通过 Tushare 私有网关拉取日线数据并归一化为石论字段
 - 对结构/强弱/空间/风控做规则映射

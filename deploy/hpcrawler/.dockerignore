@@ -1,0 +1,5 @@
+.env*
+monitor-data/
+node_modules/
+*.tar.gz
+*.log

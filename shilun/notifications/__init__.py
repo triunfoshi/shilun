@@ -23,6 +23,14 @@ class FeishuBotClient:
         )
         return self._handle_response(response)
 
+    def send_card(self, card: dict[str, Any]) -> dict[str, Any]:
+        response = requests.post(
+            self.webhook_url,
+            json={"msg_type": "interactive", "card": card},
+            timeout=self.timeout,
+        )
+        return self._handle_response(response)
+
     @staticmethod
     def _handle_response(response: requests.Response) -> dict[str, Any]:
         try:

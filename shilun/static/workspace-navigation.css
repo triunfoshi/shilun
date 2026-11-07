@@ -1,0 +1,46 @@
+/* Workspace ownership badges; sidebar hierarchy lives in workspace-controls.css. */
+.workspace-domain {
+  --workspace-domain-color: var(--mv2-focus);
+  display: inline-flex;
+  min-height: calc(var(--mv2-space-4) + var(--mv2-space-2));
+  align-items: center;
+  flex: 0 0 auto;
+  padding: var(--mv2-space-1) var(--mv2-space-2);
+  color: var(--workspace-domain-color);
+  background: color-mix(in oklch, var(--workspace-domain-color) 10%, transparent);
+  border: 1px solid color-mix(in oklch, var(--workspace-domain-color) 24%, transparent);
+  border-radius: var(--mv2-radius-sm);
+  font-size: var(--mv2-text-sm);
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.workspace-domain.is-trading {
+  --workspace-domain-color: var(--wb-accent-deep);
+}
+
+.workspace-domain.is-review {
+  --workspace-domain-color: var(--brand-ink-on-light);
+}
+
+.workspace-domain.is-system {
+  --workspace-domain-color: var(--brand-ink-on-light);
+}
+
+body[data-workspace="review"] #pageKicker {
+  color: var(--brand-ink-on-light);
+}
+
+body[data-workspace="research"] #pageKicker {
+  color: var(--mv2-focus);
+}
+
+body[data-workspace="trading"] #pageKicker {
+  color: var(--wb-accent-deep);
+}
+
+body[data-workspace="system"] #pageKicker {
+  color: var(--brand-ink-on-light);
+}
+

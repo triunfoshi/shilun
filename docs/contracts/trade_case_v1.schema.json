@@ -1,0 +1,1589 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:shilun:trade-case:1.0.0",
+  "title": "石论交易档案数据合约",
+  "description": "记录结构草案；不表示导入、自动快照或归因服务已上线。金额人民币元，比例pct使用百分点数值。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "is_example": {
+      "type": "boolean"
+    },
+    "case_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+    },
+    "account_ref": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+    },
+    "ticker": {
+      "type": "string",
+      "pattern": "^\\d{6}\\.(SH|SZ|BJ)$"
+    },
+    "security_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "open",
+        "closed",
+        "cancelled"
+      ]
+    },
+    "opening_cost_status": {
+      "type": "string",
+      "enum": [
+        "known",
+        "unknown",
+        "partial",
+        "not_applicable"
+      ]
+    },
+    "observation_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/observation"
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/decision"
+      }
+    },
+    "context_snapshots": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/snapshot"
+      }
+    },
+    "fills": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/fill"
+      }
+    },
+    "reviews": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/review"
+      }
+    },
+    "outcome": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/outcome"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "is_example",
+    "case_id",
+    "account_ref",
+    "ticker",
+    "security_name",
+    "created_at",
+    "status",
+    "opening_cost_status",
+    "observation_events",
+    "decisions",
+    "context_snapshots",
+    "fills",
+    "reviews",
+    "outcome"
+  ],
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "broker",
+            "market_provider",
+            "shilun",
+            "user",
+            "example"
+          ]
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "source_kind",
+        "source_ref",
+        "content_sha256"
+      ]
+    },
+    "fact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fact_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "dimension": {
+          "type": "string",
+          "enum": [
+            "market",
+            "sector",
+            "sentiment",
+            "ladder",
+            "stock",
+            "account",
+            "watchlist"
+          ]
+        },
+        "metric_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "object",
+            "array",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "enum": [
+            "cny",
+            "cny_per_share",
+            "pct",
+            "ratio",
+            "shares",
+            "lots",
+            "index_points",
+            "count",
+            "text",
+            "members",
+            "boolean",
+            "seconds"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "observed",
+            "estimated",
+            "missing",
+            "partial"
+          ]
+        },
+        "missing_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "available_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "evidence_class": {
+          "type": "string",
+          "enum": [
+            "archived_at_time",
+            "reconstructed",
+            "recalled",
+            "unknown"
+          ]
+        },
+        "definition_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        }
+      },
+      "required": [
+        "fact_id",
+        "dimension",
+        "metric_key",
+        "value",
+        "unit",
+        "status",
+        "missing_reason",
+        "observed_at",
+        "available_at",
+        "captured_at",
+        "evidence_class",
+        "definition_version",
+        "source"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "missing"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "null"
+              },
+              "missing_reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "condition_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "metric_key": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operator": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "gt",
+                "gte",
+                "lt",
+                "lte",
+                "eq",
+                "neq",
+                "in",
+                "not_in"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "array",
+            "null"
+          ]
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "cny",
+                "cny_per_share",
+                "pct",
+                "ratio",
+                "shares",
+                "lots",
+                "index_points",
+                "count",
+                "text",
+                "members",
+                "boolean",
+                "seconds"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "window": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirmation": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evaluation": {
+          "type": "string",
+          "enum": [
+            "machine",
+            "human",
+            "unavailable"
+          ]
+        },
+        "definition_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "condition_id",
+        "description",
+        "metric_key",
+        "operator",
+        "threshold",
+        "unit",
+        "window",
+        "confirmation",
+        "evaluation",
+        "definition_version"
+      ]
+    },
+    "mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "definition_ref": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "research_status": {
+          "type": "string",
+          "enum": [
+            "unvalidated",
+            "testing",
+            "validated",
+            "unknown"
+          ]
+        }
+      },
+      "required": [
+        "mode_id",
+        "label",
+        "version",
+        "definition_ref",
+        "research_status"
+      ]
+    },
+    "snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "pretrade",
+            "intraday",
+            "after_close",
+            "historical_reconstruction"
+          ]
+        },
+        "trade_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "captured_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "content_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "facts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/fact"
+          }
+        },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "requested_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "usable_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scope_description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "missing": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "required": [
+            "requested_count",
+            "usable_count",
+            "scope_description",
+            "missing"
+          ]
+        }
+      },
+      "required": [
+        "snapshot_id",
+        "phase",
+        "trade_date",
+        "captured_at",
+        "content_sha256",
+        "facts",
+        "coverage"
+      ]
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "observation_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "added",
+            "removed",
+            "considered",
+            "skipped",
+            "selected"
+          ]
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "recording_class": {
+          "type": "string",
+          "enum": [
+            "at_time",
+            "post_trade_recall",
+            "historical_reconstruction"
+          ]
+        },
+        "ticker": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "user_watchlist",
+            "system_signal_universe"
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reference_tickers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "snapshot_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          }
+        }
+      },
+      "required": [
+        "observation_id",
+        "action",
+        "decided_at",
+        "recorded_at",
+        "recording_class",
+        "ticker",
+        "scope",
+        "reason",
+        "reference_tickers",
+        "snapshot_ids"
+      ]
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "action": {
+          "type": "string",
+          "enum": [
+            "initial_buy",
+            "add",
+            "hold",
+            "reduce",
+            "exit",
+            "skip",
+            "cancel"
+          ]
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "recording_class": {
+          "type": "string",
+          "enum": [
+            "at_time",
+            "post_trade_recall",
+            "historical_reconstruction"
+          ]
+        },
+        "plan_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan_version": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "supersedes_decision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "amendment_reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/mode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trigger_label": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "thesis": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "main_sector": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "sector_code": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sector_name": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "membership_date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "taxonomy_version": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "sector_code",
+                "sector_name",
+                "membership_date",
+                "taxonomy_version"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "role_label": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reference_tickers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          }
+        },
+        "entry_conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "expectation": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "horizon": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "verify_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "conditions": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              }
+            }
+          },
+          "required": [
+            "horizon",
+            "verify_at",
+            "description",
+            "conditions"
+          ]
+        },
+        "invalidation_conditions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/condition"
+          }
+        },
+        "risk_plan": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "planned_quantity": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "planned_amount_cny": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "max_loss_cny": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "max_position_pct": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "add_allowed_if": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "exit_plan": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "planned_quantity",
+            "planned_amount_cny",
+            "max_loss_cny",
+            "max_position_pct",
+            "add_allowed_if",
+            "exit_plan"
+          ]
+        },
+        "input_snapshot_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          }
+        },
+        "supporting_fact_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          }
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknown_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "decision_id",
+        "action",
+        "decided_at",
+        "recorded_at",
+        "recording_class",
+        "plan_id",
+        "plan_version",
+        "supersedes_decision_id",
+        "amendment_reason",
+        "mode",
+        "trigger_label",
+        "thesis",
+        "main_sector",
+        "role_label",
+        "reference_tickers",
+        "observation_ids",
+        "entry_conditions",
+        "expectation",
+        "invalidation_conditions",
+        "risk_plan",
+        "input_snapshot_ids",
+        "supporting_fact_ids",
+        "reason",
+        "unknown_fields"
+      ]
+    },
+    "fill": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "fill_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "source_batch_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "source_record_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_file_sha256": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_row": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": [
+            "broker_statement",
+            "manual_fill",
+            "example"
+          ]
+        },
+        "recorded_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "trade_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "executed_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "time_precision": {
+          "type": "string",
+          "enum": [
+            "second",
+            "minute",
+            "date",
+            "unknown"
+          ]
+        },
+        "verified_execution_time": {
+          "type": "boolean"
+        },
+        "side": {
+          "type": "string",
+          "enum": [
+            "buy",
+            "sell"
+          ]
+        },
+        "quantity": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "price": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fees_cny": {
+          "type": "number",
+          "minimum": 0
+        },
+        "net_cash_cny": {
+          "type": "number"
+        },
+        "currency": {
+          "const": "CNY"
+        },
+        "decision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "correction_of_fill_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "fill_id",
+        "source_batch_id",
+        "source_record_id",
+        "source_file_sha256",
+        "source_row",
+        "source_kind",
+        "recorded_at",
+        "trade_date",
+        "executed_at",
+        "time_precision",
+        "verified_execution_time",
+        "side",
+        "quantity",
+        "price",
+        "fees_cny",
+        "net_cash_cny",
+        "currency",
+        "decision_id",
+        "correction_of_fill_id"
+      ]
+    },
+    "review": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "review_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+        },
+        "reviewed_at": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "reviewer": {
+          "type": "string",
+          "enum": [
+            "user",
+            "system_suggestion"
+          ]
+        },
+        "supersedes_review_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confirmation": {
+          "type": "string",
+          "enum": [
+            "unconfirmed",
+            "user_confirmed"
+          ]
+        },
+        "entry_assessment": {
+          "type": "string",
+          "enum": [
+            "followed_plan",
+            "deviated",
+            "unplanned",
+            "unknown"
+          ]
+        },
+        "holding_assessment": {
+          "type": "string",
+          "enum": [
+            "followed_plan",
+            "deviated",
+            "unplanned",
+            "unknown"
+          ]
+        },
+        "exit_assessment": {
+          "type": "string",
+          "enum": [
+            "followed_plan",
+            "deviated",
+            "unplanned",
+            "unknown"
+          ]
+        },
+        "sizing_assessment": {
+          "type": "string",
+          "enum": [
+            "followed_plan",
+            "deviated",
+            "unplanned",
+            "unknown"
+          ]
+        },
+        "outcome_interpretation": {
+          "type": "string",
+          "enum": [
+            "normal_win",
+            "normal_loss",
+            "execution_deviation",
+            "unresolved"
+          ]
+        },
+        "attributions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "factor": {
+                "type": "string",
+                "enum": [
+                  "entry",
+                  "holding",
+                  "exit",
+                  "add_reduce",
+                  "sizing",
+                  "environment_change",
+                  "information_gap",
+                  "normal_risk",
+                  "unresolved"
+                ]
+              },
+              "hypothesis": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+                }
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "hypothesis",
+                  "supported_description",
+                  "unresolved"
+                ]
+              }
+            },
+            "required": [
+              "factor",
+              "hypothesis",
+              "evidence_ids",
+              "status"
+            ]
+          }
+        },
+        "counterfactuals": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+              },
+              "rule_version": {
+                "type": "string",
+                "minLength": 1
+              },
+              "registered_at": {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+              },
+              "research_class": {
+                "type": "string",
+                "enum": [
+                  "pre_registered",
+                  "posthoc_research"
+                ]
+              },
+              "result_status": {
+                "type": "string",
+                "enum": [
+                  "not_run",
+                  "valid",
+                  "incomplete",
+                  "unexecutable"
+                ]
+              },
+              "net_pnl_cny": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "limitations": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "rule_id",
+              "rule_version",
+              "registered_at",
+              "research_class",
+              "result_status",
+              "net_pnl_cny",
+              "limitations"
+            ]
+          }
+        },
+        "notes": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unknown_fields": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "review_id",
+        "reviewed_at",
+        "reviewer",
+        "supersedes_review_id",
+        "confirmation",
+        "entry_assessment",
+        "holding_assessment",
+        "exit_assessment",
+        "sizing_assessment",
+        "outcome_interpretation",
+        "attributions",
+        "counterfactuals",
+        "notes",
+        "unknown_fields"
+      ]
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "calculation_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "as_of": {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+        },
+        "cost_method": {
+          "const": "FIFO"
+        },
+        "cost_status": {
+          "type": "string",
+          "enum": [
+            "known",
+            "unknown",
+            "partial"
+          ]
+        },
+        "remaining_quantity": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "realized_pnl_cny": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unrealized_pnl_cny": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valuation_price_at": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "(Z|[+-]\\d{2}:\\d{2})$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "valuation_source": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "closed_round_pnl_cny": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "total_buy_cost_cny": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_cost_exposure_cny": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dividends_net_cny": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "dividend_tax_cny": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "required": [
+        "calculation_version",
+        "as_of",
+        "cost_method",
+        "cost_status",
+        "remaining_quantity",
+        "realized_pnl_cny",
+        "unrealized_pnl_cny",
+        "valuation_price_at",
+        "valuation_source",
+        "closed_round_pnl_cny",
+        "total_buy_cost_cny",
+        "max_cost_exposure_cny",
+        "dividends_net_cny",
+        "dividend_tax_cny",
+        "limitations"
+      ]
+    }
+  },
+  "x-runtime-invariants": [
+    "此Schema只校验字段结构；以下跨记录规则需要服务实现与测试，不能仅靠Schema声明为已验证。",
+    "同一档案内各类ID唯一且所有引用可解析；跨档案共享快照必须引用不可变内容。",
+    "决策用于事前检验的事实available_at不晚于decided_at；available_at未知时不可宣称事前可核验。",
+    "信息captured_at不早于其已知available_at；回忆或历史重建不能升级为当时归档证据。",
+    "at_time计划应在对应下单之前留存；导入文件或后补文字不能反写计划的真实recorded_at。",
+    "原版本追加保存；supersedes与correction引用必须存在且不能形成循环。",
+    "按真实库存顺序核对股数、成交净现金、费用和期末持仓，不能卖出不存在的库存。",
+    "清仓且成本已知时，整轮买卖净现金流=FIFO已实现盈亏；分红税费独立对账。",
+    "成交匹配与同股多模式分配不得重复使用同一股数；导入复盘不重复修改生产持仓。",
+    "不同日期或同日时序不明时，不推定不存在的成交顺序；按可交易日与实际可卖数量检查回放。",
+    "closed档案库存应为0；unknown成本或缺失成交时相关收益为null并注明缺口。",
+    "unrealized非null时必须附估值时间与来源；真实成交胜率不纳入未成交观察记录。",
+    "system_suggestion不得自动变成user_confirmed；单笔盈亏不产生已验证因果结论。"
+  ]
+}

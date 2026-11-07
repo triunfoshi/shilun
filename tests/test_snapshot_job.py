@@ -247,6 +247,18 @@ class FakeRawMongoStore(FakeMongoStore):
 
 
 class SnapshotJobTests(unittest.TestCase):
+    def setUp(self):
+        # Tests never inherit the developer's production Mongo connection.
+        from unittest.mock import patch
+        from dataclasses import replace
+        from shilun.common.config import load_config
+        self.config_patch = patch('shilun.jobs.snapshot_job.load_config', return_value=replace(load_config(), mongo_uri=None))
+        self.config_patch.start()
+        self.addCleanup(self.config_patch.stop)
+        self.taxonomy_patch = patch('shilun.market.taxonomy.classify_stocks', side_effect=lambda store, day, rows: rows)
+        self.taxonomy_patch.start()
+        self.addCleanup(self.taxonomy_patch.stop)
+
     def test_snapshot_job_exports_ranked_top_table_and_persists_data(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             job = SnapshotJob(pipeline=FakePipeline(), client=FakeSnapshotClient())

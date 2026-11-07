@@ -57,6 +57,7 @@ class FakeCollection:
                 return
         if upsert:
             new_doc = dict(query)
+            new_doc.update(update.get("$setOnInsert", {}))
             new_doc.update(update.get("$set", {}))
             self._docs.append(new_doc)
 
@@ -155,12 +156,16 @@ class UpsertHoldingTest(unittest.TestCase):
             signal_candle_open=518.0,
             invalid_conditions=["close < signal_candle_open", "MA20 * 0.99"],
             note="半导体主线",
+            quantity=1_000,
+            cost_basis=520.0,
         ))
         doc = get_holding(col, "603986.SH")
         self.assertEqual(doc["name"], "兆易创新")
         self.assertEqual(doc["target_price"], 620.0)
         self.assertEqual(doc["signal_candle_open"], 518.0)
         self.assertEqual(len(doc["invalid_conditions"]), 2)
+        self.assertEqual(doc["quantity"], 1_000)
+        self.assertEqual(doc["cost_basis"], 520.0)
 
 
 class ListHoldingsTest(unittest.TestCase):
@@ -195,6 +200,29 @@ class PatchHoldingTest(unittest.TestCase):
         upsert_holding(col, _rec(stop_loss_1=500.0))
         updated = patch_holding(col, "603986.SH", {"stop_loss_1": 510.0})
         self.assertEqual(updated["stop_loss_1"], 510.0)
+        self.assertEqual(updated["stop_loss_mode"], "manual")
+        self.assertTrue(updated["stop_loss_confirmed_at"])
+
+    def test_patch_ledger_values_keeps_position_revision_audit(self) -> None:
+        col = FakeCollection()
+        upsert_holding(col, _rec(quantity=100, entry_price=500.0, cost_basis=510.0))
+
+        updated = patch_holding(col, "603986.SH", {
+            "quantity": 200,
+            "entry_price": 505.0,
+            "manual_current_price": 520.0,
+        })
+
+        self.assertEqual(updated["quantity"], 200)
+        self.assertEqual(updated["entry_price"], 505.0)
+        self.assertEqual(updated["cost_basis"], 510.0)
+        self.assertEqual(updated["manual_current_price"], 520.0)
+        self.assertTrue(updated["manual_current_price_at"])
+        self.assertEqual(updated["position_revisions"][-1]["previous"]["quantity"], 100)
+
+        restored = patch_holding(col, "603986.SH", {"manual_current_price": None})
+        self.assertIsNone(restored["manual_current_price"])
+        self.assertIsNone(restored["manual_current_price_at"])
 
     def test_patch_status_directly_is_forbidden(self) -> None:
         col = FakeCollection()
@@ -202,11 +230,49 @@ class PatchHoldingTest(unittest.TestCase):
         with self.assertRaises(HoldingsError):
             patch_holding(col, "603986.SH", {"status": "closed"})
 
-    def test_patch_entry_price_forbidden(self) -> None:
+    def test_patch_entry_price_is_allowed_as_audited_correction(self) -> None:
         col = FakeCollection()
         upsert_holding(col, _rec())
-        with self.assertRaises(HoldingsError):
-            patch_holding(col, "603986.SH", {"entry_price": 999.0})
+        updated = patch_holding(col, "603986.SH", {"entry_price": 999.0})
+        self.assertEqual(updated["entry_price"], 999.0)
+        self.assertEqual(updated["position_revisions"][-1]["changes"]["entry_price"], 999.0)
+
+    def test_patch_runtime_quantity_and_cost_basis(self) -> None:
+        col = FakeCollection()
+        upsert_holding(col, _rec())
+        updated = patch_holding(col, "603986.SH", {
+            "quantity": 1_000,
+            "cost_basis": 520,
+            "realized_loss_amount": 300,
+        })
+        self.assertEqual(updated["quantity"], 1_000)
+        self.assertEqual(updated["cost_basis"], 520)
+        self.assertEqual(updated["realized_loss_amount"], 300)
+
+    def test_available_quantity_and_cost_publish_incrementing_position_event(self) -> None:
+        col = FakeCollection()
+        events = FakeCollection()
+        upsert_holding(col, _rec(quantity=1_000, cost_basis=520), position_event_collection=events)
+
+        updated = patch_holding(
+            col,
+            "603986.SH",
+            {"available_quantity": 600, "cost_basis": 525},
+            position_event_collection=events,
+            source="user_patch",
+        )
+
+        self.assertEqual(updated["position_revision"], 2)
+        self.assertEqual(updated["available_quantity"], 600)
+        event = events.find_one({"ticker": "603986.SH", "position_revision": 2})
+        self.assertEqual(event["source"], "user_patch")
+        self.assertEqual(event["changes"]["cost_basis"], 525)
+
+    def test_available_quantity_cannot_exceed_total_quantity(self) -> None:
+        col = FakeCollection()
+        upsert_holding(col, _rec(quantity=100))
+        with self.assertRaisesRegex(HoldingsError, "available_quantity"):
+            patch_holding(col, "603986.SH", {"available_quantity": 101})
 
     def test_realized_size_partial_reduces_status_to_reduced(self) -> None:
         col = FakeCollection()

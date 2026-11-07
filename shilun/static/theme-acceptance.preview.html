@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>归因验收组件 · 状态预览</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/market-v2.css">
+  <link rel="stylesheet" href="/static/review-dashboard.css">
+  <link rel="stylesheet" href="/static/workbench-density.css">
+  <link rel="stylesheet" href="/static/strength-review.css">
+  <link rel="stylesheet" href="/static/theme-acceptance.css?v=20260923-v4">
+  <style>
+    .ta-demo.tab-panel { display: block; margin: var(--terminal-inset); }
+    .ta-demo section { display: flex; align-items: center; flex-wrap: wrap; gap: var(--terminal-gap); padding-block: var(--terminal-gap); border-top: 1px solid var(--terminal-line); }
+    .ta-demo h2 { min-width: 90px; margin: 0; }
+    .ta-demo h1 { margin-block: var(--terminal-gap); }
+  </style>
+</head>
+<body>
+  <main class="theme-acceptance tab-panel ta-demo">
+    <div class="ta-root">
+      <h1>归因验收组件 · 八种状态</h1>
+      <p>仅供界面检查的静态样例，不读取或修改复盘数据。</p>
+      <section><h2>默认</h2><button type="button">查看归因证据</button></section>
+      <section><h2>悬停</h2><button type="button" class="is-hover">查看归因证据</button></section>
+      <section><h2>键盘焦点</h2><button type="button" class="is-focus">查看归因证据</button></section>
+      <section><h2>按下</h2><button type="button" class="is-active">查看归因证据</button></section>
+      <section><h2>禁用</h2><button type="button" disabled>上一页</button></section>
+      <section><h2>加载</h2><p class="ta-status" data-state="loading" role="status" aria-busy="true">正在读取归因验收归档…</p><button type="button" disabled>重新读取</button></section>
+      <section><h2>失败</h2><p class="ta-status" data-state="error" role="alert">该日期没有验收归档，请选择列表中的交易日。</p><button type="button">重新读取</button></section>
+      <section><h2>成功</h2><p class="ta-status" data-state="success" role="status">2026-09-03 · 回放归档已读取 · 有待核验事项</p><button type="button">查看归因证据</button></section>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,78 @@
+name: shilun
+
+x-app-common: &app-common
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  image: shilun-standalone:1.0
+  env_file:
+    - ${SHILUN_ENV_FILE:-.env}
+  environment:
+    SHILUN_API_HOST: 0.0.0.0
+    SHILUN_API_PORT: 8000
+    TZ: Asia/Shanghai
+  restart: unless-stopped
+  networks:
+    - shilun-private
+  volumes:
+    - shilun-outputs:/app/outputs
+    - shilun-runtime:/app/runtime
+    - shilun-logs:/app/logs
+  tmpfs:
+    - /tmp:size=256m,mode=1777
+  security_opt:
+    - no-new-privileges:true
+
+services:
+  web:
+    <<: *app-common
+    command: ["python", "-m", "shilun"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    stop_grace_period: 30s
+
+  scheduler:
+    <<: *app-common
+    command: ["python", "-m", "shilun.jobs.cloud_scheduler"]
+    depends_on:
+      web:
+        condition: service_healthy
+    stop_grace_period: 60s
+
+  edge:
+    image: nginx:1.27-alpine
+    profiles: ["edge"]
+    depends_on:
+      web:
+        condition: service_healthy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - shilun-private
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx:size=64m
+      - /var/run:size=16m
+      - /tmp:size=32m
+    security_opt:
+      - no-new-privileges:true
+
+networks:
+  shilun-private:
+    driver: bridge
+
+volumes:
+  shilun-outputs:
+  shilun-runtime:
+  shilun-logs:

@@ -18,7 +18,7 @@ import pandas as pd
 
 
 DEFAULT_BENCHMARK_TICKER = "000001.SH"
-PART1_ENGINE_VERSION = "market_part1_v1"
+PART1_ENGINE_VERSION = "market_part1_v5_eastmoney"
 BENCHMARK_INDEX_OPTIONS = (
     {
         "ticker": "000001.SH",
@@ -47,6 +47,27 @@ BENCHMARK_INDEX_OPTIONS = (
         "short_name": "创业板",
         "source": "Tushare index_daily",
         "meaning": "偏成长和科技风险偏好，适合观察弹性资产情绪。",
+    },
+    {
+        "ticker": "000688.SH",
+        "name": "科创50",
+        "short_name": "科创50",
+        "source": "Tushare index_daily / KlineShare kline",
+        "meaning": "偏硬科技和高弹性成长，用于观察科创权重的风险释放。",
+    },
+    {
+        "ticker": "000905.SH",
+        "name": "中证500",
+        "short_name": "中证500",
+        "source": "Tushare index_daily / KlineShare kline",
+        "meaning": "中盘风格基准，用于观察机构风险偏好向中盘扩散或收缩。",
+    },
+    {
+        "ticker": "000852.SH",
+        "name": "中证1000",
+        "short_name": "中证1000",
+        "source": "Tushare index_daily / KlineShare kline",
+        "meaning": "小盘弹性基准，用于观察短线风险偏好和小盘股压力。",
     },
 )
 WEIGHT_INDUSTRY_KEYWORDS = (
@@ -89,6 +110,25 @@ class MarketPart1Request:
         return (target_dt - timedelta(days=max(30, self.lookback_days))).strftime("%Y-%m-%d")
 
 
+def _gap_state(latest: pd.Series, previous: pd.Series, *, has_previous: bool) -> str:
+    """Classify the latest session's opening gap without guessing from closes."""
+
+    if not has_previous:
+        return "历史不足，无法判断缺口"
+    open_price = _float(latest.get("open"), 0.0)
+    high = _float(latest.get("high"), 0.0)
+    low = _float(latest.get("low"), 0.0)
+    previous_high = _float(previous.get("high"), 0.0)
+    previous_low = _float(previous.get("low"), 0.0)
+    if min(open_price, high, low, previous_high, previous_low) <= 0:
+        return "价格字段不完整，无法判断缺口"
+    if open_price > previous_high:
+        return "向上跳空未回补" if low > previous_high else "向上跳空，日内已回补"
+    if open_price < previous_low:
+        return "向下跳空未回补" if high < previous_low else "向下跳空，日内已回补"
+    return "无明显跳空缺口"
+
+
 def evaluate_market_permission(
     *,
     analysis_date: str,
@@ -96,6 +136,7 @@ def evaluate_market_permission(
     market_bars: pd.DataFrame,
     stock_basic: pd.DataFrame | None = None,
     benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
+    peer_index_bars: pd.DataFrame | None = None,
 ) -> dict[str, Any]:
     """Evaluate PART1 market permission from daily bars.
 
@@ -138,12 +179,14 @@ def evaluate_market_permission(
     volume = _score_volume(latest_index)
     breadth_score = _score_breadth(breadth)
     theme_score = int(theme["theme_score"])
+    cross_index_context = _build_cross_index_context(peer_index_bars, analysis_date)
     risk = _score_risk(
         latest_index=latest_index,
         levels=levels,
         breadth=breadth,
         theme_score=theme_score,
         weight_support_flag=bool(theme["weight_support_flag"]),
+        cross_index_context=cross_index_context,
     )
 
     # 先按1:1的权重来设计
@@ -172,6 +215,7 @@ def evaluate_market_permission(
         "risk_score": risk["score"],
     }
     previous_index = index_frame.iloc[-2] if len(index_frame) >= 2 else latest_index
+    gap_state = _gap_state(latest_index, previous_index, has_previous=len(index_frame) >= 2)
     metrics = {
         "index_open": _round(latest_index.get("open")),
         "index_high": _round(latest_index.get("high")),
@@ -193,6 +237,10 @@ def evaluate_market_permission(
         "amount_ma20": _round(latest_index.get("amount_ma20")),
         "amount_ratio_5": _round(latest_index.get("amount_ratio_5"), 4),
         "amount_ratio_20": _round(latest_index.get("amount_ratio_20"), 4),
+        "previous_close": _round(previous_index.get("close")),
+        "previous_high": _round(previous_index.get("high")),
+        "previous_low": _round(previous_index.get("low")),
+        "gap_state": gap_state,
         **breadth["metrics"],
         **theme["metrics"],
     }
@@ -235,6 +283,8 @@ def evaluate_market_permission(
         "hard_triggers": hard_triggers,
         "theme_method": theme.get("method", _theme_method()),
         "theme_candidates": theme.get("candidates", []),
+        "cross_index_context": cross_index_context,
+        "risk_evidence": risk["evidence"],
         "chart_data": chart_data,
         "evidence": evidence,
         "interpretation": _build_interpretation(
@@ -256,6 +306,106 @@ def evaluate_market_permission(
         "implementation_status": _implementation_status(),
         "state_machine": _state_machine_spec(),
         "data_quality": _data_quality(index_frame=index_frame, stock_frame=stock_frame, stock_basic=stock_basic),
+    }
+
+
+def _build_cross_index_context(peer_index_bars: pd.DataFrame | None, analysis_date: str) -> dict[str, Any]:
+    """横向比较宽基指数，避免单一基准掩盖成长/权重的风格风险。"""
+
+    normalized = _normalize_bars(peer_index_bars) if peer_index_bars is not None else pd.DataFrame()
+    if normalized.empty:
+        return {
+            "available": False,
+            "items": [],
+            "median_pct_chg": None,
+            "stress_score": 0,
+            "conclusion": "多指数数据待同步。",
+        }
+    target = pd.Timestamp(analysis_date)
+    style_notes = {
+        "000001.SH": "主板与权重基础温度",
+        "000300.SH": "大盘成长蓝筹与机构权重",
+        "399001.SZ": "深市制造与成长风格",
+        "399006.SZ": "创业成长与高弹性赛道",
+        "000688.SH": "科创硬科技与高波动成长",
+        "000905.SH": "中盘风格与机构风险偏好",
+        "000852.SH": "小盘弹性与短线风险偏好",
+    }
+    items: list[dict[str, Any]] = []
+    for meta in BENCHMARK_INDEX_OPTIONS:
+        ticker = str(meta["ticker"])
+        frame = normalized.loc[normalized["ticker"].str.upper() == ticker].copy()
+        if frame.empty:
+            continue
+        prepared = _prepare_index_frame(frame, analysis_date)
+        current_rows = prepared.loc[prepared["date"] == target]
+        if current_rows.empty:
+            continue
+        row = current_rows.iloc[-1]
+        pct_chg = _float(row.get("pct_chg"), 0.0)
+        high = _float(row.get("high"), 0.0)
+        low = _float(row.get("low"), 0.0)
+        close = _float(row.get("close"), 0.0)
+        close_position = _safe_div(close - low, high - low) if high > low else 0.5
+        if pct_chg <= -0.04:
+            state = "重挫"
+        elif pct_chg <= -0.02:
+            state = "明显走弱"
+        elif pct_chg < 0:
+            state = "回落"
+        elif pct_chg >= 0.02:
+            state = "强势"
+        else:
+            state = "偏强"
+        items.append({
+            "ticker": ticker,
+            "name": meta["name"],
+            "style": style_notes.get(ticker, meta.get("meaning")),
+            "open": _round(row.get("open")),
+            "high": _round(high),
+            "low": _round(low),
+            "close": _round(close),
+            "pct_chg": _round(pct_chg, 4),
+            "close_position": _round(close_position, 4),
+            "state": state,
+        })
+    if not items:
+        return {
+            "available": False,
+            "items": [],
+            "median_pct_chg": None,
+            "stress_score": 0,
+            "conclusion": "目标日多指数数据待同步。",
+        }
+    changes = sorted(_float(item.get("pct_chg"), 0.0) for item in items)
+    middle = len(changes) // 2
+    median = changes[middle] if len(changes) % 2 else (changes[middle - 1] + changes[middle]) / 2.0
+    severe_count = sum(_float(item.get("pct_chg"), 0.0) <= -0.04 for item in items)
+    weak_count = sum(_float(item.get("pct_chg"), 0.0) <= -0.02 for item in items)
+    worst = min(items, key=lambda item: _float(item.get("pct_chg"), 0.0))
+    stress_score = 0
+    if median <= -0.02:
+        stress_score += 2
+    if weak_count >= 3:
+        stress_score += 1
+    if severe_count >= 2:
+        stress_score += 2
+    if _float(worst.get("pct_chg"), 0.0) <= -0.05:
+        stress_score += 1
+    conclusion = (
+        f"{len(items)} 个宽基指数中 {weak_count} 个跌幅超过 2%，"
+        f"中位涨跌 {_pct_text(median)}；最弱为 {worst['name']} {_pct_text(worst['pct_chg'])}。"
+    )
+    return {
+        "available": True,
+        "items": items,
+        "median_pct_chg": _round(median, 4),
+        "weak_count": weak_count,
+        "severe_count": severe_count,
+        "worst_ticker": worst["ticker"],
+        "worst_name": worst["name"],
+        "stress_score": stress_score,
+        "conclusion": conclusion,
     }
 
 
@@ -326,7 +476,7 @@ def _prepare_market_frame(
         stock_info["ticker"] = stock_info["ts_code"].astype(str)
         allowed = set(stock_info["ticker"].dropna().astype(str))
         frame = frame.loc[frame["ticker"].isin(allowed)].copy()
-        merge_columns = [column for column in ["ticker", "name", "industry", "market"] if column in stock_info.columns]
+        merge_columns = [column for column in ["ticker", "name", "industry", "industry_code", "market"] if column in stock_info.columns]
         frame = frame.merge(stock_info[merge_columns].drop_duplicates("ticker"), on="ticker", how="left")
     else:
         frame = frame.loc[frame["ticker"].map(_looks_like_stock_ticker)].copy()
@@ -407,6 +557,8 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
     previous_one = breadth.iloc[idx - 1] if idx > 0 else current_rows.iloc[-1]
     current = current_rows.iloc[-1].to_dict()
     up_count_ma5 = float(previous["up_count"].mean()) if not previous.empty else float(current["up_count"])
+    down_count_ma5 = float(previous["down_count"].mean()) if not previous.empty else float(current["down_count"])
+    limit_up_ma5 = float(previous["limit_up_count"].mean()) if not previous.empty else float(current["limit_up_count"])
     limit_down_ma5 = float(previous["limit_down_count"].mean()) if not previous.empty else float(current["limit_down_count"])
     market_amount_ma5 = float(previous["market_amount"].mean()) if not previous.empty else float(current["market_amount"])
     total_count = max(1, int(current["total_count"]))
@@ -420,7 +572,10 @@ def _build_breadth_context(stock_frame: pd.DataFrame, analysis_date: str) -> dic
             "up_ratio": _round(current["up_count"] / total_count, 4),
             "up_count_ma5": _round(up_count_ma5, 2),
             "up_count_ratio_ma5": _round(_safe_div(float(current["up_count"]), up_count_ma5), 4),
+            "down_count_ma5": _round(down_count_ma5, 2),
+            "down_count_ratio_ma5": _round(_safe_div(float(current["down_count"]), down_count_ma5), 4),
             "limit_up_count": int(current["limit_up_count"]),
+            "limit_up_count_ma5": _round(limit_up_ma5, 2),
             "limit_down_count": int(current["limit_down_count"]),
             "limit_down_count_ma5": _round(limit_down_ma5, 2),
             "market_amount": _round(current["market_amount"]),
@@ -458,10 +613,14 @@ def _build_market_chart_data(
     risk_score: int,
 ) -> dict[str, Any]:
     index_history = index_frame.tail(20).copy()
+    wave_history = index_frame.tail(120).copy()
     first_close = _float(index_history.iloc[0].get("close"), 0.0) if not index_history.empty else 0.0
     benchmark_series = [
         {
             "date": _date_text(row["date"]),
+            "open": _round(row.get("open")),
+            "high": _round(row.get("high")),
+            "low": _round(row.get("low")),
             "close": _round(row.get("close")),
             "normalized_close": _round(_safe_div(_float(row.get("close"), 0.0), first_close) * 100.0, 4),
             "pct_chg": _round(row.get("pct_chg"), 4),
@@ -471,6 +630,18 @@ def _build_market_chart_data(
             "amount_ratio_5": _round(row.get("amount_ratio_5"), 4),
         }
         for _, row in index_history.iterrows()
+    ]
+    wave_series = [
+        {
+            "date": _date_text(row["date"]),
+            "open": _round(row.get("open")),
+            "high": _round(row.get("high")),
+            "low": _round(row.get("low")),
+            "close": _round(row.get("close")),
+            "ma5": _round(row.get("ma5")),
+            "ma10": _round(row.get("ma10")),
+        }
+        for _, row in wave_history.iterrows()
     ]
 
     target_rows = stock_frame.loc[stock_frame["date"] == pd.Timestamp(analysis_date)].copy()
@@ -515,6 +686,7 @@ def _build_market_chart_data(
         "data_frequency": "daily",
         "frequency_note": "当前图表基于日线复盘，不是盘中分钟走势；接入 minute_bars 后再升级为分时曲线。",
         "benchmark_series": benchmark_series,
+        "wave_series": wave_series,
         "breadth_series": breadth.get("series", []),
         "return_distribution": return_distribution,
         "temperature": {
@@ -544,7 +716,7 @@ def _build_theme_context(
                 "main_theme_market_share": None,
                 "weight_support_flag": False,
             },
-            "evidence": ["主线分：缺少 stock_basic.industry，主线质量暂按 unknown 处理。"],
+            "evidence": ["主线分：缺少东方财富三级行业映射，主线质量暂按 unknown 处理。"],
             "candidates": [],
             "method": _theme_method(),
         }
@@ -568,7 +740,9 @@ def _build_theme_context(
         }
     total_amount = float(target_rows["amount"].clip(lower=0).sum() or 0.0)
     industry_rows: list[dict[str, Any]] = []
-    for industry, rows in target_rows.groupby("industry"):
+    group_key = 'industry_code' if 'industry_code' in target_rows.columns else 'industry'
+    for industry_id, rows in target_rows.groupby(group_key):
+        industry = rows.iloc[0]['industry']
         if len(rows) < 3:
             continue
         amount = float(rows["amount"].clip(lower=0).sum() or 0.0)
@@ -580,6 +754,7 @@ def _build_theme_context(
         industry_rows.append(
             {
                 "industry": str(industry),
+                "industry_code": industry_id if group_key == 'industry_code' else None,
                 "return": industry_return,
                 "up_ratio": float((rows["pct_chg"] > 0).mean()),
                 "amount": amount,
@@ -613,6 +788,7 @@ def _build_theme_context(
     candidates = [
         {
             "industry": str(row["industry"]),
+            "industry_code": row.get('industry_code'),
             "return": _round(row["return"], 4),
             "up_ratio": _round(row["up_ratio"], 4),
             "market_share": _round(row["market_share"], 4),
@@ -681,11 +857,10 @@ def _build_theme_context(
 
 def _theme_method() -> dict[str, str]:
     return {
-        "source": "Tushare stock_basic.industry",
-        "method": "按个股所属行业聚合当日涨跌幅、上涨占比和成交额占比，形成行业主线代理指标。",
-        "not_sw_index": "当前不是申万指数行情，也没有使用申万一级/二级行业指数涨跌幅。",
-        "not_concept_index": "当前不是 Tushare 概念板块或主题指数，只是 stock_basic 行业字段的横截面聚合。",
-        "upgrade_path": "后续可接入 Tushare 申万行业分类/行业指数或人工主线表，再替换 proxy。"
+        "source": "东方财富三级行业 · 全站统一目录",
+        "method": "按统一行业成分聚合个股涨跌幅、上涨占比和成交额占比，衡量市场扩散。",
+        "taxonomy_version": "eastmoney-taxonomy-v1",
+        "membership_note": "采用分析日行业归属；未取得唯一三级行业的股票标记分类缺口，不混用旧行业。"
     }
 
 
@@ -824,6 +999,7 @@ def _breadth_state_section(metrics: dict[str, Any], conclusion: str) -> dict[str
                 "indicator": "涨跌停情绪",
                 "value": (
                     f"涨停 {int(metrics.get('limit_up_count') or 0)} 家，"
+                    f"涨停5日均 {metrics.get('limit_up_count_ma5')}，"
                     f"跌停 {int(metrics.get('limit_down_count') or 0)} 家，"
                     f"跌停5日均 {metrics.get('limit_down_count_ma5')}"
                 ),
@@ -881,12 +1057,12 @@ def _theme_state_section(
             {
                 "indicator": "板块候选",
                 "value": candidate_text or "暂无行业候选",
-                "judgement": "这里只是 stock_basic.industry 聚合代理，用来判断扩散质量，不等同于人工确认主线。",
+                "judgement": "统一行业成分的横截面聚合用于判断扩散质量，主线还需独立筛选。",
             },
             {
                 "indicator": "板块划分依据",
-                "value": "Tushare stock_basic.industry 个股行业字段",
-                "judgement": "不是申万行业指数行情，也不是 Tushare 概念板块；当前用于 proxy，后续可升级为申万行业指数/人工主线表。",
+                "value": "东方财富三级行业统一成分",
+                "judgement": "全站共用东方财富行业 ID 与成分日期；行业汇总不等同于短线主线筛选。",
             },
             {
                 "indicator": "权重护盘",
@@ -1196,12 +1372,6 @@ _PATTERN_DATA_GAPS: list[dict[str, str]] = [
         "note": "✅ 已接入。MA50/MA120 已加入支撑压力候选；近 120 日 Swing High/Low 已识别为关键位；趋势方向由 MA50/MA120 五日斜率推导。",
     },
     {
-        "field": "外部波浪理论文档（人工标注位）",
-        "status": "missing",
-        "impact": "high",
-        "note": "黑兔量化等外部文档里的推动浪/调整浪、A/B/C 浪关键位。导入接口已规划，待实现。",
-    },
-    {
         "field": "价格密集成交区（VPOC / 筹码峰）",
         "status": "missing",
         "impact": "high",
@@ -1212,18 +1382,6 @@ _PATTERN_DATA_GAPS: list[dict[str, str]] = [
         "status": "partial",
         "impact": "medium",
         "note": "当前指数同步 1 年（243 根），刚好够算 MA250。下一步可同步 2 年历史以稳定计算更长周期均线。",
-    },
-    {
-        "field": "北向资金净流入（akshare）",
-        "status": "integrated",
-        "impact": "medium",
-        "note": "✅ 已存到 Mongo。下一步把 north_capital_flow 拉入 PART1 评分维度。",
-    },
-    {
-        "field": "涨停板开板比例 / 连板梯队（akshare）",
-        "status": "integrated",
-        "impact": "medium",
-        "note": "✅ 已存到 Mongo。下一步把 limit_up_pool 的炸板率/连板分布拉入 PART1 情绪分。",
     },
     {
         "field": "股指期货升贴水（IF/IH/IC）",
@@ -2127,8 +2285,27 @@ def _wave_result(
     pivot_labels: list[str],
 ) -> dict[str, Any]:
     """构造统一的波浪分析返回值。"""
+    # A lower confidence cannot rescue a count that violates its own rules.
+    # Preserve historical scoring here; this fix changes the interpretation and
+    # model-derived levels, not the permission/scoring formulas.
+    invalid_impulse = bool(violations) and any(label.startswith("wave_") for label in pivot_labels)
+    if invalid_impulse:
+        current_wave = "unclear"
+        current_wave_label = "推动浪假设未通过，等待重新识别"
+        wave_phase, confidence = "unknown", "low"
+        reasoning = (
+            "已找到交替高低点，但这些端点不满足当前推动浪计数的规则。"
+            + "；".join(violations)
+            + "。当前仅保留端点作为价格结构观察，暂不采用原推动浪目标位；"
+              "后续结合实际支撑、压力与量价变化重新确认。"
+        )
+        fibonacci_levels = []
+        action, action_label = "wait", "等待结构重新确认"
+    labels_cn = {"wave_1_start": "第1浪起点", "wave_1_end": "第1浪高点",
+                 "wave_2_end": "第2浪低点", "wave_3_end": "第3浪高点", "wave_4_end": "第4浪低点"}
     wave_points = [
-        {"label": pivot_labels[i] if i < len(pivot_labels) else f"point_{i}",
+        {"label": ("观察高点" if p["kind"] == "H" else "观察低点") if invalid_impulse else
+                  labels_cn.get(pivot_labels[i].split(" (")[0], pivot_labels[i]) if i < len(pivot_labels) else f"端点{i+1}",
          "price": _round(p["price"]),
          "date": p["date"],
          "kind": p["kind"]}
@@ -2146,6 +2323,7 @@ def _wave_result(
         "action_label": action_label,
         "score_adjustment": score_adjustment,
         "wave_points": wave_points,
+        "structure_status": "invalidated" if invalid_impulse else "hypothesis",
     }
 
 
@@ -2344,6 +2522,7 @@ def _score_risk(
     breadth: dict[str, Any],
     theme_score: int,
     weight_support_flag: bool,
+    cross_index_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     close = _float(latest_index.get("close"), 0.0)
     amount_ratio_5 = _float(latest_index.get("amount_ratio_5"), 1.0)
@@ -2352,8 +2531,15 @@ def _score_risk(
     support_2 = _float(levels.get("support_2"), close)
     limit_down_count = int(breadth["metrics"]["limit_down_count"])
     limit_down_ma5 = _float(breadth["metrics"]["limit_down_count_ma5"], 0.0)
+    index_pct_chg = _float(latest_index.get("pct_chg"), 0.0)
     score = 0
     evidence: list[str] = []
+    if index_pct_chg <= -0.04:
+        score += 3
+        evidence.append(f"风险分 +3：所选指数单日下跌 {abs(index_pct_chg):.2%}，达到重挫阈值。")
+    elif index_pct_chg <= -0.02:
+        score += 2
+        evidence.append(f"风险分 +2：所选指数单日下跌 {abs(index_pct_chg):.2%}，风险偏好明显收缩。")
     if close < support_1 and amount_ratio_5 > 1.30:
         score += 3
         evidence.append("风险分 +3：放量跌破第一支撑。")
@@ -2372,6 +2558,13 @@ def _score_risk(
     if weight_support_flag:
         score += 2
         evidence.append("风险分 +2：疑似权重护盘但题材扩散不足。")
+    cross_stress = int((cross_index_context or {}).get("stress_score") or 0)
+    if cross_stress:
+        score += cross_stress
+        evidence.append(
+            f"风险分 +{cross_stress}：多指数交叉确认风险扩散；"
+            f"{(cross_index_context or {}).get('conclusion') or '成长与权重同步走弱。'}"
+        )
     return {"score": int(score), "evidence": evidence or ["风险分 0：未触发硬风险代理项。"]}
 
 
@@ -2728,7 +2921,7 @@ def _data_quality(
         {
             "field": "theme_quality",
             "status": "proxy_only",
-            "note": "v1 使用 stock_basic.industry + 当日行业成交额/收益/上涨占比代理主线，不等同于人工确认主线。",
+            "note": "v1 使用 东方财富行业映射 + 当日行业成交额/收益/上涨占比代理主线，不等同于人工确认主线。",
         },
         {
             "field": "core_stock_feedback",
@@ -2737,7 +2930,7 @@ def _data_quality(
         },
     ]
     if stock_basic is None or stock_basic.empty:
-        items.append({"field": "stock_basic.industry", "status": "data_pending", "note": "缺少行业归属时，主线分只能按 unknown 处理。"})
+        items.append({"field": "东方财富行业映射", "status": "data_pending", "note": "缺少行业归属时，主线分只能按 unknown 处理。"})
     return items
 
 

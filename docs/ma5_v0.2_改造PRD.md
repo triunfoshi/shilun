@@ -1,10 +1,65 @@
 # 石论 MA5 v0.2 完整改造 PRD
 
+> 交易驾驶舱、动态绝对金额风控和研究排名退场已拆分至 `docs/trading_cockpit_prd.md`。
+
 > 基于 `docs/ma5趋势线战法` v0.2 文档全文，落地为工程化改造清单。
 > 每日按本 PRD 的阶段推进，每个阶段都有明确的字段清单、验收标准和依赖关系。
 >
 > 编写时间：2026-07-05
 > 目标：把当前 30% 对齐度的实现推到 95% 对齐度
+
+---
+
+### 2026-07-10 · 阶段 7.5：策略层解耦与单票事实页（MVP）
+
+**状态**：✅ 已完成首轮可运行改造。
+
+**改造原因**：原单票接口同时计算 K 线事实、MA5 信号、买点、目标、止损和评级；持仓日检也直接硬编码 MA5。这样无法在同一只股票上切换策略，也无法保证“单票事实”不被策略观点污染。
+
+**新边界**：
+
+1. **事实层**：日 K / 5 分钟 K、Tushare moneyflow 方向代理、涨跌停/开板/跳空/吞噬/影线/均线交叉/量能等通用事件。
+2. **策略层**：读取事实，独立输出建议、买点、目标、止损、盈亏比和证据；所有输出携带 `strategy_id + strategy_version`。
+3. **持仓层**：记录实际成交价，并绑定策略、参数、初始计划快照和当前计划；每日检测按绑定策略分派。
+4. **闸门层**：大盘/账户风控只限制策略结果，不反向改写单票事实。
+
+**对外契约**：
+
+- `GET /api/v1/strategies`：统一策略目录，当前提供 `manual@1.0.0` 与 `ma5_v0_2@0.2.0`。
+- `GET /api/v1/stock/panel`：默认 `analysis_scope=strategy_neutral_facts`；仅传 `strategy_id` 时返回 `strategy_analysis` 和对应 `trade_plan`。
+- `POST /api/v1/holdings`：新增 `strategy_id / strategy_params / proposed_plan`；系统按实际成交价重新绑定计划并写入 `initial_plan / current_plan`。
+- `holding_events`：由持仓的 `strategy_id` 选择日检引擎；历史无该字段的持仓兼容回退 `ma5_v0_2`。
+
+**资金口径修正**：单票页不再把 Tushare moneyflow 表述为确定的“主动买入”。页面明确显示它是按订单规模和买卖方向聚合的代理数据；当前没有逐笔 Level-2，`active_passive_available=false`。
+
+**页面信息架构**：参考 FinScope 的“紧凑股票头部 + 大图表/右侧事件 + 下方证据卡”阅读路径，但保持石论现有配色。默认页面只展示事实；选择策略后，交易计划出现在独立的 `STRATEGY LAYER` 区域，避免买卖点与通用事件混排。
+
+**修改文件**：
+
+| 文件 | 修改内容 | 完成日期 |
+|---|---|---|
+| `shilun/strategies/contracts.py` | 策略稳定协议、上下文与错误类型 | 2026-07-10 |
+| `shilun/strategies/registry.py` | 策略注册与统一查询 | 2026-07-10 |
+| `shilun/strategies/ma5_v0_2.py` | 复用现有 MA5 特征/计划/持仓规则的适配器 | 2026-07-10 |
+| `shilun/strategies/manual.py` | 不自动生成买卖点的人工策略 | 2026-07-10 |
+| `shilun/market/stock_events.py` | 新增策略无关通用事件检测器 | 2026-07-10 |
+| `shilun/market/holding_events.py` | 持仓日检从 MA5 硬编码改为策略分派 | 2026-07-10 |
+| `shilun/market/holdings.py` | 保存策略版本、计划快照及计划修订 | 2026-07-10 |
+| `shilun/market/candidates.py` | 候选结果显式声明 MA5 策略身份 | 2026-07-10 |
+| `shilun/api/__init__.py` | 策略目录、可选策略单票接口、持仓绑定策略 | 2026-07-10 |
+| `shilun/static/index.html` | 单票策略选择器、持仓策略选择器、缓存版本升级 | 2026-07-10 |
+| `shilun/static/app.js` | 单票事实优先布局、独立策略工作区、持仓策略提交 | 2026-07-10 |
+| `shilun/static/app.css` | 紧凑双栏事实页与独立策略区域的响应式布局 | 2026-07-10 |
+| `tests/test_strategy_layer.py` | 策略目录、MA5 计划、实际成交绑定与人工策略测试 | 2026-07-10 |
+| `tests/test_stock_events.py` | 通用事件不含策略信号的边界测试 | 2026-07-10 |
+| `tests/test_holdings_api.py` | 策略目录与持仓计划快照测试 | 2026-07-10 |
+
+**后续顺序**：
+
+1. 阶段 7.5 Job 2：回测入口改为调用同一 `StrategyDefinition`，确保实盘/回测同源。
+2. 阶段 8：账户级熔断与仓位预算，作为策略输出后的硬闸门。
+3. 阶段 9：计划修订和成交回写，持仓支持多次加减仓及策略版本迁移。
+4. 最后再做飞书卖出提醒，避免通知逻辑绑定旧 MA5 字段。
 
 ---
 
@@ -1130,11 +1185,11 @@ POST /api/v1/holdings/daily-check          # 每日跑一次全量检测
 
 ### 8.8 阶段 7 验收标准
 
-- [ ] 持仓可增删改查
-- [ ] 每日自动跑 `daily-check`，触发卖出信号写入 `holding_events`
-- [ ] 4 状态分类正确
-- [ ] 减仓/清仓分层动作明确
-- [ ] 前端 08 Tab 完整可用
+- [x] 持仓可增删改查
+- [x] 每日自动跑 `daily-check`，触发卖出信号写入 `holding_events`
+- [x] 4 状态分类正确
+- [x] 减仓/清仓分层动作明确
+- [x] 前端持仓管理 Tab 完整可用（当前控制台顺序为 06，业务能力对应本节原“08 持仓管理”）
 - [ ] 触发卖出时推送到飞书（可选）
 
 ---
@@ -2207,14 +2262,139 @@ Job 1 拆开的 flag 保证突破/站回分辨清；Job 2-4 让追踪数据落�
 - `pytest tests/test_holdings.py tests/test_trading_levels.py tests/test_ma5_features.py tests/test_breakout_events.py tests/test_breakout_events_api.py tests/test_market_sector.py tests/test_candidate_rules.py tests/test_analysis_service.py tests/test_ui_route.py` 91 passed（无回归）
 - Import smoke test：`HoldingRecord`、`HoldingsError`、`HOLDING_STATUSES` 等全部符号可正常导入
 
-**Job 2 待办**：暴露 REST API：
+### 2026-07-10 · 阶段 7 Job 2：持仓 REST API
+
+**完成状态**：✅ 已完成。Job 1 的 `holdings` 数据层已通过统一 HTTP 边界开放，候选池和后续持仓管理 Tab 可以直接复用，不需要绕过状态机访问 Mongo。
+
+**已实现接口**：
 - `POST /api/v1/holdings`（新建）
 - `GET /api/v1/holdings`（列表）
 - `GET /api/v1/holdings/{ticker}`（详情）
 - `PATCH /api/v1/holdings/{ticker}`（改价位/仓位）
 - `DELETE /api/v1/holdings/{ticker}`（关闭；带 `?force=true` 时物理删除）
+- `POST /api/v1/holdings/{ticker}/close`（显式关闭，可写退出日期、价格和原因）
 
-映射规则：`HoldingsError` → HTTP 400；`ticker` 不存在 → 404；成功 → 200 + 完整持仓 dict。同时暴露一个 `POST /api/v1/holdings/{ticker}/close` 专门走 `close_holding`，与 DELETE 分开，避免语义混淆。
+**接口规则**：
+1. 股票代码在 API 边界统一 `strip + upper`，日期严格使用 `YYYY-MM-DD`，仓位比例限定 `(0, 1]`。
+2. `GET /api/v1/holdings` 默认返回 `active/reduced`，支持 `status=closed`、逗号组合及 `status=all`。
+3. `PATCH` 只接收 Job 1 白名单字段，使用 `exclude_unset` 保留“未传”和“显式传 null”的区别，不允许绕过状态机改 `entry_*` 或 `status`。
+4. `DELETE` 默认逻辑关闭并保留审计记录；只有 `force=true` 才物理删除误录入数据。
+5. `HoldingsError` 映射为 HTTP 400；不存在的 ticker 映射为 404；Mongo 未配置或连接失败返回可读中文错误。
+
+**修改文件**：
+
+| 文件 | 修改内容 | 完成日期 |
+|---|---|---|
+| `shilun/api/__init__.py` | 新增 3 个 Pydantic 请求模型、持仓参数标准化/错误映射/Store 工具函数，以及 6 个 REST 路由 | 2026-07-10 |
+| `tests/test_holdings_api.py`（新） | 覆盖路由注册、新建标准化、重复拒绝、列表/详情、状态过滤、PATCH、显式关闭幂等与 PNL、DELETE 默认关闭/强制删除、日期校验及 Mongo 未配置 | 2026-07-10 |
+| `docs/ma5_v0.2_改造PRD.md` | 回填 Job 2 完成状态、接口契约、修改文件与验证结果 | 2026-07-10 |
+
+**验证**：
+- `python -m unittest tests.test_holdings tests.test_holdings_api tests.test_breakout_events_api tests.test_ui_route`：44 passed。
+- `python -m py_compile shilun/api/__init__.py shilun/market/holdings.py tests/test_holdings_api.py`：通过。
+
+### 2026-07-10 · 阶段 7 Job 3：`holding_events` 每日判定引擎
+
+**完成状态**：✅ 已完成并部署。Job 3 把活动持仓、日线、PART1 大盘闸门、PART2 板块状态和突破事件连接成可审计的每日持仓建议。系统只写建议事件，不会自动替用户卖出；用户实际执行后再通过 Job 2 的 PATCH/close API 推进持仓状态。
+
+**四状态（按风险优先级从高到低）**：
+
+| 状态 | 数学/规则定义 | 建议动作 | 中文含义 |
+|---|---|---|---|
+| `invalid_exit` | 任一致命信号为真，或 `market_permission == empty` | `sell_all` | 原交易逻辑或市场闸门已经失效，建议清仓退出 |
+| `weaken_reduce` | 非致命退出，且跌破 MA5、MA5 连失两日、失守前高、计划第一止损、大盘 defense 或板块 retreat | `reduce_20pct / reduce_50pct` | 结构转弱，按严重程度降低 20% 或 50% 仓位 |
+| `normal_pullback` | `abs(close / MA5 - 1) < 2% && volume / volume_MA20 <= 0.9 && (close > MA10 or close > MA20)`；或其他状态均未确认 | `hold` | MA5 附近缩量回踩，保持仓位等待确认 |
+| `strong_hold` | `close > MA5 && slope(MA5,3d) > 0 && volume_price_score >= 0 && market_permission in {attack,hold} && sector_state != retreat` | `hold` | 个股趋势、市场权限和板块背景共同允许继续持有 |
+
+**卖出信号落地口径**：
+
+1. `close_below_ma5 = close < MA5`。
+2. `ma5_lost_2d = close_t < MA5_t && close_t-1 < MA5_t-1`。
+3. `volume_break_ma5_flag = close < MA5 && volume / volume_MA20 > 1.3`。
+4. `close_below_ma10 = close < MA10`；连续两日失守才升级为致命退出。
+5. `volume_break_ma20_flag = close < MA20 && volume / volume_MA20 > 1.3`。
+6. `breakout_failed_flag = close < breakout_event.box_upper`，缺少事件时不猜测。
+7. `previous_high_lost_flag = close < breakout_event.previous_high_20`，缺少事件时不猜测。
+8. `signal_candle_open_lost = close < holding.signal_candle_open`。
+9. `breakeven_stop_triggered = peak_unrealized_pnl >= 8% && close <= entry_price * 1.01`，即曾明显浮盈后回到成本线上方 1% 以内。
+10. 额外执行用户交易计划中的固定风险线：`stop_loss_1` 触发降仓，`stop_loss_2` 或 `breakdown_level` 触发退出。`target_reached` 同步写入 metrics，留给后续止盈动作扩展。
+
+**事件 Schema**：
+- 主键：`ticker + date`，同日重跑执行 upsert，不重复创建事件。
+- 决策：`holding_state / recommended_action / reason`。
+- 证据：`triggered_sell_signals / signal_details`，每条包含名称、观察值、阈值和中文释义。
+- 指标：当前价、MA5/10/20、MA5 三日斜率、量比、当前/峰值浮盈、突破位和计划风险线。
+- 上下文：`market_permission / sector_state / engine_version`。
+
+**新增接口**：
+- `POST /api/v1/holdings/daily-check?date=YYYY-MM-DD`：扫描全部 active/reduced 持仓。
+- `GET /api/v1/holdings/{ticker}/events`：查询单票事件历史，支持日期范围和 `limit`。
+
+**自动化策略**：
+- 工作日 16:30 首次执行当天日检。
+- 工作日 07:15 在 Tushare 早间补数后幂等重跑上一交易日，修复收盘后数据尚未到齐的情况。
+- 优先通过 `trade_calendar` 选择最近开市日；日历缺失时只做周末回退。
+- 运行状态写入 `sync_state(dataset=holding_events, scope=YYYYMMDD)`。
+
+**修改文件**：
+
+| 文件 | 修改内容 | 完成日期 |
+|---|---|---|
+| `shilun/market/holding_events.py`（新） | 特征计算、四状态分类、信号证据、事件 upsert/history、PART1/PART2 上下文读取和全持仓日检 | 2026-07-10 |
+| `shilun/jobs/holding_daily_check_job.py`（新） | CLI、交易日解析、sync_state 记录及 16:30/07:15 APScheduler | 2026-07-10 |
+| `shilun/api/__init__.py` | 新增 daily-check 与单票 events 历史接口 | 2026-07-10 |
+| `shilun/common/db.py` | 新增 `holding_events(ticker,date)` 唯一索引及日期/状态查询索引 | 2026-07-10 |
+| `shilun/market/__init__.py` | 导出 Job 3 公共判定接口 | 2026-07-10 |
+| `pyproject.toml` | 新增持仓日检一次性/常驻调度两个 entry point | 2026-07-10 |
+| `石论后台.app/Contents/Resources/cn.shilun.holding-check.plist`（新） | macOS 常驻调度服务 | 2026-07-10 |
+| `石论后台.app/Contents/MacOS/shilun-launcher` | 点击后台时自动确认持仓日检服务已注册 | 2026-07-10 |
+| `tests/test_holding_events.py` / `tests/test_holding_events_api.py` / `tests/test_holding_daily_check_job.py`（新） | 规则、幂等、上下文、API、任务和错误路径测试 | 2026-07-10 |
+
+**验证**：
+- 相关测试 64 passed；Python 编译、plist 和 zsh 语法检查通过。
+- `launchctl` 显示 `cn.shilun.holding-check state = running`。
+- 日志确认工作日 16:30/07:15 调度已启动。
+- 真实 HTTP 空仓验收：daily-check 返回 `checked=0, failed=0`；事件历史返回空数组，未向真实 Mongo 注入演示持仓。
+
+### 2026-07-10 · 阶段 7 Job 4：持仓管理控制台
+
+**完成状态**：✅ 已完成并通过浏览器验收。Job 4 将 Job 2/3 的持仓 REST API、每日状态机和事件历史接入石论控制台，形成“候选计划 → 人工确认实际成交 → 每日检测 → 减仓/清仓留痕”的可见闭环。系统仍只生成建议，不会自动下单。
+
+**导航与信息层级**：
+
+1. 在研究主流程新增 `06 持仓管理`，日报/数据/系统顺延为 07/08/09。原 PRD 的“08”是功能排期编号，当前控制台按交易流程把持仓放在盘中监控之后。
+2. 首屏先展示活动持仓、需处理数量、最新事件平均浮盈和今日检测覆盖率；风险动作优先于指标明细。
+3. 持仓卡按 `strong_hold / normal_pullback / weaken_reduce / invalid_exit` 使用蓝/绿/橙/红左边界区分，并同时展示中文状态、建议动作、原因、触发信号、入场/当前/目标/止损/破坏位。
+4. 事件历史采用独立审计区，按日期倒序展示当日状态、动作、原因、卖出信号、价格和浮盈，不与持仓主卡争夺首屏空间。
+
+**交互闭环**：
+
+- `刷新持仓`：读取 active/reduced、全部或 closed 记录，并批量补充每只股票的最新事件。
+- `执行今日检测`：调用 `POST /api/v1/holdings/daily-check`，完成后自动刷新状态、信号和统计。
+- `记录减仓`：输入本次账户仓位比例，前端换算为累计 `realized_size` 后 PATCH；后端状态机自动推进到 reduced/closed。
+- `记录清仓`：保留退出日期、实际清仓价和原因，调用 close API，不物理删除审计记录。
+- `调整价位`：可修改第一/第二止损及目标价，继续由后端白名单校验。
+- 候选池新增“加入持仓”：自动带入 ticker、名称、板块、买点、目标、止损、MA20 破坏位、信号 K 开盘价、建议仓位和买入信号；为避免把计划价误写成真实成交价，只打开并预填持仓表单，用户核对实际成交价后提交。
+
+**修改文件**：
+
+| 文件 | 修改内容 | 完成日期 |
+|---|---|---|
+| `shilun/static/index.html` | 新增持仓管理导航和完整工作区：汇总、检测工具栏、折叠录入、持仓卡列表及事件历史区；静态版本升级为 `20260710-holdings` | 2026-07-10 |
+| `shilun/static/app.js` | 新增持仓读取/统计/渲染、daily-check、减仓、清仓、风险位调整、事件历史、候选票自动带入及中文状态/信号映射 | 2026-07-10 |
+| `shilun/static/app.css` | 新增持仓统计、紧凑表单、双列持仓卡、风险色阶、价位条、信号标签、事件时间线和 1399/1100/780 响应式规则 | 2026-07-10 |
+| `tests/test_ui_route.py` | 增加持仓 Tab、关键 DOM、API 调用函数、候选带入函数、样式选择器和静态版本断言 | 2026-07-10 |
+| `docs/ma5_v0.2_改造PRD.md` | 回填 Job 4 的交互契约、文件地址、完成日期、验收结论与阶段清单 | 2026-07-10 |
+
+**验证**：
+
+- `node --check shilun/static/app.js`：通过。
+- `python -m unittest tests.test_ui_route tests.test_holdings_api tests.test_holding_events_api`：21 passed。
+- `git diff --check`（本 Job 文件）：通过。
+- 实际浏览器在 `http://127.0.0.1:8000/ui` 验收：导航、空仓态、四项汇总、活动/全部/已结束筛选、折叠表单及响应式四列表单正常；浏览器控制台无 error/warn。
+- 未向真实 Mongo 注入演示持仓；真实空仓页显示 `0` 条，避免测试数据污染交易记录。
+
+**下一 Job**：阶段 7 Job 5（可选）接入飞书卖出信号提醒，并设计去重键与只提醒不自动交易的安全边界；若暂不做推送，可直接进入阶段 8 的账户熔断和完整交易归档。
 
 ---
 
@@ -2537,3 +2717,162 @@ Hover tooltip 展示 `context`（"谷底反转" / "回踩确认"）+ `strength`�
 
 ---
 
+### 2026-07-09 · 龙头/中军算法 v5→v6 · 分时共振正式版
+
+**背景**：用户反馈半导体板块龙头/中军选择不符合直觉——华虹宏力排龙头 #1（vs 期望华天科技）、寒武纪不在中军候选。诊断发现两个问题：
+
+1. **主力资金 net_flow_score 权重虚高**（10%）：Tushare moneyflow 按 order size 分类，但主力/机构常拆单为中小单进入。同花顺做了算法合并识别，Tushare 没有，导致"主力净流出"很多是假象。
+2. **缺分时共振维度**：日线级别看不到"个股走势是否跟随大盘"。用户强调三个关键时段（10:00 前 / 13:30-14:00 / 14:30 后）的同步性，需要真实分钟数据。
+
+**改造范围**：
+
+| 项 | v5 之前 | v6 之后 |
+|---|---|---|
+| `net_flow_score` 权重 | 10% | **4%**（承认拆单问题） |
+| `representation_score` 权重 | 15% | 21%（承接 net_flow 让出的权重） |
+| `resonance_score` 计算 | 日线代理（pct_chg + close_position 简单打分） | **真实分时共振**（5min K 线 × 5 时段 × 大盘对比） |
+| `SECTOR_ENGINE_VERSION` | v5 | v6 |
+
+**核心新组件**：
+
+- `shilun/market/minute_bars_store.py`（新）：Mongo `minute_bars_daily` 集合 CRUD 层。Schema: `(ticker, trade_date, interval)` 唯一。
+- `shilun/market/intraday_resonance.py`（新）：`compute_intraday_resonance_score(stock_bars, benchmark_bars)`。切五时段（early_open/morning/afternoon_open/afternoon_mid/tail），每段独立评分（同向且强度大 = 100 / 弱跟随 = 55 / 反向 = 20 / 抗跌上涨 = 100 特例），带尾盘放量加分。
+
+**两阶段预计算架构**（`shilun/api/__init__.py`）：
+
+```
+阶段 1: evaluate_sector_trends（无分钟数据）→ 拿到 top_sectors 里的所有候选
+阶段 2: _ensure_minute_bars_available → 只对候选票（每板块 leader/zhongjun ≤10）拉分钟数据落 Mongo
+阶段 3: evaluate_sector_trends（带分钟数据）→ 更新 zhongjun_score 里的 resonance
+```
+
+三阶段架构避免了"全市场拉分钟" 的巨大网络成本（akshare 单票 1-2s，全市场 5000 只 = 3 小时）。候选票数量约 40-80 只，两阶段总耗时约 3-5 分钟。
+
+**关键设计取舍**：
+
+1. **分钟数据缺失时保守走 has_data=False, resonance=50**：akshare 拉取失败或票停牌时，避免影响其他票的分数比较。
+2. **分时数据落 Mongo 集合独立于 market_daily_bars**：分钟数据体量大（每票每天 48 根 5min bar），单独一张表方便按日期滚动清理（保留 30 天即可）。
+3. **`net_flow_score` 只是降权、没删掉**：大单严重净流出仍是负面信号，只是权重从 10% 降到 4%，避免拆单问题过度扭曲评分。
+4. **`representation_score` 承接权重**：成交额分位是资金规模的物理代理，比 moneyflow 的分类算法可靠——拆单也躲不过成交额总量。
+
+**实际效果**（半导体板块 2026-07-09）：
+
+修改前（v5）：
+- 中军 top 3: 北方华创、长川科技、长电科技
+- 寒武纪 #10（尾巴）
+
+修改后（v6，寒武纪暂时没有分时数据）：
+- 中军 top 3: 北方华创（reson=91）、**中微公司（reson=100）**、长电科技（reson=68）
+- 寒武纪 **#5**（分钟数据缺失时中性 50）
+- 长川科技从 #2 跌出前 3（分时数据缺失 → resonance=50 拖低）
+
+**修改文件**：
+
+| 文件 | 改动 |
+|---|---|
+| `shilun/common/db.py` | `ensure_indexes()` 新增两条 `minute_bars_daily` 索引 |
+| `shilun/market/minute_bars_store.py`（新，~120 行） | 5 个函数：`upsert_minute_bars` / `get_minute_bars` / `find_missing_tickers` / `bulk_load_lookup` |
+| `shilun/market/intraday_resonance.py`（新，~180 行） | 5 时段定义 + `_score_segment` + `_tail_volume_boost` + `compute_intraday_resonance_score` |
+| `shilun/market/sector.py` | 版本 v5→v6；`_build_stock_profiles` 增加 `stock_minute_bars_lookup` 和 `benchmark_minute_bars` 参数；`resonance_score` 换成分时正式版；net_flow 权重 10→4%；representation 权重 15→21%；profile dict 加 `intraday_resonance` 详细结果 |
+| `shilun/api/__init__.py` | `_compute_sector_trends_full` 改为两阶段架构；新增 `_ensure_minute_bars_available` + `_fetch_and_upsert_minute_bars` |
+| `tests/test_intraday_resonance.py`（新） | 7 条测试：无数据、强上涨+大盘涨、弱跟随、背离、抗跌上涨、尾盘放量、全时段输出 |
+| `tests/test_market_sector.py` | 版本号断言同步 |
+
+**验证**：
+- 137/137 测试 passed
+- 半导体真实数据：中微公司从原候选池外挤入 zhongjun #2；寒武纪从 #10 升到 #5
+
+**已知遗留**：
+- 部分票 akshare 拉不到分钟数据（网络限流或停牌），走 has_data=False 兜底。需要定期重跑触发落库。
+- 只对 top_sectors 里的候选拉分钟数据，`include_all_sectors=True` 场景下其他板块的票没有分时共振——由于第一阶段 top_sectors 已经覆盖了主要板块，其他板块的候选不影响主要业务。
+- 前端候选卡目前只展示 `zhongjun_subscores.resonance_score` 数字，`intraday_resonance.segments` 详细五时段数据在响应里但没渲染。可以后续加 hover 展示。
+
+---
+
+### 2026-07-09 · 龙头/中军 Top 3 展示 + 分钟数据日终预拉任务
+
+**背景**：v6 上线后有两个体验点要跟进——
+1. 板块动向里只展示龙头 #1 / 中军 #1，看不到 top 2/3
+2. 用户点"查询板块动向" 时第一次会触发 akshare 分钟数据拉取（40 只票约 60-90s），感受慢
+
+**改动 A：龙头/中军 Top 3 tabs 展示**
+
+`shilun/static/app.js` 里 `renderSelectedSectorDetail` 之前只取 `[0]`。改造：
+- 新增 `renderTopThreeCandidates(kind, sector, sectorKey)`：展示 Top 3 的 tabs（`#1 华天科技 94.37`），点击切换详情区
+- 新增 `topThreeState` 全局 state 记录每板块每 kind 的当前选中 idx
+- 全局 click 事件委派：`[data-topthree-tab]` 点击时更新 state 并触发 `showHtml("sectorTrendResult", renderSectorTrends(...))` 局部重渲染
+- `zhongjunExplanation` 多输出一行 `分时共振：91 分（早盘 100，午后 100，尾盘 100），尾盘放量 +8`，同时子项里补 `代表性` 和 `分时共振` chip
+- `shilun/static/app.css` 加 `.topthree-tabs / .topthree-tab / .topthree-rank / .topthree-name / .topthree-score` 深色 + 亮色两套样式，选中态用 `--accent` 高亮
+
+用户切换板块（`selectedSectorIndex` 变化）时 state 里的 key 用 `sector.sector_name` 生成，保证不同板块的 top 3 选中互不干扰。
+
+**改动 B：日终预拉分钟数据 job**
+
+新建 `shilun/jobs/minute_bars_sync_job.py` 挂 APScheduler，每交易日 15:15 Asia/Shanghai 触发。工作流：
+
+```
+1. 读最新一条 sector_trends_cache（优先 target_date=today，退化到最新）
+2. 从 top_sectors 里提取所有 leader/zhongjun 候选票（40-80 只）
+3. 加入基准指数（000001.SH / 399006.SZ）
+4. find_missing_tickers 过滤已落库的
+5. 剩下的通过 akshare 逐票拉 5min K → upsert 到 minute_bars_daily
+6. upsert_sync_state 记录本次 candidate/missing/fetched/failed 数
+```
+
+**CLI 支持**：
+- `python -m shilun.jobs.minute_bars_sync_job --date 2026-07-09` 手动全量拉
+- `python -m shilun.jobs.minute_bars_sync_job --date 2026-07-09 --tickers 688256.SH,002185.SZ` 只拉指定票（override 候选池）
+- 生产环境：`shilun-sync-minute-bars-scheduler` 起长驻进程
+
+**pyproject 加两个 entry point**：
+- `shilun-sync-minute-bars` → 一次性运行
+- `shilun-sync-minute-bars-scheduler` → 长驻定时
+
+**关键设计**：
+1. **候选票 fallback 到最新缓存**：定时任务在盘中或数据延迟时也能工作，避免"target_date 无缓存 → 拉 0 只票" 的死循环
+2. **`find_missing_tickers` 增量拉取**：只拉尚未落库的，避免重复 API 调用；用户白天多次触发预计算也不会浪费带宽
+3. **AkshareFetchError 静默继续**：某只票失败不影响其他票拉取；结果 `failed_tickers` 列出便于运维排查
+4. **`sync_state` 记录状态**：`dataset=minute_bars_daily, scope=YYYYMMDD_5min`，跟其他同步任务口径一致，可以从 `/api/v1/data/status` 看到
+
+**修改文件**：
+
+| 文件 | 改动 |
+|---|---|
+| `shilun/static/app.js` | 新增 `renderTopThreeCandidates` + `topThreeState` + click delegation；`renderSelectedSectorDetail` 用新函数替换旧的两个 `metricBlock`；`zhongjunExplanation` 加分时共振 + 代表性子项 |
+| `shilun/static/app.css` | 新增 `.metric-topthree / .topthree-tabs / .topthree-tab / .topthree-rank / .topthree-name / .topthree-score` 深色 + 亮色 |
+| `shilun/static/index.html` | 版本 → `20260709-topthree-tabs` |
+| `shilun/jobs/minute_bars_sync_job.py`（新，~215 行） | `MinuteBarsSyncJob` + `MinuteBarsSyncResult` + `_collect_candidate_tickers` + `_fetch_and_upsert_one` + `main()` CLI + `scheduler_main()` APScheduler |
+| `pyproject.toml` | 加 `shilun-sync-minute-bars` 和 `shilun-sync-minute-bars-scheduler` 两个 entry point |
+| `tests/test_minute_bars_sync_job.py`（新） | 8 条测试：候选票提取（3 场景）、拉取逻辑（missing 过滤/失败记录/explicit override/sync_state/空 candidate） |
+| `tests/test_ui_route.py` | 版本号断言同步 |
+
+**验证**：225/225 全绿（含新增的 8 条 minute_bars_sync 测试）。
+
+**部署指引**：
+
+生产环境挂定时任务：
+```bash
+# 长驻进程（推荐）：作为 systemd service 或 pm2 管理
+shilun-sync-minute-bars-scheduler
+
+# 或者用现有 crontab：每交易日 15:15 触发一次
+15 15 * * 1-5 /path/to/venv/bin/shilun-sync-minute-bars --date $(date +%Y%m%d)
+```
+
+**2026-07-10 macOS 上线验证与补丁**：✅ 已部署。
+
+首次上线检查发现调度代码和 entry point 已存在，但系统中没有常驻服务，实际不会在 15:15 自动执行。本次补齐：
+- 新增 `石论后台.app/Contents/Resources/cn.shilun.minute-bars.plist`，通过当前虚拟环境启动 `scheduler_main()`，工作日 15:15 运行。
+- 修改 `石论后台.app/Contents/MacOS/shilun-launcher`：每次点击石论后台时，先确认分钟线调度服务已注册；即使 API 后台已经运行，也不会跳过这项检查。
+- 独立日志写入 `runtime/shilun-minute-bars.log`，避免与 API 日志混在一起。
+- 已完成 ad-hoc 重签名，`codesign --verify --deep --strict` 通过。
+- `launchctl print gui/501/cn.shilun.minute-bars` 显示服务 `state = running`；日志确认 `Runs at 15:15 Asia/Shanghai on weekdays`。
+- `python -m unittest tests.test_minute_bars_sync_job tests.test_intraday_resonance`：15 passed。
+- 手工实跑 `2026-07-09`：候选 43 只，缺失 8 只，成功补齐 8 只，失败 0，耗时 17.0 秒；证明 Mongo、候选缓存、AkShare 和增量落库链路均可用。
+
+**用户体验变化**：
+- 白天点"查询板块动向"：秒回（缓存命中）
+- 手动"强制重新计算"：60-90s（如果分钟数据已经预拉好），不再需要额外 60-90s
+- 板块动向卡里可以看到 Top 3 龙头/中军并自由切换，`#1` 默认展示，`#2`/`#3` 一键切
+
+---

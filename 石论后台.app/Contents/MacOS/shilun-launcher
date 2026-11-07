@@ -9,17 +9,43 @@ RUNTIME_DIR="$PROJECT_ROOT/runtime"
 LOG_FILE="$RUNTIME_DIR/shilun-backend.log"
 AGENT_LABEL="cn.shilun.backend"
 AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$AGENT_LABEL.plist"
+MINUTE_AGENT_LABEL="cn.shilun.minute-bars"
+MINUTE_AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$MINUTE_AGENT_LABEL.plist"
+TUSHARE_AGENT_LABEL="cn.shilun.tushare-daily"
+TUSHARE_AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$TUSHARE_AGENT_LABEL.plist"
+HOLDING_AGENT_LABEL="cn.shilun.holding-check"
+HOLDING_AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$HOLDING_AGENT_LABEL.plist"
+TRADING_INTRADAY_AGENT_LABEL="cn.shilun.trading-intraday"
+TRADING_INTRADAY_AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$TRADING_INTRADAY_AGENT_LABEL.plist"
+STRUCTURE_SAMPLE_AGENT_LABEL="cn.shilun.structure-samples"
+STRUCTURE_SAMPLE_AGENT_PLIST="$PROJECT_ROOT/石论后台.app/Contents/Resources/$STRUCTURE_SAMPLE_AGENT_LABEL.plist"
 AGENT_DOMAIN="gui/$(/usr/bin/id -u)"
 URL="http://127.0.0.1:8000/ui"
 
 show_error() {
   local message="$1"
-  /usr/bin/osascript -e "display alert \"石论后台启动失败\" message \"$message\" as critical" >/dev/null 2>&1
+  if [[ "${SHILUN_SKIP_OPEN:-0}" == "1" ]]; then
+    print -r -- "$message" >&2
+    return
+  fi
+  /usr/bin/osascript - "$message" >/dev/null 2>&1 <<'APPLESCRIPT'
+on run argv
+  display alert "瑞势投研启动失败" message (item 1 of argv) as critical
+end run
+APPLESCRIPT
+}
+
+log_launcher() {
+  print -r -- "[$(/bin/date '+%Y-%m-%d %H:%M:%S')] Launcher: $1" >> "$LOG_FILE"
 }
 
 open_console() {
   if [[ "${SHILUN_SKIP_OPEN:-0}" != "1" ]]; then
-    /usr/bin/open "$URL"
+    if ! /usr/bin/open "$URL"; then
+      log_launcher "默认浏览器未能打开 $URL"
+      show_error "后台已启动，但默认浏览器未能打开页面。可手动访问：$URL"
+      return 1
+    fi
   fi
 }
 
@@ -39,8 +65,30 @@ fi
 
 /bin/mkdir -p "$RUNTIME_DIR"
 
+# 同步任务沿用各自所有者；已禁用的本机任务可能已迁至ECS。
+# 它们的配置/注册问题只记日志，不阻止已可用的网页打开。
+ensure_optional_agents() {
+  local disabled_agents label plist
+  disabled_agents=$(/bin/launchctl print-disabled "$AGENT_DOMAIN" 2>/dev/null)
+  for label in "$MINUTE_AGENT_LABEL" "$TUSHARE_AGENT_LABEL" "$HOLDING_AGENT_LABEL" "$TRADING_INTRADAY_AGENT_LABEL" "$STRUCTURE_SAMPLE_AGENT_LABEL"; do
+    if [[ "$disabled_agents" == *"\"$label\" => disabled"* || "$disabled_agents" == *"\"$label\" => true"* ]]; then
+      log_launcher "跳过已禁用的附属任务：$label"
+      continue
+    fi
+    plist="$PROJECT_ROOT/石论后台.app/Contents/Resources/$label.plist"
+    if [[ ! -f "$plist" ]]; then
+      log_launcher "附属任务配置缺失：$label；网页入口不受影响"
+    elif ! /bin/launchctl print "$AGENT_DOMAIN/$label" >/dev/null 2>&1; then
+      if ! /bin/launchctl bootstrap "$AGENT_DOMAIN" "$plist" >> "$LOG_FILE" 2>&1; then
+        log_launcher "附属任务注册失败：$label；网页入口不受影响"
+      fi
+    fi
+  done
+}
+
 if is_ready; then
-  open_console
+  open_console || exit 1
+  ensure_optional_agents
   exit 0
 fi
 
@@ -65,7 +113,8 @@ fi
 
 for _attempt in {1..80}; do
   if is_ready; then
-    open_console
+    open_console || exit 1
+    ensure_optional_agents
     exit 0
   fi
   /bin/sleep 0.5

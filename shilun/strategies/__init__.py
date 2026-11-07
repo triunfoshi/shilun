@@ -257,6 +257,24 @@ def _test_strategy(
     )
 
 
+# Trading execution strategies are intentionally separate from the research
+# ranking registry above. Aliases make that boundary explicit to callers.
+from shilun.strategies.contracts import (  # noqa: E402
+    StrategyContext as ExecutionStrategyContext,
+    StrategyDefinition as ExecutionStrategyDefinition,
+    StrategyError as ExecutionStrategyError,
+)
+from shilun.strategies.registry import (  # noqa: E402
+    E7_OVERSOLD_OVERNIGHT_STRATEGY_ID,
+    E7_OVERSOLD_OVERNIGHT_STRATEGY_VERSION,
+    get_strategy as get_execution_strategy,
+    list_strategies as list_execution_strategies,
+    register_strategy as register_execution_strategy,
+    resolve_strategy_binding,
+    scenario_code,
+)
+
+
 __all__ = [
     "SHILUN_V1_VERSION",
     "StrategyContext",
@@ -268,4 +286,14 @@ __all__ = [
     "format_strategy_signal_reasons",
     "format_strategy_validation_paths",
     "format_strategy_versions",
+    "ExecutionStrategyContext",
+    "ExecutionStrategyDefinition",
+    "ExecutionStrategyError",
+    "E7_OVERSOLD_OVERNIGHT_STRATEGY_ID",
+    "E7_OVERSOLD_OVERNIGHT_STRATEGY_VERSION",
+    "get_execution_strategy",
+    "list_execution_strategies",
+    "register_execution_strategy",
+    "resolve_strategy_binding",
+    "scenario_code",
 ]

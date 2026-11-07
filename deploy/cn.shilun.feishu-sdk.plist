@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>cn.shilun.feishu-sdk</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/shibicheng/shilun_standalone/.venv312/bin/python</string>
+        <string>-m</string><string>shilun.feishu_sdk</string>
+        <string>--auto-reply</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/shibicheng/shilun_standalone</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PYTHONUNBUFFERED</key><string>1</string>
+        <key>SHILUN_FEISHU_ALLOWED_OPEN_IDS</key><string>ou_f77ab28802dcb7f20aa9383f8c86fa81</string>
+    </dict>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ThrottleInterval</key><integer>30</integer>
+    <key>ProcessType</key><string>Background</string>
+    <key>StandardOutPath</key><string>/dev/null</string>
+    <key>StandardErrorPath</key><string>/dev/null</string>
+</dict>
+</plist>

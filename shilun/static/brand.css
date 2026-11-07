@@ -1,0 +1,128 @@
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V4 */
+/* Hallmark · macrostructure: Seal + Wordmark Lockup · component: brand identity
+ * genre: modern-minimal · tone: technical restraint · palette: signal red · theme: locked VC-Astock Workbench
+ * states: sidebar dark · light surface · compact · favicon · contrast: pass (40–41)
+ * slop: pass (1–58) · tokens: pass (48) · responsive: pass (34, 49–57) · icons: pass (30, 33)
+ */
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: var(--brand-space-sm);
+  font-family: var(--brand-font-body);
+}
+
+.brand-lockup .brand-mark {
+  display: block;
+  flex: 0 0 auto;
+  width: var(--brand-mark-size);
+  height: var(--brand-mark-size);
+  border: 0;
+  border-radius: var(--brand-radius-mark);
+  background: transparent;
+  box-shadow: var(--brand-mark-ring);
+  object-fit: contain;
+}
+
+/* The requested Font Awesome-compatible HTML remains dependency-free: the
+   candlesticks are drawn locally, so the Pro-only thin font is not required. */
+.fa-thin.fa-chart-candlestick {
+  display: block;
+  width: 1em;
+  height: 1em;
+  flex: 0 0 auto;
+  background:
+    linear-gradient(currentColor, currentColor) 18% 50% / 1px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) 50% 50% / 1px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) 82% 50% / 1px 100% no-repeat,
+    linear-gradient(currentColor, currentColor) 18% 32% / 6px 34% no-repeat,
+    linear-gradient(currentColor, currentColor) 50% 64% / 6px 38% no-repeat,
+    linear-gradient(currentColor, currentColor) 82% 43% / 6px 46% no-repeat;
+  font-size: 21px;
+}
+
+.fa-thin.fa-chart-candlestick::before {
+  content: none;
+}
+
+.brand-lockup .brand-candlestick-mark {
+  display: grid;
+  place-items: center;
+  background: var(--brand-paper);
+}
+
+.brand-wordmark {
+  min-width: 0;
+}
+
+.brand-lockup .brand-wordmark strong {
+  display: block;
+  overflow: hidden;
+  color: var(--brand-ink-on-dark);
+  font-family: var(--brand-font-wordmark);
+  font-size: var(--brand-text-wordmark);
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: var(--brand-tracking-wordmark);
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-lockup .brand-wordmark span {
+  display: block;
+  overflow: hidden;
+  margin-top: var(--brand-space-3xs);
+  color: var(--brand-muted-on-dark);
+  font-family: var(--brand-font-caption);
+  font-size: var(--brand-text-caption);
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: var(--brand-tracking-caption);
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-foot .sidebar-avatar {
+  overflow: hidden;
+  padding: 0;
+  color: var(--brand-cinnabar);
+  background: var(--brand-paper);
+  box-shadow: var(--brand-mark-ring);
+}
+
+.sidebar-foot .sidebar-avatar .fa-chart-candlestick {
+  font-size: 17px;
+}
+
+.brand-lockup--light {
+  color: var(--brand-ink-on-light);
+  background: var(--brand-paper);
+  border: var(--brand-rule);
+  border-radius: var(--brand-radius-panel);
+}
+
+.brand-lockup--light .brand-wordmark strong {
+  color: var(--brand-ink-on-light);
+}
+
+.brand-lockup--light .brand-wordmark span {
+  color: var(--brand-muted-on-light);
+}
+
+.brand-lockup--compact .brand-wordmark span {
+  display: none;
+}
+
+@media (max-width: 24rem) {
+  .brand-lockup .brand-mark {
+    width: var(--brand-mark-size-compact);
+    height: var(--brand-mark-size-compact);
+  }
+
+  .brand-lockup .brand-wordmark strong {
+    font-size: var(--brand-text-wordmark-compact);
+  }
+}

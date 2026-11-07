@@ -140,7 +140,7 @@ class DailyPushJobTests(unittest.TestCase):
         self.assertEqual(("dry-run",), result.pushed_channels)
         self.assertEqual("mongo", result.data_source)
         self.assertEqual([], snapshot_job.requests)
-        self.assertIn("石论日报 2026-04-16", result.message_text)
+        self.assertIn("VC-Astock 日报 2026-04-16", result.message_text)
         self.assertIn("候选池：2026-04-16 尚未生成状态", result.message_text)
         self.assertIn("Top1：", result.message_text)
         self.assertIn("600000.SH", result.message_text)
@@ -279,7 +279,7 @@ class DailyPushJobTests(unittest.TestCase):
             self.assertEqual(("dry-run",), result.pushed_channels)
             self.assertEqual((), result.failed_channels)
             self.assertEqual("snapshot_fallback", result.data_source)
-            self.assertIn("石论日报 2026-04-16", result.message_text)
+            self.assertIn("VC-Astock 日报 2026-04-16", result.message_text)
             self.assertIn("Top1：", result.message_text)
             self.assertIn("600000.SH", result.message_text)
             self.assertNotIn("000001.SZ", result.message_text)
@@ -471,7 +471,7 @@ class DailyPushJobTests(unittest.TestCase):
             max_chars=180,
         )
 
-        self.assertIn("石论日报 2026-04-16", text)
+        self.assertIn("VC-Astock 日报 2026-04-16", text)
         self.assertIn("其余", text)
         self.assertNotIn("000005.SH", text)
 

@@ -15,23 +15,41 @@ dependencies = [
   "apscheduler>=3.10.0",
   "tushare>=1.4.24",
   "pymongo>=4.16.0",
-  "requests>=2.31.0"
+  "requests>=2.31.0",
+  "httpx>=0.27,<1",
+  "jsonschema>=4,<5"
 ]
+
+[project.optional-dependencies]
+feishu = ["lark-oapi==1.7.5"]
+backend-query = ["fastmcp>=3,<4"]
 
 [project.scripts]
 shilun-api = "shilun.__main__:main"
+shilun-feishu-sdk = "shilun.feishu_sdk:main"
 shilun-automation-push = "shilun.jobs.automation_push_job:main"
 shilun-candidate-pools = "shilun.jobs.candidate_pool_job:main"
 shilun-daily-push = "shilun.jobs.daily_push_job:main"
 shilun-sync-tushare = "shilun.jobs.tushare_sync_job:main"
 shilun-sync-scheduler = "shilun.jobs.tushare_sync_job:scheduler_main"
+shilun-sync-minute-bars = "shilun.jobs.minute_bars_sync_job:main"
+shilun-sync-minute-bars-scheduler = "shilun.jobs.minute_bars_sync_job:scheduler_main"
+shilun-holding-daily-check = "shilun.jobs.holding_daily_check_job:main"
+shilun-holding-daily-check-scheduler = "shilun.jobs.holding_daily_check_job:scheduler_main"
+shilun-sync-trading-intraday = "shilun.jobs.trading_intraday_sync_job:main"
+shilun-trading-intraday-scheduler = "shilun.jobs.trading_intraday_sync_job:scheduler_main"
+shilun-materialize-trading-replays = "shilun.jobs.trading_replay_materialization_job:main"
+shilun-structure-samples = "shilun.jobs.structure_sample_job:main"
+shilun-structure-samples-scheduler = "shilun.jobs.structure_sample_job:scheduler_main"
+shilun-daily-review = "shilun.jobs.daily_review_job:main"
+shilun-cloud-scheduler = "shilun.jobs.cloud_scheduler:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.package-data]
-shilun = ["config/*.yml"]
+shilun = ["config/*.yml", "static/*"]
 
 [tool.setuptools.packages.find]
 include = ["shilun*"]

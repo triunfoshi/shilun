@@ -2,13 +2,18 @@ from dataclasses import dataclass, field
 import os
 from pathlib import Path
 
-DEFAULT_TUSHARE_TOKEN = "b5c61c3e8cffd9b1b4abd9bce295f068b652843e57f7663e707b8b57"
+DEFAULT_TUSHARE_TOKEN = ""
 DEFAULT_TUSHARE_BASE_URL = "https://tt.xiaodefa.cn"
 DEFAULT_TUSHARE_TIMEOUT = 10
 DEFAULT_TUSHARE_MIN_INTERVAL_SECONDS = 0.55
 DEFAULT_TELEGRAM_API_BASE = "https://api.telegram.org"
 DEFAULT_MONGO_URI = ""
 DEFAULT_MONGO_DB = "shilun"
+DEFAULT_KLINESHARE_BASE_URL = "https://data.klineshare.cn"
+DEFAULT_KLINESHARE_TIMEOUT = 15
+DEFAULT_API_HOST = "127.0.0.1"
+DEFAULT_API_PORT = 8000
+DEFAULT_API_LOG_LEVEL = "info"
 
 
 @dataclass(frozen=True)
@@ -34,6 +39,18 @@ class AppConfig:
     feishu_webhook_url: str | None = None
     mongo_uri: str | None = None
     mongo_db: str = DEFAULT_MONGO_DB
+    theme_archive_backend: str = "local"
+    klineshare_api_key: str | None = None
+    klineshare_base_url: str = DEFAULT_KLINESHARE_BASE_URL
+    klineshare_timeout: int = DEFAULT_KLINESHARE_TIMEOUT
+    klineshare_include_depth: bool = False
+    intraday_notifications_enabled: bool = True
+    api_host: str = DEFAULT_API_HOST
+    api_port: int = DEFAULT_API_PORT
+    api_log_level: str = DEFAULT_API_LOG_LEVEL
+    auth_required: bool = False
+    auth_username: str | None = None
+    auth_password: str | None = None
 
 
 def _read_env_file() -> dict[str, str]:
@@ -70,6 +87,19 @@ def _parse_chat_ids(raw: str | None) -> tuple[int, ...]:
     return tuple(values)
 
 
+def _parse_bool(raw: str | None, default: bool = False) -> bool:
+    if raw is None:
+        return default
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_int(raw: str | None, default: int) -> int:
+    try:
+        return int(str(raw).strip()) if raw is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
 def load_config() -> AppConfig:
     """返回默认配置"""
     env_file = _read_env_file()
@@ -97,7 +127,34 @@ def load_config() -> AppConfig:
         telegram_push_chat_ids=_parse_chat_ids(
             _env("SHILUN_TELEGRAM_PUSH_CHAT_IDS", env_file) or _env("SHILUN_TELEGRAM_ALLOWED_CHAT_IDS", env_file)
         ),
-        feishu_webhook_url=_env("SHILUN_FEISHU_WEBHOOK_URL", env_file),
+        feishu_webhook_url=(
+            _env("SHILUN_FEISHU_WEBHOOK_URL_OVERRIDE", env_file)
+            or _env("SHILUN_FEISHU_WEBHOOK_URL", env_file)
+        ),
         mongo_uri=_env("SHILUN_MONGO_URI", env_file, DEFAULT_MONGO_URI) or None,
         mongo_db=_env("SHILUN_MONGO_DB", env_file, DEFAULT_MONGO_DB) or DEFAULT_MONGO_DB,
+        theme_archive_backend=_env("SHILUN_THEME_ARCHIVE_BACKEND", env_file, "local") or "local",
+        klineshare_api_key=_env("SHILUN_KLINESHARE_API_KEY", env_file),
+        klineshare_base_url=(
+            _env("SHILUN_KLINESHARE_BASE_URL", env_file, DEFAULT_KLINESHARE_BASE_URL)
+            or DEFAULT_KLINESHARE_BASE_URL
+        ),
+        klineshare_timeout=int(
+            _env("SHILUN_KLINESHARE_TIMEOUT", env_file, str(DEFAULT_KLINESHARE_TIMEOUT))
+            or DEFAULT_KLINESHARE_TIMEOUT
+        ),
+        klineshare_include_depth=_parse_bool(_env("SHILUN_KLINESHARE_INCLUDE_DEPTH", env_file)),
+        intraday_notifications_enabled=_parse_bool(
+            _env("SHILUN_INTRADAY_NOTIFICATIONS_ENABLED", env_file),
+            default=True,
+        ),
+        api_host=_env("SHILUN_API_HOST", env_file, DEFAULT_API_HOST) or DEFAULT_API_HOST,
+        api_port=_parse_int(_env("SHILUN_API_PORT", env_file), DEFAULT_API_PORT),
+        api_log_level=(
+            _env("SHILUN_API_LOG_LEVEL", env_file, DEFAULT_API_LOG_LEVEL)
+            or DEFAULT_API_LOG_LEVEL
+        ),
+        auth_required=_parse_bool(_env("SHILUN_AUTH_REQUIRED", env_file), default=False),
+        auth_username=_env("SHILUN_AUTH_USERNAME", env_file),
+        auth_password=_env("SHILUN_AUTH_PASSWORD", env_file),
     )

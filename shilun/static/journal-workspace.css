@@ -1,0 +1,231 @@
+/* Hallmark · pre-emit critique: P5 H4 E4 S5 R5 V4
+ * Polanyi: original expectations and position discipline lead; calculation evidence follows.
+ * Existing workbench · design.md tokens · no imagery · motion-cut.
+ * states: default / hover / focus / active / disabled / loading / error / success. */
+:root {
+  --jw-paper: var(--terminal-paper);
+  --jw-soft-paper: var(--terminal-header);
+  --jw-ink: var(--terminal-ink);
+  --jw-muted: var(--terminal-muted);
+  --jw-line: var(--terminal-line);
+  --jw-accent: var(--mv2-blue);
+  --jw-accent-soft: var(--mv2-blue-soft);
+  --jw-risk: var(--mv2-red);
+  --jw-font: var(--terminal-font-family);
+  --jw-text: var(--terminal-font);
+  --jw-radius: var(--terminal-radius);
+  --jw-gap: 12px;
+  --jw-control: 44px;
+  --jw-card-inset: 20px;
+  --jw-card-inset-compact: 16px;
+}
+.tab-button[hidden], [data-review-retired][hidden] { display: none !important; }
+.jw-overview, .jw-review-panel, .jw-empty { min-width: 0; color: var(--jw-ink); font-family: var(--jw-font); font-size: var(--jw-text); background: var(--jw-paper); border: 1px solid var(--jw-line); border-radius: var(--jw-radius); }
+.jw-overview { margin-bottom: 16px; padding: 16px; }
+.jw-overview>header, .jw-review-panel>header { display: flex; flex-wrap: wrap; gap: var(--jw-gap); justify-content: space-between; align-items: start; }
+.jw-overview :is(h2,h3), .jw-review-panel :is(h2,h3) { margin: 0; font-style: normal; font-size: 18px; line-height: 1.4; }
+.jw-overview p, .jw-review-panel p { margin: 6px 0 12px; line-height: 1.65; }
+.jw-overview header p, .jw-review-panel header p { color: var(--jw-muted); }
+.jw-workflow { display: flex; flex-wrap: wrap; list-style: none; gap: 4px 24px; margin: 16px 0; padding: 12px 0; border-block: 1px solid var(--jw-line); }
+.jw-workflow li { display: flex; align-items: baseline; gap: 8px; }
+.jw-workflow b { color: var(--jw-muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.jw-inline-status { min-height: 24px; margin: 8px 0; color: var(--jw-muted); white-space: normal; overflow-wrap: anywhere; }
+.jw-inline-status[data-state=error] { color: var(--jw-ink); border-inline-start: 3px solid var(--jw-risk); padding-inline-start: 8px; }
+.jw-inline-status[data-state=success] { color: var(--jw-ink); border-inline-start: 3px solid var(--jw-accent); padding-inline-start: 8px; }
+.jw-inline-status[data-state=loading] { cursor: progress; }
+.jw-task-list { padding: 0; margin: 8px 0; list-style: none; }
+.jw-task-list li { display: flex; gap: var(--jw-gap); align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--jw-line); }
+.jw-task-list li>div { min-width: 0; display: grid; gap: 4px; }
+.jw-task-list span { color: var(--jw-muted); overflow-wrap: anywhere; }
+.jw-position-note { padding-top: 12px; border-top: 1px solid var(--jw-line); }
+.jw-section-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.jw-section-nav button { min-height: var(--jw-control); }
+.jw-review-panel { margin-top: 16px; padding: 16px; }
+.jw-empty { margin-top: 16px; padding: 16px; }
+.jw-empty p, .jw-muted { color: var(--jw-muted); }
+.jw-module { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--jw-line); }
+.jw-module>summary, .jw-condition-editor>summary { cursor: pointer; font-weight: 600; min-height: var(--jw-control); line-height: var(--jw-control); white-space: normal; overflow-wrap: anywhere; }
+.jw-module>label { display: grid; gap: 6px; }
+.jw-form-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: var(--jw-gap); margin: 12px 0; }
+.jw-form-grid label { min-width: 0; display: grid; gap: 6px; }
+.jw-span { grid-column: 1 / -1; }
+.jw-form-grid :is(input,select,textarea), .jw-module>label select { min-width: 0; min-height: var(--jw-control); width: 100%; max-width: 100%; box-sizing: border-box; padding: 8px; color: var(--jw-ink); background: var(--jw-paper); border: 1px solid var(--jw-line); border-radius: var(--jw-radius); font: inherit; }
+.jw-form-grid input[type=date] { width: 100%; }
+.jw-form-grid textarea { resize: vertical; }
+.jw-review-panel button, .jw-overview button { min-height: var(--jw-control); white-space: nowrap; font: inherit; flex-shrink: 0; }
+.jw-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.jw-review-panel :is(button,input,select,textarea,summary):focus-visible, .jw-overview button:focus-visible, .jw-section-nav button:focus-visible { outline: 2px solid var(--jw-accent); outline-offset: 2px; }
+.jw-review-panel button:active, .jw-overview button:active { transform: translateY(1px); }
+.jw-review-panel button:disabled, .jw-overview button:disabled { opacity: .55; cursor: not-allowed; }
+.jw-review-panel [aria-busy=true] { cursor: progress; }
+.jw-condition-editor { margin-top: 12px; background: var(--jw-soft-paper); border: 1px solid var(--jw-line); padding: 8px 12px; }
+.jw-result { margin: 12px 0; padding: 12px; border: 1px solid var(--jw-line); background: var(--jw-soft-paper); }
+.jw-result[data-state=supported] .jw-result-heading strong, .jw-result[data-state=compared] .jw-result-heading strong { color: var(--jw-accent); }
+.jw-result[data-state=refuted] .jw-result-heading strong { color: var(--jw-risk); }
+.jw-result-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.jw-badge { color: var(--jw-muted); font-size: 12px; }
+.jw-facts { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px 16px; margin: 12px 0; }
+.jw-facts>div { min-width: 0; }
+.jw-facts dt { color: var(--jw-muted); }
+.jw-facts dd { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.jw-original { margin: 8px 0 12px; }
+.jw-original .jw-facts { grid-template-columns: minmax(0,1fr); }
+.jw-notes { margin: 12px 0; padding-inline-start: 20px; }
+.jw-notes li { margin: 4px 0; overflow-wrap: anywhere; }
+.jw-evidence summary { min-height: var(--jw-control); display: list-item; cursor: pointer; }
+.jw-evidence pre { padding: 10px; border: 1px solid var(--jw-line); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 280px; overflow: auto; font: inherit; }
+.jw-account-tools .card { max-width: 100%; min-width: 0; }
+/* The application density rules use body + panel specificity. Keep the new
+ * workflow's controls accessible without changing the other workspaces. */
+body #tab-trade-journal #tradeJournalRoot :is(.jw-overview,.jw-review-panel,.jw-section-nav) button,
+body #tab-trade-journal #tradeJournalRoot .jw-form-grid :is(input,select),
+body #tab-trade-journal #tradeJournalRoot .jw-module > label select {
+  min-height: var(--jw-control);
+}
+@media(hover:hover) {
+  .jw-review-panel button:hover:not(:disabled), .jw-overview button:hover:not(:disabled), .jw-section-nav button:hover:not(:disabled) { box-shadow: none; border-color: var(--jw-accent); }
+  .jw-module>summary:hover, .jw-condition-editor>summary:hover { color: var(--jw-accent); }
+}
+@media(max-width:767px) {
+  .jw-overview,.jw-review-panel,.jw-empty { padding: 12px; }
+  .jw-form-grid,.jw-facts { grid-template-columns: minmax(0,1fr); }
+  .jw-workflow { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 8px; }
+  .jw-section-nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .jw-section-nav button { padding-inline: 6px; width: 100%; }
+  .jw-task-list li { align-items: start; }
+}
+@media(max-width:768px), (pointer:coarse) {
+  body #tab-trade-journal #tradeJournalRoot :is(button,input,select,summary) { min-height: var(--jw-control); }
+}
+@media(prefers-reduced-motion:reduce) {
+  .jw-review-panel *, .jw-overview *, .jw-section-nav * { animation: none; transition: none; }
+}
+
+/* Hallmark · guided review · existing system · P5 H5 E4 S5 R5 V4 */
+:root { --jw-flow-title: 22px; --jw-flow-font: 14px; --jw-label-font: 12px; --jw-section-font: 16px; --jw-body-leading: 1.65; --jw-title-leading: 1.4; --jw-flow-space: 20px; --jw-scroll-offset: 64px; }
+body #tab-trade-journal #tradeJournalRoot > .jw-toolbox { margin-top: var(--jw-flow-space); border-top: 1px solid var(--jw-line); padding: 12px 0; }
+.jw-toolbox > summary { min-height: var(--jw-control); cursor: pointer; color: var(--jw-muted); }
+body #tab-trade-journal #tradeJournalRoot .jw-overview { padding: var(--jw-flow-space); font-size: var(--jw-flow-font); }
+body #tab-trade-journal #tradeJournalRoot .jw-overview h2 { font-size: var(--jw-flow-title); line-height: 1.4; margin-bottom: 8px; }
+body #tab-trade-journal #tradeJournalRoot .jw-overview header { align-items: center; }
+.jw-home-tip { color: var(--jw-muted); }
+.jw-inline-status:empty { display: none; }
+.jw-workflow [aria-current=step] { color: var(--jw-accent); font-weight: 600; }
+.jw-workflow [aria-current=step] b { color: inherit; }
+.jw-search-form { display: grid; grid-template-columns: minmax(0,1fr) auto; }
+.jw-filter-more { grid-column: 1/-1; }
+.jw-filter-more > summary { cursor: pointer; min-height: 32px; color: var(--jw-muted); }
+.jw-filter-more .tj-toolbar { padding: 8px 0; }
+body #tab-trade-journal #tradeJournalRoot #journalRecords { display: block; }
+#tradeJournalRoot[data-jw-stage=home] > :is(#tradeJournalFilters,#tradeJournalStatus,#journalRecords,#journalWorkspaceVerification),
+#tradeJournalRoot:not([data-jw-stage=pick]) > :is(#tradeJournalFilters,#tradeJournalStatus),
+#tradeJournalRoot[data-jw-stage=check] > #journalRecords,
+#tradeJournalRoot:not([data-jw-stage=check]) > #journalWorkspaceVerification,
+#tradeJournalRoot[data-jw-stage=pick] #tradeJournalDetail,
+#tradeJournalRoot[data-jw-stage=notes] .tj-roster { display: none !important; }
+#tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] #tradeJournalDetail > :is(.tj-round-facts,.tj-muted,details),
+#tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] #tradeJournalDetail > .tj-section:not([data-journal-section="当时的操作与预期"]),
+#tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] [data-journal-section="当时的操作与预期"] > .tj-actions > [data-tj-action=bind-plan],
+#tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-decision > .tj-actions > button:nth-of-type(n+3) { display: none; }
+#tradeJournalRoot[data-jw-archive=false] .jw-close-archive, #tradeJournalRoot[data-jw-archive=true] .jw-open-archive { display: none; }
+.jw-record-more { margin: 12px 0; }
+.jw-record-more > summary { cursor: pointer; color: var(--jw-muted); min-height: 32px; }
+body #tab-trade-journal #tradeJournalRoot .jw-decision-brief { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 24px; margin-block: 16px; }
+body #tab-trade-journal #tradeJournalRoot .jw-decision-brief dd { font-size: var(--jw-flow-font); line-height: var(--jw-body-leading); margin-top: 4px; }
+#tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-decision { padding: var(--jw-card-inset); border-block-start: 1px solid var(--jw-line); }
+/* The review remains a reading surface: one body size, quiet labels, and compact
+ * pairs of facts. The existing system font and colours stay local to this flow. */
+body #tab-trade-journal #tradeJournalRoot :is(.jw-review-panel,#tradeJournalEditor),
+body #tab-trade-journal #tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] #tradeJournalDetail {
+  font-family: var(--jw-font); font-size: var(--jw-flow-font); font-weight: 400; line-height: var(--jw-body-leading);
+}
+body #tab-trade-journal #tradeJournalRoot .jw-review-panel :is(h3,h4),
+body #tab-trade-journal #tradeJournalRoot #tradeJournalEditor h4,
+body #tab-trade-journal #tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-section > h3 {
+  font-size: var(--jw-section-font); line-height: var(--jw-title-leading); font-weight: 600; letter-spacing: 0; font-style: normal;
+}
+body #tab-trade-journal #tradeJournalRoot .jw-review-panel :is(label,dt),
+body #tab-trade-journal #tradeJournalRoot .jw-decision-brief dt,
+body #tab-trade-journal #tradeJournalRoot #tradeJournalEditor .tj-form-grid label {
+  font-size: var(--jw-label-font); line-height: var(--jw-body-leading); font-weight: 400; color: var(--jw-muted);
+}
+body #tab-trade-journal #tradeJournalRoot :is(.jw-review-panel,#tradeJournalEditor) :is(input,select,textarea) {
+  font-family: var(--jw-font); font-size: var(--jw-flow-font); line-height: var(--jw-body-leading); font-weight: 400; color: var(--jw-ink);
+}
+body #tab-trade-journal #tradeJournalRoot .jw-review-panel dd { font-size: var(--jw-flow-font); line-height: var(--jw-body-leading); }
+body #tab-trade-journal #tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-decision > header { padding-bottom: 10px; align-items: baseline; }
+body #tab-trade-journal #tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-decision > header strong { font-size: var(--jw-section-font); font-weight: 600; line-height: var(--jw-title-leading); }
+body #tab-trade-journal #tradeJournalRoot[data-jw-stage=notes][data-jw-archive=false] .tj-decision > header > span { font-size: var(--jw-label-font); }
+body #tab-trade-journal #tradeJournalRoot #tradeJournalEditor .tj-form-grid { gap: 14px 20px; }
+@media(max-width:767px) {
+  body #tab-trade-journal #tradeJournalRoot .jw-overview { padding: 16px; }
+  body #tab-trade-journal #tradeJournalRoot .jw-decision-brief { grid-template-columns: minmax(0,1fr); gap: 12px; }
+  .jw-workflow { display: flex; gap: 12px 20px; }
+  .jw-overview .jw-actions { width: 100%; }
+}
+#journalWorkspaceOverview, #tradeJournalEditor, #tradeJournalReviewEditor { scroll-margin-top: var(--jw-scroll-offset); }
+#tradeJournalRoot[data-jw-focus=process] #tradeJournalDetail > :is(.tj-round-facts,.tj-muted,details),
+#tradeJournalRoot[data-jw-focus=process] #tradeJournalDetail > .tj-section:not([data-journal-section="过程复盘"]) { display: none; }
+@media(max-width:767px) {
+  #tradeJournalRoot .tj-roster :is(table,tbody,tr,td) { display: block; width: 100%; box-sizing: border-box; }
+  #tradeJournalRoot .tj-roster thead { display: none; }
+  #tradeJournalRoot .tj-roster tr { padding: 12px; border-bottom: 1px solid var(--jw-line); }
+  #tradeJournalRoot .tj-roster td { border: 0; padding: 4px 0; white-space: normal; }
+  #tradeJournalRoot .tj-roster td:not(:first-child)::before { content: attr(data-label); display: block; color: var(--jw-muted); margin-bottom: 4px; }
+  #tradeJournalRoot .tj-roster .tj-table-wrap { overflow: clip; }
+}
+#tradeJournalRoot:not([data-jw-stage=home]) > #tradeJournalStatus:is([data-state=error],[data-state=success]) { display: block !important; }
+
+/* Per-operation review: dates first, open target fields, independent outcomes. */
+.jw-context { margin-top: 16px; padding: 12px 16px; border-inline-start: 3px solid var(--jw-accent); background: var(--jw-soft-paper); }
+.jw-context p { margin: 6px 0 10px; }
+.jw-review-panel .jw-module > h4 { margin: 24px 0 10px; }
+.jw-review-panel .jw-module > h4:first-child { margin-top: 4px; }
+.jw-condition-form { margin: 12px 0 24px; padding-bottom: 20px; border-bottom: 1px solid var(--jw-line); }
+.jw-form-grid > p { margin: 0; }
+.jw-plan-absent { padding: 10px 12px; background: var(--jw-soft-paper); border-inline-start: 2px solid var(--jw-line); }
+.jw-result h4 { margin: 20px 0 10px; }
+.jw-context button { min-height: var(--jw-control); white-space: nowrap; }
+.jw-context :is(button,a):focus-visible { outline: 2px solid var(--jw-accent); outline-offset: 2px; }
+body #tab-trade-journal #tradeJournalRoot .jw-module > .jw-form-grid select { width: 100%; }
+
+.jw-form-grid > .jw-facts { grid-template-columns: minmax(0,1fr); margin: 0; }
+
+/* Quiet statement dates and explicit review completion. */
+.jw-context > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; cursor: pointer; min-height: var(--jw-control); list-style: disclosure-closed; }
+.jw-context > summary span { color: var(--jw-muted); font-size: var(--jw-label-font); }
+.jw-context > summary:focus-visible { outline: 2px solid var(--jw-accent); outline-offset: 2px; }
+.jw-context > summary:hover { color: var(--jw-accent); }
+.jw-context[open] > summary { margin-bottom: 8px; }
+.tj-review-progress { display: inline-block; margin-top: 6px; padding: 2px 6px; border: 1px solid var(--jw-line); color: var(--jw-muted); white-space: nowrap; }
+.tj-review-progress[data-review-status=reviewed] { color: var(--jw-accent); border-color: var(--jw-accent); }
+.tj-review-progress[data-review-status=needs_update] { color: var(--jw-risk); }
+.jw-context > summary::after { content: '展开'; margin-inline-start: auto; color: var(--jw-muted); font-size: var(--jw-label-font); }
+.jw-context[open] > summary::after { content: '收起'; }
+
+/* Align the round, note title, fields and actions to intentional card insets. */
+body #tab-trade-journal #tradeJournalRoot .tj-detail { padding: var(--jw-card-inset); }
+body #tab-trade-journal #tradeJournalRoot .tj-decision { padding: var(--jw-card-inset); }
+.tj-detail-head .tj-review-progress { margin-block: 0 8px; }
+.jw-completion { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--jw-gap); margin-top: var(--jw-flow-space); padding-top: var(--jw-flow-space); border-top: 1px solid var(--jw-line); }
+.jw-completion > div { flex: 1; min-width: min(100%, 240px); }
+.jw-completion p { margin: 6px 0 0; }
+body #tab-trade-journal #tradeJournalRoot .tj-completion-form { display: grid; gap: var(--jw-gap); font-family: var(--jw-font); font-size: var(--jw-flow-font); line-height: var(--jw-body-leading); }
+.tj-completion-form :is(h4,p) { margin: 0; }
+.tj-completion-steps { margin: 0; padding-inline-start: var(--jw-flow-space); }
+.tj-completion-steps li + li { margin-top: 6px; }
+.tj-completion-form > label { display: grid; gap: 8px; }
+body #tab-trade-journal #tradeJournalRoot .tj-completion-form > .tj-check-label { display: flex; align-items: start; gap: 8px; }
+body #tab-trade-journal #tradeJournalRoot .tj-completion-form .tj-check-label input { flex: 0 0 auto; min-height: auto; margin-top: 5px; }
+.tj-completion-form > label > textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 12px; resize: vertical; font: inherit; color: var(--jw-ink); background: var(--jw-paper); border: 1px solid var(--jw-line); border-radius: var(--jw-radius); }
+.tj-completion-form :is(button,summary) { min-height: var(--jw-control); }
+.tj-completion-form > details > summary { display: list-item; cursor: pointer; line-height: var(--jw-control); color: var(--jw-muted); white-space: normal; overflow-wrap: anywhere; }
+.tj-completion-form > details { min-width: 0; padding-top: 8px; border-top: 1px solid var(--jw-line); }
+.tj-completion-form .tj-review-note { margin-top: 12px; }
+.tj-completion-form :is(textarea,button,summary,input):focus-visible { outline: 2px solid var(--jw-accent); outline-offset: 2px; }
+#tradeJournalRoot[data-jw-focus=process] [data-journal-section="过程复盘"] > :is(h3,p,.tj-actions) { display: none; }
+#tradeJournalRoot[data-jw-focus=process] .tj-detail-head .tj-actions { display: none; }
+#tradeJournalRoot[data-jw-focus=process] #tradeJournalReviewStatus:not(:empty) { display: block; }
+@media(max-width:767px) {
+  body #tab-trade-journal #tradeJournalRoot :is(.tj-detail,.tj-decision) { padding: var(--jw-card-inset-compact); }
+}

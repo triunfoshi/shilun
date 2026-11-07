@@ -1,0 +1,4 @@
+fastmcp==3.4.11
+pymongo>=4.16,<5
+requests>=2.31,<3
+jsonschema>=4,<5

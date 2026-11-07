@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Any
+import math
 
 import pandas as pd
+from shilun.market.ma5_liquidity import MA5_SELECTION_RULE_VERSION, liquidity_rule
 
 from shilun.market.buy_point_patterns import (
     backfill_days_since_chao_di,
@@ -32,11 +34,156 @@ _SIGNAL_LABELS = {
 }
 
 
+# 五日线战法选品硬门槛。Tushare 日线 amount 的单位为千元，daily_basic
+# total_mv 的单位为万元；常量保留源数据单位，输出时再统一换算成人民币/亿元。
+MA5_SELECTION_ALIGNMENT_DAYS = 5
+MA5_SELECTION_LOOKBACK_DAYS = 7
+MA5_SELECTION_MIN_AVG_AMOUNT = 880_000.0  # 8.8 亿元 / 日，千元
+MA5_SELECTION_MIN_TOTAL_MV = 1_000_000.0  # 100 亿元，万元
+
+
 def _f(value: Any) -> float:
     try:
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else 0.0
     except (TypeError, ValueError):
         return 0.0
+
+
+def _limit_down_threshold(ticker: str) -> float:
+    """Return a conservative hard-veto threshold for the ticker's board."""
+    normalized = str(ticker or "").upper()
+    if normalized.endswith(".BJ"):
+        return 0.295
+    code = normalized.split(".", 1)[0]
+    if code.startswith(("300", "301", "688", "689")):
+        return 0.195
+    return 0.095
+
+
+def evaluate_ma5_selection_gate(
+    *,
+    ticker: str,
+    name: str,
+    bars: list[dict[str, Any]],
+    market_amount_cny: float | None = None,
+) -> dict[str, Any]:
+    """评估五日线战法的硬入池条件，并返回可直接展示的审计结果。
+
+    口径：最近 5 个交易日每天都满足 ``MA5 > MA10 > MA20``；最近 7 个
+    交易日至少出现一次涨停；最近 7 个交易日平均成交额不低于 8.8 亿元；
+    最新总市值不低于 100 亿元；名称不含 ST。数据不足按未通过处理，避免把
+    缺失值默认为合格。
+    """
+    recent = list(bars or [])[-MA5_SELECTION_LOOKBACK_DAYS:]
+    alignment_rows = recent[-MA5_SELECTION_ALIGNMENT_DAYS:]
+
+    def _aligned(row: dict[str, Any]) -> bool:
+        ma5 = _f(row.get("ma5"))
+        ma10 = _f(row.get("ma10"))
+        ma20 = _f(row.get("ma20"))
+        return ma5 > ma10 > ma20 > 0
+
+    aligned_days = sum(1 for row in alignment_rows if _aligned(row))
+    alignment_passed = (
+        len(alignment_rows) == MA5_SELECTION_ALIGNMENT_DAYS
+        and aligned_days == MA5_SELECTION_ALIGNMENT_DAYS
+    )
+
+    limit_up_threshold = _limit_down_threshold(ticker)
+    limit_up_rows = [
+        row
+        for row in recent
+        if _f(row.get("pct_chg")) >= limit_up_threshold
+    ]
+    limit_up_passed = (
+        len(recent) == MA5_SELECTION_LOOKBACK_DAYS
+        and bool(limit_up_rows)
+    )
+
+    amounts = [_f(row.get("amount")) for row in recent]
+    amount_data_complete = (
+        len(amounts) == MA5_SELECTION_LOOKBACK_DAYS
+        and all(value > 0 for value in amounts)
+    )
+    avg_amount = sum(amounts) / len(amounts) if amount_data_complete else 0.0
+    amount_passed = amount_data_complete and avg_amount >= MA5_SELECTION_MIN_AVG_AMOUNT
+
+    latest = recent[-1] if recent else {}
+    total_mv = _f(latest.get("total_mv"))
+    market_cap_passed = total_mv >= MA5_SELECTION_MIN_TOTAL_MV
+    non_st_passed = bool(str(name or "").strip()) and "ST" not in str(name or "").upper()
+    liquidity = liquidity_rule(market_amount_cny)
+    cap_cny = liquidity["max_avg_amount_cny"]
+    cap_passed = amount_data_complete and liquidity["available"] and (cap_cny is None or avg_amount * 1000 < cap_cny)
+
+    criteria = [
+        {
+            "id": "ma_bullish_5d",
+            "label": "连续5日均线多头",
+            "passed": alignment_passed,
+            "actual": f"{aligned_days}/{MA5_SELECTION_ALIGNMENT_DAYS}日",
+            "rule": "最近5个交易日每天 MA5 > MA10 > MA20",
+        },
+        {
+            "id": "limit_up_7d",
+            "label": "近7日有过涨停",
+            "passed": limit_up_passed,
+            "actual": f"{len(limit_up_rows)}次",
+            "rule": "最近7个交易日至少1次，按所属板块涨停幅度识别",
+        },
+        {
+            "id": "avg_amount_7d",
+            "label": "7日平均成交额",
+            "passed": amount_passed,
+            "actual": f"{avg_amount / 100_000:.2f}亿" if amount_data_complete else "数据不足",
+            "rule": "不低于8.80亿元",
+        },
+        {
+            "id": "total_market_cap",
+            "label": "总市值",
+            "passed": market_cap_passed,
+            "actual": f"{total_mv / 10_000:.2f}亿" if total_mv > 0 else "数据不足",
+            "rule": "不低于100亿元",
+        },
+        {
+            "id": "non_st",
+            "label": "非ST",
+            "passed": non_st_passed,
+            "actual": "非ST" if non_st_passed else "ST股票",
+            "rule": "名称不得含ST",
+        },
+        {
+            "id": "avg_amount_7d_upper",
+            "label": "大盘量能对应均额上限",
+            "passed": cap_passed,
+            "actual": f"{avg_amount / 100_000:.2f}亿" if amount_data_complete else "数据不足",
+            "rule": liquidity["label"],
+        },
+    ]
+    failures = [
+        f"{item['label']}：当前{item['actual']}，要求{item['rule']}"
+        for item in criteria
+        if not item["passed"]
+    ]
+    return {
+        "rule_id": MA5_SELECTION_RULE_VERSION,
+        "liquidity_rule": liquidity,
+        "passed": not failures,
+        "criteria": criteria,
+        "failure_ids": [item["id"] for item in criteria if not item["passed"]],
+        "failure_reasons": failures,
+        "summary": "个股硬条件及大盘量能上限全部通过" if not failures else "；".join(failures),
+        "metrics": {
+            "aligned_days_5d": aligned_days,
+            "limit_up_count_7d": len(limit_up_rows),
+            "limit_up_dates_7d": [str(row.get("date") or "")[:10] for row in limit_up_rows],
+            "avg_amount_7d": round(avg_amount, 2) if amount_data_complete else None,
+            "avg_amount_7d_cny": round(avg_amount * 1_000, 2) if amount_data_complete else None,
+            "total_mv": round(total_mv, 2) if total_mv > 0 else None,
+            "total_mv_cny": round(total_mv * 10_000, 2) if total_mv > 0 else None,
+        },
+    }
 
 
 def _active_buy_label(ratio: float, structure: float) -> str:
@@ -386,6 +533,8 @@ def build_candidates(
     trend_sectors: list[dict[str, Any]] | None = None,
     *,
     breakout_events_lookup: dict[str, dict[str, Any]] | None = None,
+    market_amount_cny: float | None = None,
+    selection_gate_lookup: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """
     从 top_sectors 的 leader_candidates + zhongjun_candidates 中筛出 MA5 趋势战法候选。
@@ -404,7 +553,7 @@ def build_candidates(
     if stock_frame.empty:
         return []
 
-    frame = stock_frame.copy()
+    frame = stock_frame.loc[stock_frame["date"] <= pd.Timestamp(analysis_date)].copy()
     if "volume_ma5" not in frame.columns:
         frame["volume_ma5"] = (
             frame.groupby("ticker", group_keys=False)["volume"]
@@ -467,7 +616,12 @@ def build_candidates(
     seen: set[str] = set()
     raw_candidates: list[dict[str, Any]] = []
     for sector_rank, sector in enumerate(top_sectors):
-        for pool_key in ("leader_candidates", "zhongjun_candidates"):
+        pool_keys = (
+            ("candidate_universe",)
+            if sector.get("candidate_universe")
+            else ("leader_candidates", "zhongjun_candidates")
+        )
+        for pool_key in pool_keys:
             for item in sector.get(pool_key) or []:
                 ticker = item.get("ticker")
                 if ticker and ticker not in seen:
@@ -493,6 +647,7 @@ def build_candidates(
 
         cols = [
             col for col in ("date", "open", "high", "low", "close", "ma5", "ma8", "ma10", "ma20", "volume", "volume_ma5",
+                             "amount", "total_mv",
                              "pct_chg", "atr_14", "atr_pct_14", "median_abs_return_20d", "volume_ratio_20", "amount_ratio_60",
                              "range_ratio_20", "volume_percentile_120", "return_percentile_120", "extension_percentile_120",
                              "close_position", "real_body_ratio", "upper_shadow_ratio", "lower_shadow_ratio",
@@ -504,9 +659,32 @@ def build_candidates(
         sig = detect_ma5_signal(signal_bars)
 
         latest = feature_bars[-1]
+        selection_gate = (selection_gate_lookup or {}).get(ticker) or evaluate_ma5_selection_gate(
+            ticker=ticker,
+            name=str(candidate.get("name") or ticker),
+            bars=feature_bars,
+            market_amount_cny=market_amount_cny,
+        )
         ma5_val = _f(latest.get("ma5"))
         ma8_val = _f(latest.get("ma8"))
         close_val = _f(latest.get("close"))
+        session_return = _f(latest.get("pct_chg"))
+        limit_down_threshold = _limit_down_threshold(ticker)
+        limit_down_veto = session_return <= -limit_down_threshold
+        selection_gate_veto = not selection_gate["passed"]
+        ranking_exclusion_reason = None
+        ranking_exclusion_type = None
+        ranking_exclusion_label = None
+        if limit_down_veto:
+            ranking_exclusion_type = "risk_veto"
+            ranking_exclusion_label = "风险否决"
+            ranking_exclusion_reason = (
+                f"分析日跌幅 {session_return:.2%} 达到该板块跌停阈值，硬否决新开仓并移出有效排名。"
+            )
+        elif selection_gate_veto:
+            ranking_exclusion_type = "selection_gate"
+            ranking_exclusion_label = "未通过入池条件"
+            ranking_exclusion_reason = selection_gate["summary"]
         # 主动买入分析（当日）
         active_buy_ratio = _f(latest.get("active_buy_ratio"))
         active_buy_structure = _f(latest.get("active_buy_structure"))
@@ -555,10 +733,18 @@ def build_candidates(
 
         results.append({
             "ticker": ticker,
+            "strategy_id": "ma5_v0_2",
+            "strategy_version": "0.2.0",
+            "strategy_name": "MA5 趋势战法",
+            "selection_rule_version": selection_gate["rule_id"],
+            "selection_gate": selection_gate,
             "name": candidate.get("name", ticker),
             "sector_name": sector_name,
             "sector_rank": candidate.get("_sector_rank", 99),
             "role_label": candidate.get("role_label", ""),
+            "candidate_source": candidate.get("candidate_source"),
+            "leader_candidate_rank": candidate.get("leader_candidate_rank"),
+            "zhongjun_candidate_rank": candidate.get("zhongjun_candidate_rank"),
             "close": round(close_val, 2),
             "ma5": round(ma5_val, 2),
             "ma8": round(ma8_val, 2) if ma8_val else None,
@@ -571,7 +757,17 @@ def build_candidates(
             "rsi": sig.get("rsi"),
             "return_20d": sig.get("return_20d"),
             "entry_quality": sig.get("entry_quality", 0),
-            "risk_flags": sig.get("risk_flags", []),
+            "risk_flags": [
+                *sig.get("risk_flags", []),
+                *(["跌停硬否决"] if limit_down_veto else []),
+            ],
+            "analysis_date": analysis_date,
+            "session_return": round(session_return, 4),
+            "limit_down_threshold": round(limit_down_threshold, 4),
+            "ranking_status": "excluded" if (limit_down_veto or selection_gate_veto) else "eligible",
+            "ranking_exclusion_type": ranking_exclusion_type,
+            "ranking_exclusion_label": ranking_exclusion_label,
+            "ranking_exclusion_reason": ranking_exclusion_reason,
             # 对齐 PRD 阶段 9：权威买点用 trade_plan.entry_price（= 当前 close），
             # 而不是 _build_trading_levels 输出的"信号命中价"。老字段 predicted_buy_price
             # 保留是为了向后兼容，也用同一个值。
@@ -605,10 +801,11 @@ def build_candidates(
             "sector_state_label": trend_info.get("sector_state_label"),
             "sector_retreat_flag": bool(trend_info.get("retreat_flag")),
             "sector_resonance_score": round(resonance, 1) if trend_info else 0,
-            # 主动买入结构（v2）
-            "active_buy_ratio": round(active_buy_ratio, 4) if active_buy_ratio else None,
-            "active_buy_structure": round(active_buy_structure, 4) if active_buy_structure else None,
-            "active_buy_label": _active_buy_label(active_buy_ratio, active_buy_structure),
+            # Tushare moneyflow 买卖侧金额不是逐笔内外盘，不能作为主动性信号。
+            # 保留字段兼容旧契约，但明确置空，避免进入候选解释或后续排序。
+            "active_buy_ratio": None,
+            "active_buy_structure": None,
+            "active_buy_label": "盘口主动性待接入",
             # MA5 v0.2 三分制评分（股票质量 != 买点质量）
             "stock_quality_score": stock_quality["score"],
             "trade_timing_score": trade_timing["score"],
@@ -670,6 +867,14 @@ def build_candidates(
             sector_multiplier=_f(r.get("sector_multiplier", 1.0)) or 1.0,
             risk_adjustment=_f(r.get("risk_adjustment", 1.0)) or 1.0,
         )
+        if r.get("ranking_status") == "excluded":
+            r["final_signal"] = "watch"
+            r["final_signal_label"] = r.get("ranking_exclusion_label") or "规则否决"
+            r["allowed_new_position"] = False
+            r["size_hint"] = 0.0
+            r["final_trade_score"] = 0.0
+            r["hard_excluded"] = True
+            r["gate_downgrade_reason"] = r.get("ranking_exclusion_reason")
 
     # v4 排序：MA5 v0.2 final_trade_score 优先；旧 entry_quality 作为兜底兼容。
     # market_multiplier 来自大盘闸门（进攻/持有/防守/空仓）
@@ -680,9 +885,25 @@ def build_candidates(
         return _f(x.get("entry_quality", 0)) * _f(x.get("market_multiplier", 1.0)) * _f(x.get("sector_multiplier", 1.0)) + _f(x.get("trend_boost", 0))
 
     results.sort(key=lambda x: (
+        x.get("ranking_status") == "excluded",
         -_final_score(x),
         x.get("trend_rank") or 999,
         _SIGNAL_PRIORITY.get(x.get("final_signal", "watch"), 9),
         -_f(x.get("leader_score")),
     ))
+    eligible_rank = 0
+    for item in results:
+        if item.get("ranking_status") == "eligible":
+            eligible_rank += 1
+            item["pool_rank"] = eligible_rank
+        else:
+            item["pool_rank"] = None
+        item["ranking_explanation"] = (
+            item.get("ranking_exclusion_reason")
+            or (
+                f"有效排名 #{item['pool_rank']}：买点 {item.get('trade_timing_score', 0)} × "
+                f"大盘 {item.get('market_multiplier', 1)} × 板块 {item.get('sector_multiplier', 1)} × "
+                f"风险 {item.get('risk_adjustment', 1)}。"
+            )
+        )
     return results

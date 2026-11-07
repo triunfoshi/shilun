@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="ruishi-logo-title ruishi-logo-desc">
+  <title id="ruishi-logo-title">瑞势投研</title>
+  <desc id="ruishi-logo-desc">朱砂印章中的金色上升势线，寓意吉兆与顺势而为。</desc>
+  <style>
+    :root {
+      --logo-cinnabar: oklch(49% 0.18 27);
+      --logo-cinnabar-deep: oklch(38% 0.145 27);
+      --logo-gold: oklch(84% 0.13 84);
+      --logo-gold-soft: oklch(92% 0.075 84);
+    }
+  </style>
+  <rect x="3" y="3" width="58" height="58" rx="14" fill="var(--logo-cinnabar)"/>
+  <rect x="7.5" y="7.5" width="49" height="49" rx="10.5" fill="none" stroke="var(--logo-gold-soft)" stroke-width="1.5"/>
+  <path d="M16 45.5C22.5 45.5 24 37 30 37C34.5 37 35.5 32 39.5 29C43.5 26 46 22.5 49 18.5" fill="none" stroke="var(--logo-gold)" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M18.5 47V38M30.5 39.5V29M41.5 31.5V21" fill="none" stroke="var(--logo-gold-soft)" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="49" cy="18.5" r="3.5" fill="var(--logo-gold)" stroke="var(--logo-cinnabar-deep)" stroke-width="1.25"/>
+</svg>

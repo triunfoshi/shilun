@@ -18,6 +18,12 @@ from shilun.strategies import (
     format_strategy_validation_paths,
     format_strategy_versions,
 )
+from shilun.strategies.oversold_first_board import (
+    RULE_ID as OVERSOLD_FIRST_BOARD_RULE_ID,
+    STRATEGY_ID as OVERSOLD_FIRST_BOARD_STRATEGY_ID,
+    STRATEGY_VERSION as OVERSOLD_FIRST_BOARD_STRATEGY_VERSION,
+    evaluate_oversold_first_board,
+)
 
 
 CANDIDATE_TAG_REGISTRY = build_default_candidate_tag_registry()
@@ -111,6 +117,59 @@ def build_snapshot_record(
             "strategy_signals": [signal.to_record() for signal in strategy_signals],
         }
     )
+    return record
+
+
+def attach_oversold_first_board_selection(
+    record: dict[str, object],
+    bars: list[dict[str, Any]],
+) -> dict[str, object]:
+    """Attach the independent T-1 screen without changing the baseline rank."""
+
+    selection = evaluate_oversold_first_board(bars)
+    record["oversold_first_board"] = selection
+    if not selection.get("passed"):
+        return record
+
+    signal = {
+        "strategy_id": OVERSOLD_FIRST_BOARD_STRATEGY_ID,
+        "strategy_version": OVERSOLD_FIRST_BOARD_STRATEGY_VERSION,
+        "name": "超跌首板点火",
+        "status": "selected",
+        "selection_passed": True,
+        "score": selection.get("score"),
+        "reason": selection.get("summary"),
+        "rule_id": OVERSOLD_FIRST_BOARD_RULE_ID,
+        "ranking_policy": "T-1 independent full-market hard gates; baseline rank unchanged",
+        "validation_report_path": "research/validation/strategies/oversold_first_board.md",
+        "selection": selection,
+    }
+    signals = [
+        dict(item) for item in (record.get("strategy_signals") or [])
+        if isinstance(item, dict)
+    ]
+    signals.append(signal)
+    record["strategy_signals"] = signals
+    record["strategy_signal_count"] = len(signals)
+    record["strategy_ids"] = ",".join(
+        str(item.get("strategy_id") or "") for item in signals if item.get("strategy_id")
+    )
+    record["strategy_versions"] = ",".join(
+        f"{item.get('strategy_id')}@{item.get('strategy_version')}"
+        for item in signals
+        if item.get("strategy_id") and item.get("strategy_version")
+    )
+    record["strategy_signal_reasons"] = "; ".join(
+        f"{item.get('strategy_id')}: {item.get('reason')}"
+        for item in signals
+        if item.get("strategy_id") and item.get("reason")
+    )
+    paths = [
+        str(item.get("validation_report_path") or "")
+        for item in signals
+        if item.get("validation_report_path")
+    ]
+    record["strategy_validation_paths"] = ",".join(dict.fromkeys(paths))
     return record
 
 

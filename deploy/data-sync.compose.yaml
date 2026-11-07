@@ -1,0 +1,43 @@
+name: shilun-data
+
+services:
+  data-sync:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      network: host
+      args:
+        DEBIAN_MIRROR: https://mirrors.aliyun.com
+        PYTHON_INDEX: https://mirrors.aliyun.com/pypi/simple
+        OFFLINE_WHEELS: ${SHILUN_OFFLINE_WHEELS:-0}
+    command: ["python", "-m", "shilun.jobs.cloud_scheduler", "--data-only"]
+    env_file:
+      - ${SHILUN_ENV_FILE:?Set the absolute path to the ECS environment file}
+    environment:
+      TZ: Asia/Shanghai
+      OPENBLAS_NUM_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      MALLOC_ARENA_MAX: "2"
+    cpus: 2.0
+    mem_limit: 3g
+    mem_reservation: 512m
+    # Linux ECS: use the existing loopback-only Mongo, without public ports.
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    volumes:
+      # Persist reviewed source updates across container recreation.
+      - ../shilun:/app/shilun:ro
+      - sync-runtime:/app/runtime
+      - sync-logs:/app/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  sync-runtime:
+  sync-logs:

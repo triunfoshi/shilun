@@ -1,13 +1,26 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
+import logging
+from typing import Any
+
+import pandas as pd
 
 from shilun.common.config import load_config
 from shilun.common.db import MongoSnapshotStore, RawMarketDataStore
 from shilun.data import TushareConfig, TushareDailyClient
 from shilun.market.part1 import BENCHMARK_INDEX_OPTIONS
+
+
+STOCK_DAILY_SOURCE = "tushare_daily"
+INDEX_DAILY_SOURCE = "tushare_index_daily"
+
+
+def _with_daily_source(rows, source: str):
+    """Persist an explicit provider marker with every authoritative daily bar."""
+    return rows.assign(source=source)
 
 
 @dataclass(frozen=True)
@@ -31,6 +44,8 @@ class TushareSyncRequest:
     sync_moneyflow: bool = True
     sync_all_benchmarks: bool = False
     index_only: bool = False
+    sync_price_limits: bool = True
+    price_limits_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +65,7 @@ class TushareSyncResult:
     failed_trade_dates: tuple[str, ...] = ()
     synced_trade_dates: tuple[str, ...] = ()
     skipped_trade_dates: tuple[str, ...] = ()
+    price_limit_count: int = 0
 
 
 class TushareSyncJob:
@@ -74,7 +90,8 @@ class TushareSyncJob:
         if mongo_store is None and raw_market_store is None:
             if not config.mongo_uri:
                 raise ValueError("SHILUN_MONGO_URI is required for TushareSyncJob.")
-            mongo_store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+            # CLI and scheduled batches need the same remote-DB budget as S2.
+            mongo_store = MongoSnapshotStore(config.mongo_uri, config.mongo_db, socket_timeout_ms=60_000)
         self.mongo_store = mongo_store
         self.raw_market_store = raw_market_store or getattr(mongo_store, "raw_market", mongo_store)
 
@@ -87,13 +104,81 @@ class TushareSyncJob:
                 pass
 
     def run(self, request: TushareSyncRequest) -> TushareSyncResult:
+        if request.price_limits_only:
+            return self._run_price_limits_only(request)
         if request.incremental:
-            return self._run_incremental(request)
-        if request.latest_only:
-            return self._run_latest_trade_date(request)
-        if getattr(request, "index_only", False):
+            result = self._run_incremental(request)
+        elif request.latest_only:
+            result = self._run_latest_trade_date(request)
+        elif getattr(request, "index_only", False):
             return self._run_index_history(request)
-        return self._run_history_window(request)
+        else:
+            result = self._run_history_window(request)
+        if not request.sync_price_limits or not result.sync_trade_date:
+            return result
+        try:
+            count = self._sync_price_limits_for_trade_date(result.sync_trade_date.replace("-", ""))
+        except Exception as error:
+            if not request.continue_on_error:
+                raise
+            return replace(result, skipped=False,
+                           failed_trade_dates=(*result.failed_trade_dates,
+                                               f"daily_price_limits:{result.sync_trade_date}:{type(error).__name__}"),
+                           message=result.message + " 涨跌停价同步失败，已保留其他同步结果。")
+        return replace(result, price_limit_count=count)
+
+    def _run_price_limits_only(self, request: TushareSyncRequest) -> TushareSyncResult:
+        """盘前轻量任务：只解析最近开市日并同步 stk_limit。"""
+
+        target_dt = datetime.strptime(request.target_date, "%Y-%m-%d")
+        calendar_start = (target_dt - timedelta(days=14)).strftime("%Y%m%d")
+        calendar_end = target_dt.strftime("%Y%m%d")
+        calendar = self.client.fetch_trade_calendar(
+            start_date=calendar_start,
+            end_date=calendar_end,
+            exchange=request.exchange,
+        )
+        calendar_count = self.raw_market_store.upsert_trade_calendar(calendar)
+        open_dates = sorted(
+            str(value)
+            for value in (
+                calendar.loc[calendar["is_open"] == 1, "cal_date"].tolist()
+                if not calendar.empty else []
+            )
+            if str(value) <= calendar_end
+        )
+        if not open_dates:
+            return TushareSyncResult(
+                target_date=request.target_date,
+                sync_trade_date="",
+                start_date=calendar_start,
+                end_date=calendar_end,
+                stock_basic_count=0,
+                trade_calendar_count=calendar_count,
+                daily_bar_count=0,
+                daily_basic_count=0,
+                moneyflow_count=0,
+                benchmark_bar_count=0,
+                skipped=True,
+                message="No open trade date available for price-limit sync.",
+            )
+        trade_date = open_dates[-1]
+        count = self._sync_price_limits_for_trade_date(trade_date)
+        return TushareSyncResult(
+            target_date=request.target_date,
+            sync_trade_date=self._display_date(trade_date),
+            start_date=calendar_start,
+            end_date=calendar_end,
+            stock_basic_count=0,
+            trade_calendar_count=calendar_count,
+            daily_bar_count=0,
+            daily_basic_count=0,
+            moneyflow_count=0,
+            benchmark_bar_count=0,
+            price_limit_count=count,
+            skipped=count == 0,
+            message=f"Synced {count} daily price limits for {self._display_date(trade_date)}.",
+        )
 
     def _run_index_history(self, request: TushareSyncRequest) -> TushareSyncResult:
         """只补基准指数的历史日线（不跑全市场个股、不跑资金流）。"""
@@ -112,7 +197,9 @@ class TushareSyncJob:
                     start_date=start_date,
                     end_date=end_date,
                 )
-                benchmark_bar_count += self.raw_market_store.upsert_daily_bars(benchmark_bars)
+                benchmark_bar_count += self.raw_market_store.upsert_daily_bars(
+                    _with_daily_source(benchmark_bars, INDEX_DAILY_SOURCE)
+                )
             except Exception as error:
                 failed.append(f"{benchmark_ticker}:{error}")
                 if not request.continue_on_error:
@@ -222,7 +309,9 @@ class TushareSyncJob:
                 print(f"[incremental] sync missing {trade_date} ({index}/{len(open_dates)})", flush=True)
             try:
                 daily_bars = self.client.fetch_daily_for_trade_date(trade_date)
-                daily_bar_count += self.raw_market_store.upsert_daily_bars(daily_bars)
+                daily_bar_count += self.raw_market_store.upsert_daily_bars(
+                    _with_daily_source(daily_bars, STOCK_DAILY_SOURCE)
+                )
                 daily_basic = self.client.fetch_daily_basic(trade_date=trade_date)
                 daily_basic_count += self.raw_market_store.upsert_daily_basic(daily_basic)
                 moneyflow_count += self._sync_moneyflow_for_trade_date(request, trade_date, failed_trade_dates)
@@ -251,7 +340,9 @@ class TushareSyncJob:
                     start_date=benchmark_start,
                     end_date=benchmark_end,
                 )
-                benchmark_bar_count += self.raw_market_store.upsert_daily_bars(benchmark_bars)
+                benchmark_bar_count += self.raw_market_store.upsert_daily_bars(
+                    _with_daily_source(benchmark_bars, INDEX_DAILY_SOURCE)
+                )
 
         latest_open_date = open_dates[-1]
         status = "partial_error" if failed_trade_dates else "success"
@@ -363,7 +454,9 @@ class TushareSyncJob:
         stock_basic_count = self.raw_market_store.upsert_stock_basic(stock_basic)
 
         daily_bars = self.client.fetch_daily_for_trade_date(sync_trade_date)
-        daily_bar_count = self.raw_market_store.upsert_daily_bars(daily_bars)
+        daily_bar_count = self.raw_market_store.upsert_daily_bars(
+            _with_daily_source(daily_bars, STOCK_DAILY_SOURCE)
+        )
 
         daily_basic = self.client.fetch_daily_basic(trade_date=sync_trade_date)
         daily_basic_count = self.raw_market_store.upsert_daily_basic(daily_basic)
@@ -377,7 +470,9 @@ class TushareSyncJob:
                 start_date=self._benchmark_start_date(request, sync_trade_date),
                 end_date=sync_trade_date,
             )
-            benchmark_bar_count += self.raw_market_store.upsert_daily_bars(benchmark_bars)
+            benchmark_bar_count += self.raw_market_store.upsert_daily_bars(
+                _with_daily_source(benchmark_bars, INDEX_DAILY_SOURCE)
+            )
 
         return TushareSyncResult(
             target_date=request.target_date,
@@ -415,8 +510,18 @@ class TushareSyncJob:
         moneyflow_count = 0
         open_dates = trade_calendar.loc[trade_calendar["is_open"] == 1, "cal_date"].tolist() if not trade_calendar.empty else []
         failed_trade_dates: list[str] = []
+        daily_basic_count = 0
         for index, trade_date in enumerate(open_dates, start=1):
             trade_date_text = str(trade_date)
+            # Cached prices do not establish historical turnover coverage. Fetch
+            # each session's indicators independently, including skipped bars.
+            try:
+                daily_basic = self.client.fetch_daily_basic(trade_date=trade_date_text)
+                daily_basic_count += self.raw_market_store.upsert_daily_basic(daily_basic)
+            except Exception as error:
+                failed_trade_dates.append(f"daily_basic:{trade_date_text}:{type(error).__name__}")
+                if not request.continue_on_error:
+                    raise
             if request.skip_if_exists and self.raw_market_store.find_daily_bars_for_trade_date(trade_date_text):
                 if request.sync_moneyflow and not self._has_moneyflow_for_trade_date(trade_date_text):
                     if request.progress:
@@ -430,15 +535,14 @@ class TushareSyncJob:
                 print(f"[history] sync daily {trade_date_text} ({index}/{len(open_dates)})", flush=True)
             try:
                 daily_bars = self.client.fetch_daily_for_trade_date(trade_date_text)
-                daily_bar_count += self.raw_market_store.upsert_daily_bars(daily_bars)
+                daily_bar_count += self.raw_market_store.upsert_daily_bars(
+                    _with_daily_source(daily_bars, STOCK_DAILY_SOURCE)
+                )
                 moneyflow_count += self._sync_moneyflow_for_trade_date(request, trade_date_text, failed_trade_dates)
             except Exception as error:
                 failed_trade_dates.append(f"{trade_date_text}:{error}")
                 if not request.continue_on_error:
                     raise
-
-        daily_basic = self.client.fetch_daily_basic(trade_date=target_trade_date)
-        daily_basic_count = self.raw_market_store.upsert_daily_basic(daily_basic)
 
         benchmark_bar_count = 0
         for benchmark_ticker in self._benchmark_tickers(request):
@@ -447,7 +551,9 @@ class TushareSyncJob:
                 start_date=start_date,
                 end_date=end_date,
             )
-            benchmark_bar_count += self.raw_market_store.upsert_daily_bars(benchmark_bars)
+            benchmark_bar_count += self.raw_market_store.upsert_daily_bars(
+                _with_daily_source(benchmark_bars, INDEX_DAILY_SOURCE)
+            )
 
         return TushareSyncResult(
             target_date=request.target_date,
@@ -484,6 +590,48 @@ class TushareSyncJob:
         except Exception as error:
             failed_trade_dates.append(f"moneyflow:{trade_date}:{error}")
             return 0
+
+    def _sync_price_limits_for_trade_date(self, trade_date: str) -> int:
+        fetcher = getattr(self.client, "fetch_all_stock_limits", None)
+        updater = getattr(self.raw_market_store, "upsert_price_limits", None)
+        if not callable(fetcher) or not callable(updater):
+            return 0
+        rows = fetcher(trade_date)
+        rows = self._enrich_price_limit_pre_close(rows, trade_date)
+        count = int(updater(rows))
+        self._upsert_sync_state({
+            "dataset": "daily_price_limits",
+            "scope": trade_date,
+            "status": "success" if count else "empty",
+            "row_count": count,
+            "updated_at": datetime.now().isoformat(timespec="seconds"),
+        })
+        return count
+
+    def _enrich_price_limit_pre_close(self, rows: Any, trade_date: str) -> Any:
+        if rows is None or not hasattr(rows, "columns") or "pre_close" not in rows.columns:
+            return rows
+        if rows.empty or rows["pre_close"].notna().all():
+            return rows
+        fetcher = getattr(self.client, "fetch_daily_for_trade_date", None)
+        if not callable(fetcher):
+            return rows
+        try:
+            # Same-session reference prices respect corporate actions. Scanning
+            # two weeks of raw closes both timed out remotely and used a wrong
+            # reference on ex-dividend days. Optional enrichment may stay missing.
+            daily = fetcher(trade_date, include_reference=True)
+            if daily.empty or any(pd.to_datetime(d).strftime("%Y%m%d") != trade_date for d in daily["date"]):
+                return rows
+            refs = daily.set_index("ticker")["pre_close"]
+            enriched = rows.copy()
+            current = pd.to_numeric(enriched["pre_close"], errors="coerce")
+            fallback = pd.to_numeric(enriched["ticker"].map(refs), errors="coerce")
+            enriched["pre_close"] = current.where(current.gt(0), fallback.where(fallback.gt(0)))
+            return enriched
+        except Exception as error:
+            logging.getLogger(__name__).warning("Daily reference unavailable for %s (%s)", trade_date, type(error).__name__)
+            return rows
 
     @staticmethod
     def _display_date(value: str) -> str:
@@ -568,6 +716,10 @@ def _today_text() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def _yesterday_text() -> str:
+    return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Sync Tushare market data into Mongo without running strategies.")
     parser.add_argument("--date", default=_today_text(), help="Target date in YYYY-MM-DD format. Defaults to today.")
@@ -576,6 +728,11 @@ def main() -> None:
     parser.add_argument("--lookback-days", type=int, default=360, help="Lookback calendar days when start date is omitted.")
     parser.add_argument("--exchange", default="SSE", help="Trade calendar exchange.")
     parser.add_argument("--benchmark-ticker", default="000300.SH", help="Benchmark ticker to sync.")
+    parser.add_argument(
+        "--sync-all-benchmarks",
+        action="store_true",
+        help="Sync every configured broad-market benchmark instead of only --benchmark-ticker.",
+    )
     parser.add_argument("--latest-only", action="store_true", help="Sync only the latest open trade date on or before --date.")
     parser.add_argument("--incremental", action="store_true", help="Poll only locally-missing trade dates using sync_state watermarks.")
     parser.add_argument("--skip-if-exists", action="store_true", help="Skip latest-only sync when Mongo already has daily bars.")
@@ -586,6 +743,8 @@ def main() -> None:
     parser.add_argument("--benchmark-lookback-days", type=int, default=120, help="Index lookback window for benchmark MA/support-pressure data.")
     parser.add_argument("--continue-on-error", action="store_true", help="Continue history sync when a single trade date times out.")
     parser.add_argument("--progress", action="store_true", help="Print per-trade-date progress during history sync.")
+    parser.add_argument("--skip-price-limits", action="store_true", help="Skip Tushare stk_limit pre-market sync.")
+    parser.add_argument("--price-limits-only", action="store_true", help="Only run the pre-market stk_limit sync.")
     args = parser.parse_args()
 
     start_date = args.start_date
@@ -614,6 +773,9 @@ def main() -> None:
             incremental_overlap_days=args.incremental_overlap_days,
             refresh_stock_basic=args.refresh_stock_basic,
             benchmark_lookback_days=args.benchmark_lookback_days,
+            sync_all_benchmarks=args.sync_all_benchmarks,
+            sync_price_limits=not args.skip_price_limits,
+            price_limits_only=args.price_limits_only,
         )
     )
     print(f"target_date={result.target_date}")
@@ -627,6 +789,7 @@ def main() -> None:
     print(f"daily_bar_count={result.daily_bar_count}")
     print(f"daily_basic_count={result.daily_basic_count}")
     print(f"moneyflow_count={result.moneyflow_count}")
+    print(f"price_limit_count={result.price_limit_count}")
     print(f"benchmark_bar_count={result.benchmark_bar_count}")
     print(f"failed_trade_dates={len(result.failed_trade_dates)}")
     print(f"synced_trade_dates={len(result.synced_trade_dates)}")
@@ -641,29 +804,65 @@ def scheduler_main() -> None:
 
     scheduler = BlockingScheduler(timezone="Asia/Shanghai")
 
-    def sync_latest() -> None:
-        target_date = _today_text()
+    def sync_latest(target_date: str, schedule_name: str) -> None:
         result = TushareSyncJob().run(
             TushareSyncRequest(
                 target_date=target_date,
                 latest_only=True,
-                skip_if_exists=True,
+                skip_if_exists=False,
+                sync_all_benchmarks=True,
             )
         )
         print(
             "scheduled_tushare_sync "
+            f"schedule={schedule_name} "
             f"target_date={result.target_date} sync_trade_date={result.sync_trade_date} "
             f"skipped={result.skipped} daily_bar_count={result.daily_bar_count} message={result.message}",
             flush=True,
         )
 
+    def sync_after_close() -> None:
+        sync_latest(_today_text(), "after_close")
+
+    def sync_morning_catchup() -> None:
+        sync_latest(_yesterday_text(), "morning_catchup")
+
+    def sync_price_limits() -> None:
+        target_date = _today_text()
+        result = TushareSyncJob().run(TushareSyncRequest(
+            target_date=target_date,
+            price_limits_only=True,
+        ))
+        print(
+            "scheduled_tushare_price_limits "
+            f"target_date={result.target_date} sync_trade_date={result.sync_trade_date} "
+            f"count={result.price_limit_count} skipped={result.skipped} message={result.message}",
+            flush=True,
+        )
+
     scheduler.add_job(
-        sync_latest,
+        sync_morning_catchup,
         CronTrigger(hour="5,7", minute=0, second=0, timezone="Asia/Shanghai"),
-        id="tushare_latest_to_mongo_5_7",
+        id="tushare_previous_day_to_mongo_5_7",
         replace_existing=True,
     )
-    print("Tushare sync scheduler started. Runs daily at 05:00 and 07:00 Asia/Shanghai.", flush=True)
+    scheduler.add_job(
+        sync_after_close,
+        CronTrigger(day_of_week="mon-fri", hour="17,19", minute=15, second=0, timezone="Asia/Shanghai"),
+        id="tushare_today_to_mongo_17_19",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        sync_price_limits,
+        CronTrigger(day_of_week="mon-fri", hour=8, minute=45, second=0, timezone="Asia/Shanghai"),
+        id="tushare_price_limits_pre_market_0845",
+        replace_existing=True,
+    )
+    print(
+        "Tushare sync scheduler started. Runs previous-day catch-up daily at 05:00/07:00, "
+        "today sync weekdays at 17:15/19:15, and price limits weekdays at 08:45 Asia/Shanghai.",
+        flush=True,
+    )
     scheduler.start()
 
 

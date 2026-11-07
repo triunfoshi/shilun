@@ -21,7 +21,7 @@
   "properties": {
     "engine_version": {
       "type": "string",
-      "const": "market_part1_v1"
+      "const": "market_part1_v2_cross_index"
     },
     "analysis_date": {
       "type": "string",

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>委托与成交组件 · 8 states</title>
+  <link rel="stylesheet" href="./app.css" />
+  <link rel="stylesheet" href="./trading-order-panel.css" />
+  <style>
+    html, body { overflow-x: clip; }
+    body { background: var(--order-canvas); color: var(--order-ink); }
+    .preview-shell { width: min(1060px, calc(100% - 32px)); margin: 32px auto 64px; }
+    .preview-shell > header { margin-bottom: 24px; }
+    .preview-shell > header h1 { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--order-ink); font-size: 28px; letter-spacing: -.04em; }
+    .preview-shell > header p { margin: 8px 0 0; color: var(--order-muted); }
+    .preview-stack { display: grid; gap: 24px; }
+    .preview-row { display: grid; grid-template-columns: 84px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .preview-label { padding-top: 16px; color: var(--order-ink-soft); font: 700 11px/1.2 var(--order-font-mono); text-transform: uppercase; }
+    .preview-row .trading-order-panel-head { padding: 12px 16px; }
+    .preview-row .trading-order-panel-head h2 { font-size: 15px; }
+    .preview-row .trading-order-body { grid-template-columns: 1fr; }
+    .preview-row .trading-order-form { border-right: 0; }
+    .preview-row .trading-order-ledger { display: none; }
+    .preview-row .trading-order-feedback { min-height: 32px; }
+    @media (max-width: 700px) { .preview-row { grid-template-columns: 1fr; gap: 6px; } .preview-label { padding-top: 0; } }
+  </style>
+</head>
+<body>
+  <main class="preview-shell">
+    <header><h1>委托与成交 · 8 states</h1><p>Job 12F 组件状态验证页；不接入生产数据。</p></header>
+    <div class="preview-stack">
+      <div class="preview-row"><span class="preview-label">default</span><section class="trading-order-panel">__PANEL__</section></div>
+      <div class="preview-row"><span class="preview-label">hover</span><section class="trading-order-panel is-hover">__PANEL__</section></div>
+      <div class="preview-row"><span class="preview-label">focus</span><section class="trading-order-panel is-focus">__PANEL__</section></div>
+      <div class="preview-row"><span class="preview-label">active</span><section class="trading-order-panel is-active">__PANEL__</section></div>
+      <div class="preview-row"><span class="preview-label">disabled</span><section class="trading-order-panel is-disabled">__PANEL_DISABLED__</section></div>
+      <div class="preview-row"><span class="preview-label">loading</span><section class="trading-order-panel is-loading" aria-busy="true">__PANEL__<div class="trading-order-feedback"><span class="trading-order-loading-mark"></span><strong>正在核对账户与委托事实…</strong></div></section></div>
+      <div class="preview-row"><span class="preview-label">error</span><section class="trading-order-panel is-error">__PANEL__<div class="trading-order-feedback"><strong>处理失败</strong><span>委托股数超过可用现金边界。</span></div></section></div>
+      <div class="preview-row"><span class="preview-label">success</span><section class="trading-order-panel is-success">__PANEL__<div class="trading-order-feedback"><strong>已完成</strong><span>买入委托已记录，未成交部分未进入持仓。</span></div></section></div>
+    </div>
+  </main>
+  <template id="panelTemplate">
+    <header class="trading-order-panel-head"><div><span>ORDER FACTS · JOB 12F</span><h2>委托与成交</h2><p>记录券商侧事实，不连接券商、不自动下单。</p></div><div class="trading-order-account"><span>可用现金</span><strong>¥78,000</strong><small>当前无买入预留</small></div></header>
+    <div class="trading-order-body"><form class="trading-order-form"><div class="trading-order-form-title"><strong>记录新委托</strong><span>未成交不会进入持仓</span></div><div class="trading-order-form-fields"><label><span>股票代码</span><input value="000001.SZ" /></label><label><span>方向</span><select><option>买入</option></select></label><label><span>意图</span><select><option>建仓</option></select></label><label><span>委托股数</span><input value="100" /></label><label><span>委托限价</span><input value="12.80" /></label><button type="button">记录委托</button></div></form></div>
+  </template>
+  <script>
+    const markup = document.getElementById("panelTemplate").innerHTML;
+    document.querySelectorAll(".trading-order-panel").forEach((panel) => {
+      panel.innerHTML = panel.innerHTML.replace("__PANEL_DISABLED__", markup.replaceAll("<input", "<input disabled").replaceAll("<select", "<select disabled").replace("<button", "<button disabled")).replace("__PANEL__", markup);
+    });
+  </script>
+</body>
+</html>

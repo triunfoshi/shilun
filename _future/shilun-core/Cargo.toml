@@ -1,0 +1,13 @@
+[package]
+name = "shilun-core"
+version = "0.1.0"
+edition = "2021"
+description = "Strongly typed Shilun system core skeleton."
+
+[lib]
+name = "shilun_core"
+path = "src/lib.rs"
+
+[[bin]]
+name = "shilun-core"
+path = "src/main.rs"

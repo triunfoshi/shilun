@@ -1,0 +1,72 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const requests = [];
+const context = {window:{fetchJson:url => new Promise((resolve,reject) => requests.push({url,resolve,reject}))},Number,String,Math,Map,Set,Promise,encodeURIComponent};
+vm.createContext(context);
+vm.runInContext(fs.readFileSync('shilun/static/shortline-views.js','utf8'),context);
+const api = context.window.ShortlineViews;
+
+const node = {tag:'<事件>',state:'扩散中',limit_up:4,first_boards:3,consec_boards:1,highest:2,broken:null,limit_down:null,first_seal:'093001',last_seal:'141100',prev_members:2,prev_still_up:1,continuation_rate:.5,members:[{name:'<核心>',boards:2}]};
+const themes = date => ({date,tree:{available:true,themes:[node],tag_count:1,covered:4,total_limit_up:5,coverage_rate:.8},rotation:{available:true,dates:['2026-10-29','2026-10-30',date],days:[{available:true,limit_up:10},{available:true,limit_up:20,unknown:1},{available:true,limit_up:30}],partial_days:['2026-10-30'],themes:[{tag:'<事件>',today:true,status:'回流(中间缺数)',series:[0,null,4],ranks:[null,null,1],active_days:1,top3_days:1,members:['<核心>']},{tag:'退出',today:false,status:'今天退下去了',series:[2,3,0],ranks:[1,1,null],active_days:2,top3_days:2,members:[]}],tag_count:2},evidence:{date,source:'<source>',rows:[{tag:'<事件>',ticker:'000001.SZ',name:'<核心>',boards:2,first_seal:'093000',last_seal:null,broken_times:null,reason:'<原因>',reason_source:'同日归因'}],covered:1,total_limit_up:2,missing_codes:['000002.SZ']}});
+const tree = api.renderTree(themes('2026-11-02'),{cycle:{available:false,reason:'历史缺失<日期>'},industry:{available:false,reason:'行业缺失'}});
+assert(tree.includes('题材事件树') && tree.includes('情绪周期') && tree.includes('行业结构 · 发酵节奏'));
+assert(tree.includes('&lt;事件&gt;') && tree.includes('&lt;核心&gt;') && !tree.includes('<核心>'));
+assert(tree.includes('历史缺失&lt;日期&gt;') && !tree.includes('第 0 天'));
+assert(!tree.includes('炸0') && !tree.includes('跌停0'));
+assert(tree.includes('Network') === false && tree.includes('<svg'));
+
+const rotation = api.renderRotation(themes('2026-11-02'));
+assert(rotation.includes('slv-rotation-zero">·') && rotation.includes('slv-rotation-missing'));
+assert(rotation.includes('缺原因 1') && rotation.includes('出现的只数是下限'));
+assert(rotation.includes('is-top3') && rotation.includes('<sup>#1</sup>'));
+assert(rotation.includes('昨天还有 2 只以上、今天一只都没有的:'));
+assert(rotation.includes('&lt;事件&gt;') && rotation.includes('&lt;核心&gt;'));
+assert(api.ROTATION_CALIBER.includes('不是 0') && api.ROTATION_CALIBER.includes('一只票可以同时算进几个题材'));
+const evidence = api.renderEvidence(themes('2026-11-02'));
+assert(evidence.includes('当日题材证据 · 2026-11-02'));
+assert(evidence.includes('&lt;原因&gt;') && !evidence.includes('<原因>'));
+assert(evidence.includes('缺少同日涨停原因 · 1只'));
+assert(evidence.includes('<td>—</td>'));
+
+const history = date => ({date,days:30,readings:[{key:'money',label:'赚钱效应中位数',kind:'pct',unit:''},{key:'rate',label:'炸板率',kind:'rate',unit:''}],context:{available:true,sample_days:12,min_samples:10,extreme_count:1,items:[{key:'money',label:'赚钱效应中位数',value:1.23,kind:'pct',percentile:.9,extreme:'偏热',hist_median:.8},{key:'rate',label:'炸板率',value:.2,kind:'rate',percentile:null}]},diff:{available:true,prev_date:'2026-10-30',changes:[{key:'rate',label:'炸板率',prev:.3,cur:.2,delta:-.1,kind:'rate',unit:'',hotter:true}],unchanged_count:1},series:[{date:'2026-10-28',status:'missing',note:'<缺口>'},{date:'2026-10-29',status:'missing',note:'<缺口>'},{date:'2026-10-30',status:'partial',settled:true,note:'收益缺失',values:{money:null,rate:.3}},{date,status:'ready',settled:false,values:{money:1.23,rate:.2}}],gaps:['<缺口>'],source:'档案'});
+const historyHtml = api.renderHistory(history('2026-11-02'));
+assert(historyHtml.includes('历史统计位置') && historyHtml.includes('复盘日 vs 2026-10-30') && historyHtml.includes('逐日读数'));
+assert(historyHtml.includes('90%') && historyHtml.includes('历史中位 +0.80%'));
+assert(historyHtml.includes('样本不足 10 天,暂不给分位'));
+assert(historyHtml.includes('-10 个百分点') && !historyHtml.includes('-0.10%'));
+assert(historyHtml.includes('2026-10-28 ~ 2026-10-29') && historyHtml.includes('2 个交易日没取到:&lt;缺口&gt;'));
+assert(historyHtml.includes('未收盘') && historyHtml.includes('部分') && historyHtml.includes('class="is-selected"'));
+assert(historyHtml.includes('data-slv-window="10"') && historyHtml.includes('data-slv-window="60"'));
+assert(historyHtml.includes('<td class="slv-right slv-muted">—</td>'));
+assert.equal(api.deltaText(.12,'rate',''),'+12 个百分点');
+assert.equal(api.deltaText(-1.2,'pct',''),'-1.20 个百分点');
+
+function root() { return {innerHTML:'',dataset:{},attrs:{},setAttribute(k,v){this.attrs[k]=v;},addEventListener(){},querySelectorAll(){return [];}}; }
+const turn = () => new Promise(resolve => setImmediate(resolve));
+(async () => {
+  const h = root();
+  const first = api.mountHistory(h,'2026-10-30',30);
+  const second = api.mountHistory(h,'2026-11-02',30);
+  assert.equal(requests.length,2);
+  requests[1].resolve(history('2026-11-02')); await second;
+  const newest = h.innerHTML;
+  requests[0].resolve(history('2026-10-30')); await first;
+  assert.equal(h.innerHTML,newest,'stale response must not overwrite selected date');
+  const mismatch = api.mountHistory(h,'2026-11-03',10);
+  requests[2].resolve(history('2026-11-02')); await mismatch;
+  assert(h.innerHTML.includes('返回日期与所选日不一致') && h.innerHTML.includes('重新读取'));
+  assert.equal(h.attrs['aria-busy'],'false');
+  const r1=root(),r2=root(),r3=root();
+  const all = api.mount({treeTarget:r1,rotationTarget:r2,evidenceTarget:r3,date:'2026-11-02'});
+  const themeReq=requests.find(r=>r.url.includes('/themes?'));
+  assert(themeReq);
+  themeReq.resolve(themes('2026-11-02')); await turn();
+  assert(r2.innerHTML.includes('题材轮动') && r3.innerHTML.includes('当日题材证据'));
+  const contextReq=requests.find(r=>r.url.includes('/sentiment-context?'));
+  assert(contextReq); contextReq.reject(new Error('周期取数失败<source>')); await all;
+  assert(r1.innerHTML.includes('题材事件树') && r1.innerHTML.includes('周期取数失败&lt;source&gt;'));
+  const again=api.mount({rotationTarget:root(),date:'2026-11-02'}); await again;
+  assert.equal(requests.filter(r=>r.url.includes('/themes?')).length,1,'same-date themes request must be reused across views');
+  console.log('shortline views: source labels, unknowns, escaping, gap grouping, units, dates, races, cache and context isolation passed');
+})().catch(error => {console.error(error);process.exit(1);});

@@ -1,0 +1,706 @@
+/* Hallmark · component: trading order lifecycle panel · genre: modern-minimal · theme: existing trading workbench
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * contrast: pass (40–41) · honest: pass (46) · chrome: pass (47) · tokens: pass (48)
+ * responsive: rendered pass (34, 49–57) · icons: pass (30)
+ */
+/* Hallmark · pre-emit critique: P5 H5 E4 S5 R5 V5 */
+
+:root {
+  --order-paper: #ffffff;
+  --order-paper-soft: #f8fafc;
+  --order-paper-tint: #f1f8f5;
+  --order-canvas: #f3f6f9;
+  --order-ink: #1c293b;
+  --order-ink-soft: #596a80;
+  --order-muted: #64748b;
+  --order-line: #dce5ef;
+  --order-line-strong: #abc7bb;
+  --order-accent: #2f8063;
+  --order-accent-ink: #ffffff;
+  --order-accent-soft: #e8f5ef;
+  --order-danger: #a83d46;
+  --order-danger-soft: #fff4f4;
+  --order-warning: #9a651b;
+  --order-warning-soft: #fff8e9;
+  --order-success: #217456;
+  --order-danger-line: rgba(168, 61, 70, .45);
+  --order-success-line: rgba(33, 116, 86, .48);
+  --order-shadow-rest: 0 1px 2px rgba(15, 23, 42, .035);
+  --order-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --order-space-3xs: 4px;
+  --order-space-2xs: 8px;
+  --order-space-xs: 12px;
+  --order-space-sm: 16px;
+  --order-space-md: 20px;
+  --order-space-lg: 24px;
+  --order-space-xl: 32px;
+}
+
+.trading-order-panel {
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--order-line);
+  border-radius: 12px;
+  color: var(--order-ink);
+  background: var(--order-paper);
+  box-shadow: var(--order-shadow-rest);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 90ms ease;
+}
+
+.holdings-workbench > .trading-order-panel {
+  grid-column: 1 / -1;
+}
+
+.trading-order-disclosure {
+  min-width: 0;
+}
+
+.trading-order-disclosure > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.trading-order-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.trading-order-disclosure > summary::after {
+  content: "展开";
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--order-line);
+  border-radius: 999px;
+  color: var(--order-ink-soft);
+  background: var(--order-paper-soft);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.trading-order-disclosure[open] > summary::after {
+  content: "收起";
+}
+
+.trading-order-panel:hover,
+.trading-order-panel.is-hover {
+  border-color: var(--order-line-strong);
+}
+
+.trading-order-panel:focus-within,
+.trading-order-panel.is-focus {
+  border-color: var(--order-accent);
+  box-shadow: 0 0 0 3px var(--order-accent);
+}
+
+.trading-order-panel:active,
+.trading-order-panel.is-active {
+  transform: translateY(1px);
+}
+
+.trading-order-panel.is-disabled {
+  opacity: .55;
+  pointer-events: none;
+}
+
+.trading-order-panel.is-loading {
+  border-color: var(--order-line-strong);
+}
+
+.trading-order-panel.is-error {
+  border-color: var(--order-danger-line);
+}
+
+.trading-order-panel.is-success {
+  border-color: var(--order-success-line);
+}
+
+.trading-order-panel-loading {
+  min-height: 108px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--order-space-xs);
+  padding: var(--order-space-lg);
+  color: var(--order-muted);
+}
+
+.trading-order-panel-loading strong,
+.trading-order-panel-loading p {
+  display: block;
+  margin: 0;
+}
+
+.trading-order-panel-loading strong {
+  color: var(--order-ink);
+  font-size: 13px;
+}
+
+.trading-order-panel-loading p {
+  margin-top: var(--order-space-3xs);
+  font-size: 11px;
+}
+
+.trading-order-loading-mark {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid var(--order-line);
+  border-top-color: var(--order-accent);
+  border-radius: 50%;
+  animation: trading-order-spin 760ms linear infinite;
+}
+
+@keyframes trading-order-spin {
+  to { transform: rotate(360deg); }
+}
+
+.trading-order-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--order-space-lg);
+  padding: var(--order-space-sm) var(--order-space-md);
+  border-bottom: 1px solid var(--order-line);
+}
+
+.trading-order-panel-head > div:first-child > span,
+.trading-order-form-title span,
+.trading-order-account span,
+.trading-order-account small,
+.trading-order-ledger-head span,
+.trading-order-item small,
+.trading-order-metrics span {
+  color: var(--order-muted);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.trading-order-panel-head > div:first-child > span {
+  display: block;
+  font-family: var(--order-font-mono);
+  font-size: 9px;
+  font-weight: 850;
+  letter-spacing: .11em;
+}
+
+.trading-order-panel-head h2 {
+  min-width: 0;
+  margin: var(--order-space-3xs) 0;
+  overflow-wrap: anywhere;
+  color: var(--order-ink);
+  font-size: 15px;
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+
+.trading-order-panel-head p,
+.trading-order-fill-heading p,
+.trading-order-empty p {
+  margin: 0;
+  color: var(--order-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.trading-order-account {
+  display: grid;
+  min-width: 150px;
+  padding-left: var(--order-space-md);
+  border-left: 1px solid var(--order-line);
+  text-align: right;
+}
+
+.trading-order-account strong {
+  margin: var(--order-space-3xs) 0;
+  color: var(--order-ink);
+  font-size: 16px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.trading-order-body {
+  display: grid;
+  grid-template-columns: minmax(440px, .82fr) minmax(0, 1.18fr);
+  min-width: 0;
+}
+
+.trading-order-form,
+.trading-order-ledger {
+  min-width: 0;
+  padding: var(--order-space-sm) var(--order-space-md);
+}
+
+.trading-order-form {
+  align-self: start;
+  border-right: 1px solid var(--order-line);
+  background: var(--order-paper-soft);
+}
+
+.trading-order-form-title,
+.trading-order-ledger-head,
+.trading-order-item-head,
+.trading-order-item-foot,
+.trading-order-fill-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--order-space-xs);
+}
+
+.trading-order-form-title strong,
+.trading-order-ledger-head strong,
+.trading-order-fill-heading strong {
+  color: var(--order-ink);
+  font-size: 12px;
+}
+
+.trading-order-form-fields {
+  display: grid;
+  grid-template-columns: 1.25fr .8fr .8fr;
+  gap: var(--order-space-xs);
+  margin-top: var(--order-space-xs);
+}
+
+.trading-order-form-fields label,
+.trading-order-fill-fields label {
+  margin: 0;
+  min-width: 0;
+}
+
+.trading-order-form-fields label > span,
+.trading-order-fill-fields label > span {
+  display: block;
+  margin-bottom: var(--order-space-3xs);
+  color: var(--order-muted);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.trading-order-form-fields input,
+.trading-order-form-fields select,
+.trading-order-fill-fields input {
+  min-height: 44px;
+  padding: var(--order-space-2xs) var(--order-space-xs);
+  border: 1px solid var(--order-line);
+  border-radius: 8px;
+  color: var(--order-ink);
+  background: var(--order-paper);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.trading-order-form-fields input:hover,
+.trading-order-form-fields select:hover,
+.trading-order-fill-fields input:hover,
+.trading-order-panel.is-hover .trading-order-form-fields input {
+  border-color: var(--order-line-strong);
+}
+
+.trading-order-form-fields input:focus-visible,
+.trading-order-form-fields select:focus-visible,
+.trading-order-fill-fields input:focus-visible,
+.trading-order-panel.is-focus .trading-order-form-fields input:first-of-type {
+  border-color: var(--order-accent);
+  outline-color: var(--order-accent);
+  box-shadow: none;
+}
+
+.trading-order-form-fields input:disabled,
+.trading-order-form-fields select:disabled,
+.trading-order-fill-fields input:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+  background: var(--order-paper-soft);
+}
+
+.trading-order-panel.is-error .trading-order-form-fields input,
+.trading-order-panel.is-error .trading-order-form-fields select,
+.trading-order-panel.is-error .trading-order-fill-fields input {
+  border-color: var(--order-danger);
+}
+
+.trading-order-panel button {
+  min-height: 44px;
+  margin: 0;
+  padding: var(--order-space-2xs) var(--order-space-xs);
+  border: 1px solid var(--order-accent);
+  border-radius: 8px;
+  color: var(--order-accent-ink);
+  background: var(--order-accent);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  box-shadow: none;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, transform 80ms ease, opacity 120ms ease;
+}
+
+.trading-order-panel button:hover,
+.trading-order-panel button.is-hover,
+.trading-order-panel.is-hover .trading-order-form-fields > button {
+  border-color: var(--order-success);
+  background: var(--order-success);
+  transform: none;
+  box-shadow: none;
+}
+
+.trading-order-panel button:focus-visible,
+.trading-order-panel button.is-focus {
+  outline-color: var(--order-accent);
+  box-shadow: none;
+}
+
+.trading-order-panel button:active,
+.trading-order-panel button.is-active,
+.trading-order-panel.is-active .trading-order-form-fields > button {
+  transform: translateY(1px);
+}
+
+.trading-order-panel button:disabled,
+.trading-order-panel button.is-disabled {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.trading-order-panel button.secondary {
+  border-color: var(--order-line);
+  color: var(--order-ink-soft);
+  background: var(--order-paper);
+}
+
+.trading-order-panel button.secondary:hover {
+  border-color: var(--order-line-strong);
+  color: var(--order-ink);
+  background: var(--order-paper-tint);
+}
+
+.trading-order-form-fields > button {
+  align-self: end;
+}
+
+.trading-order-ledger {
+  display: grid;
+  align-content: start;
+  gap: var(--order-space-xs);
+}
+
+.trading-order-ledger-head button {
+  min-height: 32px;
+}
+
+.trading-order-ledger-head strong,
+.trading-order-ledger-head span {
+  display: block;
+}
+
+.trading-order-list {
+  display: grid;
+  max-height: 430px;
+  overflow-y: auto;
+  border-top: 1px solid var(--order-line);
+}
+
+.trading-order-item {
+  display: grid;
+  gap: var(--order-space-2xs);
+  min-width: 0;
+  padding: var(--order-space-xs) var(--order-space-3xs);
+  border-bottom: 1px solid var(--order-line);
+}
+
+.trading-execution-only {
+  border-left-color: var(--order-success-line);
+  background: var(--order-paper-tint);
+}
+
+.trading-order-item.tone-open,
+.trading-order-item.tone-partial {
+  padding-inline: var(--order-space-xs);
+  background: var(--order-paper-tint);
+}
+
+.trading-order-item.tone-cancelled {
+  opacity: .68;
+}
+
+.trading-order-identity,
+.trading-order-item-foot > div {
+  display: flex;
+  align-items: center;
+  gap: var(--order-space-2xs);
+  min-width: 0;
+}
+
+.trading-order-identity strong {
+  color: var(--order-ink);
+  font-size: 13px;
+}
+
+.trading-order-side,
+.trading-order-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: var(--order-space-3xs) var(--order-space-2xs);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.trading-order-side.side-buy {
+  color: var(--order-danger);
+  background: var(--order-danger-soft);
+}
+
+.trading-order-side.side-sell {
+  color: var(--order-success);
+  background: var(--order-accent-soft);
+}
+
+.trading-order-status {
+  color: var(--order-ink-soft);
+  background: var(--order-paper-soft);
+}
+
+.tone-partial .trading-order-status {
+  color: var(--order-warning);
+  background: var(--order-warning-soft);
+}
+
+.tone-filled .trading-order-status {
+  color: var(--order-success);
+  background: var(--order-accent-soft);
+}
+
+.trading-order-progress {
+  height: 3px;
+  overflow: hidden;
+  background: var(--order-line);
+}
+
+.trading-order-progress i {
+  display: block;
+  height: 100%;
+  background: var(--order-accent);
+}
+
+.trading-order-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--order-space-2xs);
+}
+
+.trading-order-metrics div {
+  min-width: 0;
+}
+
+.trading-order-metrics span,
+.trading-order-metrics strong {
+  display: block;
+}
+
+.trading-order-metrics strong {
+  margin-top: var(--order-space-3xs);
+  overflow: hidden;
+  color: var(--order-ink);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trading-order-item-foot button {
+  min-height: 32px;
+  padding: var(--order-space-3xs) var(--order-space-2xs);
+  font-size: 9px;
+}
+
+.trading-order-fill-form {
+  display: grid;
+  gap: var(--order-space-2xs);
+  padding: var(--order-space-xs);
+  border-top: 1px solid var(--order-accent);
+  background: var(--order-paper-tint);
+}
+
+.trading-fill-ledger {
+  display: grid;
+  gap: 0;
+  border-top: 1px solid var(--order-line);
+  background: var(--order-paper-tint);
+}
+
+.trading-fill-ledger > div {
+  display: grid;
+  grid-template-columns: minmax(118px, .8fr) minmax(100px, .7fr) minmax(130px, 1fr) minmax(150px, 1fr);
+  gap: var(--order-space-2xs);
+  align-items: center;
+  padding: var(--order-space-2xs) var(--order-space-xs);
+  border-bottom: 1px solid var(--order-line);
+  font-size: 10px;
+}
+
+.trading-fill-ledger > div:last-child { border-bottom: 0; }
+.trading-fill-ledger time,
+.trading-fill-ledger span,
+.trading-fill-ledger small { color: var(--order-muted); }
+.trading-fill-ledger strong { color: var(--order-ink); }
+
+.trading-order-fill-heading p {
+  margin-top: var(--order-space-3xs);
+}
+
+.trading-order-icon-button {
+  width: 32px;
+  min-width: 32px;
+  min-height: 32px !important;
+  padding: 0 !important;
+  border-color: transparent !important;
+  color: var(--order-muted) !important;
+  background: transparent !important;
+  font-size: 18px !important;
+}
+
+.trading-order-fill-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  gap: var(--order-space-2xs);
+  align-items: end;
+}
+
+.trading-order-fill-fields > button {
+  min-height: 44px;
+}
+
+.trading-order-empty {
+  padding: var(--order-space-xl) var(--order-space-sm);
+  color: var(--order-muted);
+  text-align: center;
+}
+
+.trading-order-empty strong {
+  display: block;
+  margin-bottom: var(--order-space-3xs);
+  color: var(--order-ink);
+  font-size: 12px;
+}
+
+.trading-order-feedback {
+  display: flex;
+  align-items: center;
+  gap: var(--order-space-2xs);
+  min-height: 44px;
+  padding: var(--order-space-2xs) var(--order-space-md);
+  border-top: 1px solid var(--order-line);
+  color: var(--order-ink-soft);
+  visibility: hidden;
+  background: var(--order-paper-soft);
+  font-size: 10px;
+}
+
+.trading-order-feedback strong {
+  color: var(--order-ink);
+}
+
+.trading-order-panel.is-loading .trading-order-feedback,
+.trading-order-panel.is-error .trading-order-feedback,
+.trading-order-panel.is-success .trading-order-feedback {
+  visibility: visible;
+}
+
+.trading-order-panel.is-loading .trading-order-body {
+  opacity: .62;
+  pointer-events: none;
+}
+
+.trading-order-panel.is-error .trading-order-feedback {
+  color: var(--order-danger);
+  background: var(--order-danger-soft);
+}
+
+.trading-order-panel.is-error .trading-order-feedback strong {
+  color: var(--order-danger);
+}
+
+.trading-order-panel.is-success .trading-order-feedback {
+  color: var(--order-success);
+  background: var(--order-accent-soft);
+}
+
+.trading-order-panel.is-success .trading-order-feedback strong {
+  color: var(--order-success);
+}
+
+@media (max-width: 1180px) {
+  .trading-order-body {
+    grid-template-columns: 1fr;
+  }
+
+  .trading-order-form {
+    border-right: 0;
+    border-bottom: 1px solid var(--order-line);
+  }
+}
+
+@media (max-width: 780px) {
+  .holdings-workbench {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .holdings-workbench > * {
+    grid-column: 1 / -1 !important;
+  }
+
+  .trading-order-panel-head,
+  .trading-order-item-foot,
+  .trading-order-fill-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .trading-order-account {
+    padding: var(--order-space-xs) 0 0;
+    border-top: 1px solid var(--order-line);
+    border-left: 0;
+    text-align: left;
+  }
+
+  .trading-order-form-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trading-order-fill-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .trading-fill-ledger > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 500px) {
+  .trading-order-form-fields,
+  .trading-order-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .trading-order-panel-head,
+  .trading-order-form,
+  .trading-order-ledger {
+    padding: var(--order-space-sm);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trading-order-panel,
+  .trading-order-panel button {
+    transition: none;
+  }
+
+  .trading-order-loading-mark {
+    animation: none;
+  }
+}

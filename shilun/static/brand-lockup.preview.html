@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VC-Astock Logo 预览</title>
+  <link rel="stylesheet" href="/static/tokens.css?v=20260903-vc-astock-v1" />
+  <link rel="stylesheet" href="/static/brand.css?v=20260903-vc-astock-v1" />
+  <style>
+    :root {
+      --preview-ink: oklch(23% 0.025 248);
+      --preview-muted: oklch(47% 0.02 245);
+      --preview-canvas: oklch(96% 0.01 245);
+      --preview-surface: oklch(99% 0.006 245);
+      --preview-dark: oklch(21% 0.025 248);
+      --preview-rule: 1px solid oklch(86% 0.018 245);
+      --preview-measure: 760px;
+      --preview-space-2xs: 8px;
+      --preview-space-sm: 12px;
+      --preview-space-md: 16px;
+      --preview-space-lg: 20px;
+      --preview-space-xl: 24px;
+      --preview-space-2xl: 32px;
+      --preview-text-label: 13px;
+      --preview-text-title: 28px;
+    }
+    html, body { max-width: 100%; overflow-x: clip; }
+    body { margin: 0; padding: var(--preview-space-2xl); color: var(--preview-ink); background: var(--preview-canvas); font-family: var(--brand-font-body); }
+    main { display: grid; max-width: var(--preview-measure); gap: var(--preview-space-lg); margin: 0 auto; }
+    section { padding: var(--preview-space-xl); border: var(--preview-rule); border-radius: var(--brand-radius-panel); background: var(--preview-surface); }
+    section.dark { background: var(--preview-dark); }
+    section.dark h2 { color: var(--brand-muted-on-dark); }
+    h1, h2 { margin: 0 0 var(--preview-space-md); font-style: normal; overflow-wrap: anywhere; min-width: 0; }
+    h1 { font-size: var(--preview-text-title); }
+    h2 { color: var(--preview-muted); font-size: var(--preview-text-label); }
+    .brand-lockup { min-height: auto; padding: 0; border-bottom: 0; }
+    .brand-lockup--light { width: fit-content; padding: var(--preview-space-sm) var(--preview-space-md); }
+    .mark-row { display: flex; align-items: end; gap: var(--preview-space-lg); }
+    .brand-icon-swatch { display: grid; place-items: center; border: var(--preview-rule); border-radius: var(--brand-radius-mark); background: var(--brand-paper); }
+    .brand-icon-swatch.is-64 { width: 64px; height: 64px; font-size: 36px; }
+    .brand-icon-swatch.is-36 { width: 36px; height: 36px; font-size: 21px; }
+    .brand-icon-swatch.is-24 { width: 24px; height: 24px; font-size: 14px; }
+    .brand-icon-swatch.is-16 { width: 16px; height: 16px; font-size: 10px; }
+    .brand-icon-swatch .fa-chart-candlestick { font-size: inherit; }
+    @media (max-width: 24rem) {
+      body { padding: var(--preview-space-md); }
+      section { padding: var(--preview-space-md); }
+      .mark-row { flex-wrap: wrap; gap: var(--preview-space-md); }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>VC-Astock · 品牌组件</h1>
+    <section class="dark">
+      <h2>深色侧栏</h2>
+      <div class="brand-lockup">
+        <span class="brand-mark brand-candlestick-mark" aria-hidden="true"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <div class="brand-wordmark"><strong>VC-Astock</strong><span>A-SHARE WORKBENCH</span></div>
+      </div>
+    </section>
+    <section>
+      <h2>浅色表面</h2>
+      <div class="brand-lockup brand-lockup--light">
+        <span class="brand-mark brand-candlestick-mark" aria-hidden="true"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <div class="brand-wordmark"><strong>VC-Astock</strong><span>A-SHARE WORKBENCH</span></div>
+      </div>
+    </section>
+    <section>
+      <h2>图形尺寸</h2>
+      <div class="mark-row">
+        <span class="brand-icon-swatch is-64" aria-label="VC-Astock Logo，64 像素"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <span class="brand-icon-swatch is-36" aria-label="VC-Astock Logo，36 像素"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <span class="brand-icon-swatch is-24" aria-label="VC-Astock Logo，24 像素"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <span class="brand-icon-swatch is-16" aria-label="VC-Astock Logo，16 像素"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

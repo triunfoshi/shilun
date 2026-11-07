@@ -1,0 +1,266 @@
+{
+  "schema_version": "1.0.0",
+  "is_example": true,
+  "case_id": "example-case-001",
+  "account_ref": "example-account",
+  "ticker": "000000.SZ",
+  "security_name": "虚构示例标的",
+  "created_at": "2026-10-19T09:30:00+08:00",
+  "status": "closed",
+  "opening_cost_status": "known",
+  "observation_events": [
+    {
+      "observation_id": "watch-1",
+      "action": "added",
+      "decided_at": "2026-10-19T09:30:00+08:00",
+      "recorded_at": "2026-10-19T09:30:00+08:00",
+      "recording_class": "at_time",
+      "ticker": "000000.SZ",
+      "scope": "user_watchlist",
+      "reason": "虚构示例观察，不是真实证券或交易。",
+      "reference_tickers": [],
+      "snapshot_ids": []
+    }
+  ],
+  "decisions": [
+    {
+      "decision_id": "decision-buy-1",
+      "action": "initial_buy",
+      "decided_at": "2026-10-19T09:40:00+08:00",
+      "recorded_at": "2026-10-19T09:40:00+08:00",
+      "recording_class": "at_time",
+      "plan_id": "plan-example-1",
+      "plan_version": "example-1",
+      "supersedes_decision_id": null,
+      "amendment_reason": null,
+      "mode": {
+        "mode_id": "trend-pullback-example",
+        "label": "趋势回踩观察 示例未验证",
+        "version": "example-1",
+        "definition_ref": null,
+        "research_status": "unvalidated"
+      },
+      "trigger_label": "回踩后的确认 示例",
+      "thesis": "虚构样例：记录模式与触发，不代表建议交易。",
+      "main_sector": null,
+      "role_label": "待确认",
+      "reference_tickers": [],
+      "observation_ids": [
+        "watch-1"
+      ],
+      "entry_conditions": [
+        {
+          "condition_id": "condition-entry-1",
+          "description": "示例：最新闭合5分钟收盘大于9.9元",
+          "metric_key": "stock.last_closed_5m_close",
+          "operator": "gt",
+          "threshold": 9.9,
+          "unit": "cny_per_share",
+          "window": "最新已闭合5分钟K线",
+          "confirmation": "示例条件，尚未验证",
+          "evaluation": "machine",
+          "definition_version": "example-1"
+        }
+      ],
+      "expectation": {
+        "horizon": "次一交易日",
+        "verify_at": "2026-10-20T09:45:00+08:00",
+        "description": "示例预期，等待下一验证时点再记录实际结果",
+        "conditions": []
+      },
+      "invalidation_conditions": [
+        {
+          "condition_id": "condition-exit-1",
+          "description": "示例：闭合5分钟收盘低于9.8元后核对可卖数量",
+          "metric_key": "stock.last_closed_5m_close",
+          "operator": "lt",
+          "threshold": 9.8,
+          "unit": "cny_per_share",
+          "window": "最新已闭合5分钟K线",
+          "confirmation": "示例条件，尚未验证",
+          "evaluation": "machine",
+          "definition_version": "example-1"
+        }
+      ],
+      "risk_plan": {
+        "planned_quantity": 100,
+        "planned_amount_cny": 1005,
+        "max_loss_cny": null,
+        "max_position_pct": null,
+        "add_allowed_if": null,
+        "exit_plan": "示例预案；次日退出原因另行留痕"
+      },
+      "input_snapshot_ids": [
+        "snapshot-example-pretrade"
+      ],
+      "supporting_fact_ids": [
+        "fact-stock-close",
+        "fact-stock-ma5"
+      ],
+      "reason": "虚构示例：已记录触发；市场、板块和情绪证据仍缺。",
+      "unknown_fields": [
+        "主板块",
+        "参照标的",
+        "市场环境",
+        "情绪梯队",
+        "账户资产",
+        "风险上限"
+      ]
+    }
+  ],
+  "context_snapshots": [
+    {
+      "snapshot_id": "snapshot-example-pretrade",
+      "phase": "pretrade",
+      "trade_date": "2026-10-19",
+      "captured_at": "2026-10-19T09:39:00+08:00",
+      "content_sha256": null,
+      "facts": [
+        {
+          "fact_id": "fact-stock-close",
+          "dimension": "stock",
+          "metric_key": "stock.last_closed_5m_close",
+          "value": 10.0,
+          "unit": "cny_per_share",
+          "status": "observed",
+          "missing_reason": null,
+          "observed_at": "2026-10-19T09:35:00+08:00",
+          "available_at": "2026-10-19T09:35:00+08:00",
+          "captured_at": "2026-10-19T09:39:00+08:00",
+          "evidence_class": "archived_at_time",
+          "definition_version": "example-1",
+          "source": {
+            "source_kind": "example",
+            "source_ref": "虚构示例数据",
+            "content_sha256": null
+          }
+        },
+        {
+          "fact_id": "fact-stock-ma5",
+          "dimension": "stock",
+          "metric_key": "stock.prior_day_ma5",
+          "value": 9.9,
+          "unit": "cny_per_share",
+          "status": "observed",
+          "missing_reason": null,
+          "observed_at": "2026-10-16T15:00:00+08:00",
+          "available_at": "2026-10-16T15:00:00+08:00",
+          "captured_at": "2026-10-19T09:39:00+08:00",
+          "evidence_class": "archived_at_time",
+          "definition_version": "example-1",
+          "source": {
+            "source_kind": "example",
+            "source_ref": "虚构示例数据",
+            "content_sha256": null
+          }
+        }
+      ],
+      "coverage": {
+        "requested_count": 6,
+        "usable_count": 2,
+        "scope_description": "示例只留存两个个股事实，不代表完整市场证据",
+        "missing": [
+          "市场",
+          "板块",
+          "情绪",
+          "梯队"
+        ]
+      }
+    }
+  ],
+  "fills": [
+    {
+      "fill_id": "fill-example-buy",
+      "source_batch_id": "example-batch-1",
+      "source_record_id": "example-buy",
+      "source_file_sha256": null,
+      "source_row": null,
+      "source_kind": "example",
+      "recorded_at": "2026-10-19T09:45:00+08:00",
+      "trade_date": "2026-10-19",
+      "executed_at": "2026-10-19T09:45:00+08:00",
+      "time_precision": "second",
+      "verified_execution_time": false,
+      "side": "buy",
+      "quantity": 100,
+      "price": 10,
+      "fees_cny": 5,
+      "net_cash_cny": -1005,
+      "currency": "CNY",
+      "decision_id": "decision-buy-1",
+      "correction_of_fill_id": null
+    },
+    {
+      "fill_id": "fill-example-sell",
+      "source_batch_id": "example-batch-1",
+      "source_record_id": "example-sell",
+      "source_file_sha256": null,
+      "source_row": null,
+      "source_kind": "example",
+      "recorded_at": "2026-10-20T10:00:00+08:00",
+      "trade_date": "2026-10-20",
+      "executed_at": "2026-10-20T10:00:00+08:00",
+      "time_precision": "second",
+      "verified_execution_time": false,
+      "side": "sell",
+      "quantity": 100,
+      "price": 10.2,
+      "fees_cny": 5,
+      "net_cash_cny": 1015,
+      "currency": "CNY",
+      "decision_id": null,
+      "correction_of_fill_id": null
+    }
+  ],
+  "reviews": [
+    {
+      "review_id": "review-example-1",
+      "reviewed_at": "2026-10-20T15:30:00+08:00",
+      "reviewer": "system_suggestion",
+      "supersedes_review_id": null,
+      "confirmation": "unconfirmed",
+      "entry_assessment": "unknown",
+      "holding_assessment": "unknown",
+      "exit_assessment": "unknown",
+      "sizing_assessment": "unknown",
+      "outcome_interpretation": "unresolved",
+      "attributions": [
+        {
+          "factor": "information_gap",
+          "hypothesis": "示例虽盈利，但缺卖出决策与当时环境，不能认定过程正确。",
+          "evidence_ids": [
+            "decision-buy-1"
+          ],
+          "status": "supported_description"
+        }
+      ],
+      "counterfactuals": [],
+      "notes": "全部为虚构样例；不要计入真实交易统计。",
+      "unknown_fields": [
+        "卖出理由",
+        "卖出时环境",
+        "计划是否遵守"
+      ]
+    }
+  ],
+  "outcome": {
+    "calculation_version": "example-FIFO-1",
+    "as_of": "2026-10-20T15:30:00+08:00",
+    "cost_method": "FIFO",
+    "cost_status": "known",
+    "remaining_quantity": 0,
+    "realized_pnl_cny": 10,
+    "unrealized_pnl_cny": null,
+    "valuation_price_at": null,
+    "valuation_source": null,
+    "closed_round_pnl_cny": 10,
+    "total_buy_cost_cny": 1005,
+    "max_cost_exposure_cny": 1005,
+    "dividends_net_cny": 0,
+    "dividend_tax_cny": 0,
+    "limitations": [
+      "虚构样例，非真实收益",
+      "退出决策缺失，不具备过程归因完整性"
+    ]
+  }
+}

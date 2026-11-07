@@ -1,0 +1,70 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4
+ * Polanyi: a quiet directory and one consistent trading-day control frame the evidence.
+ * Scope: existing routes, light Vibe sidebar, shared date controls, P1 typography. */
+:root {
+  --workspace-nav-width: 232px;
+  --workspace-nav-radius: 10px;
+  --workspace-control-height: 44px;
+  --workspace-control-radius: 8px;
+  --workspace-type-body: 14px;
+  --workspace-type-label: 12px;
+}
+html, body { overflow-x: clip; }
+.app-sidebar { background: var(--review-paper); color: var(--review-ink); border-right: 1px solid var(--review-line); }
+.app-sidebar .brand-lockup { border-bottom: 1px solid var(--review-line); }
+.app-sidebar .brand-wordmark strong, .app-sidebar .sidebar-foot strong { color: var(--review-ink); }
+.app-sidebar .brand-wordmark span, .app-sidebar .sidebar-foot small { color: var(--review-soft); }
+.sidebar-nav { padding: 16px 12px; }
+.nav-group { border: 0; margin: 0 0 12px; padding: 0; background: transparent; }
+.nav-group > summary { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 8px 12px; font-size: var(--workspace-type-body); font-weight: 600; color: var(--review-soft); cursor: pointer; border: 0; border-radius: var(--workspace-nav-radius); list-style: none; white-space: nowrap; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after { content: '›'; margin-left: auto; font-size: 18px; }
+.nav-group[open] > summary::after { transform: rotate(90deg); }
+.nav-group:has(.tab-button.active) > summary { color: var(--review-blue); }
+.nav-group > summary svg { width: 20px; height: 20px; flex: 0 0 20px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.app-sidebar .nav-group .tab-bar { display: grid; grid-template-columns: minmax(0,1fr); gap: 3px; margin: 8px 0 4px 21px; padding: 0 0 0 12px; border: 0; border-left: 1px solid var(--review-line-strong); }
+.app-sidebar .nav-group .tab-button { position: relative; min-height: 44px; padding: 10px 12px; border: 1px solid transparent; border-radius: var(--workspace-nav-radius); background: transparent; box-shadow: none; color: var(--review-soft); font-family: var(--brand-font-body); font-size: var(--workspace-type-body); font-weight: 450; justify-content: flex-start; white-space: nowrap; }
+.app-sidebar .nav-group .tab-button > span { display: none; }
+.app-sidebar .nav-group .tab-button.active { color: var(--review-ink); background: var(--review-blue-soft); border-color: color-mix(in srgb,var(--review-blue) 22%,transparent); box-shadow: none; font-weight: 600; }
+.app-sidebar .nav-group .tab-button.active::before { content: ''; position: absolute; left: -1px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--review-blue); }
+.app-sidebar .sidebar-foot { border-top: 1px solid var(--review-line); background: var(--review-paper); }
+.nav-group > summary:focus-visible, .app-sidebar .nav-group .tab-button:focus-visible { outline: 2px solid var(--review-blue); outline-offset: 2px; }
+@media (hover:hover) { .nav-group > summary:hover, .app-sidebar .nav-group .tab-button:hover { background: var(--review-paper-soft); color: var(--review-ink); } }
+/* All native date inputs share geometry, type and interaction states. */
+body input[type="date"] { box-sizing: border-box; min-width: 0; width: 164px; max-width: 100%; height: var(--workspace-control-height); min-height: var(--workspace-control-height); padding: 0 12px; color: var(--review-ink); background: var(--review-paper); border: 1px solid var(--review-line-strong); border-radius: var(--workspace-control-radius); font-family: var(--review-font-number); font-size: var(--workspace-type-body); font-weight: 500; font-variant-numeric: tabular-nums; box-shadow: none; color-scheme: light; }
+body input[type="date"]:focus-visible { outline: 2px solid var(--review-blue); outline-offset: 2px; }
+body input[type="date"]:disabled { color: var(--review-soft); background: var(--review-paper-soft); cursor: not-allowed; }
+body input[type="date"]:user-invalid { border-color: var(--review-red); }
+body .trading-date-control { display: inline-flex; align-items: center; flex: 0 1 auto; min-width: 0; height: var(--workspace-control-height); border: 1px solid var(--review-line-strong); border-radius: var(--workspace-control-radius); background: var(--review-paper); }
+body .trading-date-control input[type="date"] { border: 0; width: 158px; padding: 0 8px; background: transparent; }
+body .trading-date-control button { width: 44px; min-width: 44px; height: 42px; min-height: 42px; padding: 0; border: 0; background: transparent; box-shadow: none; font-size: 20px; }
+body .br-command { align-items: end; gap: var(--review-space-2); padding: 0; }
+body .br-command > label, body .review-date-field { margin: 0; gap: 6px; font-size: var(--workspace-type-label); }
+body .br-command :is(button,select), body .review-command-actions :is(button,select) { min-height: var(--workspace-control-height); border-radius: var(--workspace-control-radius); font-size: var(--workspace-type-body); }
+body .br-command > [role="status"] { flex-basis: 100%; margin: 0; font-size: var(--workspace-type-label); }
+.br-view-tabs [role="tab"] { white-space: nowrap; }
+.br-ladder-stock :is(button,strong,b,span), .br-ladder-cell h3 { font-family: var(--brand-font-body); font-size: var(--review-text-body); }
+.br-ladder-stock button { font-weight: 500; }
+#review-patterns { font-family: var(--brand-font-body); font-size: var(--review-text-body); }
+#review-patterns .review-pattern > summary { font-size: var(--review-text-body); }
+#review-patterns .review-pattern p, #review-patterns .review-pattern details > summary { font-size: var(--review-text-body); }
+#review-patterns .wave-kline-figure { margin: 16px 0; border-radius: var(--review-radius-control); }
+#review-patterns .wave-kline-figure :is(text,span,small) { font-family: var(--review-font-number); }
+#review-patterns .wave-kline-figure :is(.wave-axis-label,.wave-level-name,.wave-level-price) { font-size: var(--review-text-caption); }
+.review-risk-crosstab table { min-width: 560px; }
+.review-risk-crosstab td { min-width: 92px; vertical-align: top; line-height: 1.8; }
+@media (max-width:780px) {
+  .sidebar-nav { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); padding: 8px; gap: 4px; }
+  .nav-group { margin: 0; min-width: 0; }
+  .nav-group > summary { padding: 8px; gap: 8px; }
+  .app-sidebar .nav-group .tab-bar { margin-left: 17px; padding-left: 6px; }
+  .app-sidebar .nav-group .tab-button { padding: 8px; font-size: var(--workspace-type-label); }
+  .br-view-tabs { gap: 16px; }
+  .br-view-tabs button { font-size: var(--workspace-type-body); padding-inline: 0; }
+  .review-section-head { grid-template-columns: minmax(0,1fr); }
+  .review-risk-crosstab table { display: table; }
+  .review-risk-crosstab thead { display: table-header-group; }
+  .review-risk-crosstab tr { display: table-row; }
+  .review-risk-crosstab :is(th,td) { display: table-cell; }
+  .review-risk-crosstab td::before { display: none; }
+}

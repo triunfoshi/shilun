@@ -1,0 +1,47 @@
+name: hpcrawler
+
+services:
+  monitor:
+    build: .
+    image: hpcrawler:local
+    # ECS bridge DNS/egress can be interrupted by host firewall reloads.
+    # This outbound-only worker uses the host resolver; it exposes no listener.
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      HUPU_MONITOR_DATA_DIR: /app/monitor-data
+      HUPU_MONITOR_INTERVAL_MS: "30000"
+    volumes:
+      - type: bind
+        source: ./.env.local
+        target: /app/.env.local
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./monitor-data
+        target: /app/monitor-data
+        bind:
+          create_host_path: false
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 64
+    stop_grace_period: 5m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: [CMD, node, healthcheck.js]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 5m

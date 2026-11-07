@@ -1,0 +1,34 @@
+const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
+const nodes={},events={};const node=id=>nodes[id]||=( {value:'',innerHTML:'',textContent:'',disabled:false,listeners:{},addEventListener(n,f){this.listeners[n]=f;}} );
+const date='2026-09-22';node('firstboardDate').value=date;
+const rank={date,start:'2026-09-21',days:['2026-09-21',date],scope:'测试',rows:[{ticker:'600001.SH',name:'甲<script>',rank:1,return:0,close:10,daily_return:0,start:'2026-09-21',end:date,sessions:2},{ticker:'600002.SH',name:'乙',rank:2,return:-.1,core_status:'qualified',core_qualified_at:'2026-09-01'}]};
+let hasSealed=true;
+const detail=t=>({ticker:t,name:t==='600001.SH'?'甲<script>':'乙',date,limit_dates:[date],rows:[{date:'2026-09-21',state:'not_sealed',reason:'普通交易日',chart:{open:9,high:10,low:8,close:9},volume:2},{date:'2026-09-20',state:'missing',reason:'缺少涨停证据'}, {date,state:hasSealed?'sealed':'not_sealed',daily_return:0,amount:0,reason:'原因<script>',chart:{open:10,high:11,low:9,close:10},volume:1}],lhb_missing_dates:[],lhb:[{date,summary:{reason:'理由<script>',net_amount:-200000000,l_buy:0,l_sell:200000000},seats:[{side:'0',exalter:'席位<script>',buy:0,sell:null,net_buy:0}]}]});
+let delay=null,release=null;
+const urls=[];const context={URLSearchParams,AbortController,Date,document:{getElementById:node,addEventListener(n,f){events[n]=f;}},fetch:async url=>{urls.push(url);const u=new URL(url,'http://test');let body;if(u.pathname.endsWith('/detail'))body=delay===u.searchParams.get('ticker')?new Promise(r=>release=r):detail(u.searchParams.get('ticker'));else if(u.pathname.endsWith('/minutes'))body={bars:[],reason:'缺少所选日分时'};else body=rank;return {ok:true,json:()=>body};}};context.window=context;
+vm.createContext(context);vm.runInContext(fs.readFileSync('shilun/static/strength-review.js','utf8'),context);
+const settle=async()=>{for(let n=0;n<12;n++)await Promise.resolve();};
+const click=(key,value)=>events.click({target:{closest:selector=>selector===`[data-sr-${key}]`?{dataset:{['sr'+key[0].toUpperCase()+key.slice(1)]:value}}:null}});
+(async()=>{
+ await context.StrengthReview.load();await settle();
+ assert(urls[0].includes('window=20')&&urls[0].includes('limit=50'));
+ assert(nodes.srRanking.innerHTML.includes('0.00%')&&nodes.srRanking.innerHTML.includes('尚无当前五板资格'));
+ assert(nodes.srRanking.innerHTML.includes('&lt;script&gt;')&&!nodes.srRanking.innerHTML.includes('<script>'));
+ assert(nodes.srHistory.innerHTML.includes('0.00万')&&nodes.srHistory.innerHTML.includes('缺少该日市场归档'));
+ assert(nodes.srHistory.innerHTML.includes('1个涨停日')&&!nodes.srHistory.innerHTML.includes('普通交易日')&&!nodes.srHistory.innerHTML.includes('2026-09-21'));
+ assert(nodes.srLhb.innerHTML.includes('-2.00亿')&&nodes.srLhb.innerHTML.includes('席位&lt;script&gt;'));
+ assert(nodes.srChartPlot.innerHTML.includes('缺少所选日分时'));
+ click('mode','daily');assert(nodes.srChartPlot.innerHTML.includes('<svg')&&!nodes.srChartPlot.innerHTML.includes('NaN'));
+ assert(nodes.srChartPlot.innerHTML.includes('2026-09-21')); // Full daily price history remains available.
+ nodes.srRankScroll.scrollTop=240;nodes.srRankScroll.scrollLeft=36;
+ delay='600001.SH';click('stock','600001.SH');await settle();click('stock','600002.SH');await settle();release(detail('600001.SH'));await settle();
+ assert(nodes.srHistory.innerHTML.includes('乙 · 逐日复盘')&&!nodes.srHistory.innerHTML.includes('甲&lt;script&gt; · 逐日复盘'));
+ assert.equal(nodes.srRankScroll.scrollTop,240);assert.equal(nodes.srRankScroll.scrollLeft,36);
+ node('srStart').value='2026-09-01';node('srEnd').value='2026-09-18';node('srLimit').value='20';
+ nodes.srRange.listeners.submit({preventDefault(){}});await settle();
+ assert(urls.some(u=>u.includes('/strength?')&&u.includes('start=2026-09-01')&&u.includes('date=2026-09-18')&&u.includes('limit=20')));
+ delay=null;hasSealed=false;await context.StrengthReview.load();await settle();
+ assert(nodes.srHistory.innerHTML.includes('0个涨停日')&&nodes.srHistory.innerHTML.includes('所选区间没有收盘涨停记录。'));
+ assert(!nodes.srHistory.innerHTML.includes('data-sr-day='));
+ context.StrengthReview.deactivate();console.log('Strength review UI: default range, independent core, escaping, zero/missing, candles, and request races passed.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

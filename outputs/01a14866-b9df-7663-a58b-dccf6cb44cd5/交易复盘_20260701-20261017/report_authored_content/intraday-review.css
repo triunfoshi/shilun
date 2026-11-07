@@ -1,0 +1,28 @@
+/* Hallmark · component: intraday evidence · genre: editorial · theme: inherited Classic
+ * Reuses report tokens and candle styles; no protected runtime or global selector changes. */
+.trade-report .trade-minute-evidence {
+  --trade-minute-focus: var(--text);
+  --trade-minute-muted: var(--secondary);
+  --trade-minute-rule: var(--trade-rule);
+  --trade-minute-body: var(--text);
+}
+.trade-report .trade-minute-scroll { overflow-x: auto; }
+.trade-report .trade-minute-plot { position: relative; width: 100%; min-width: 640px; }
+.trade-report .trade-minute-plot svg { min-width: 0; }
+.trade-report .trade-minute-noon-rule { stroke: var(--trade-minute-rule); stroke-width: 1.4; stroke-dasharray: 4 5; }
+.trade-report .trade-minute-session { font-size: 14px; }
+.trade-report .trade-minute-flat { fill: var(--background); stroke: var(--trade-minute-muted); stroke-width: 1.4; }
+.trade-report .trade-minute-event-letter { font-family: var(--font-sans); font-size: 13px; font-weight: 600; }
+.trade-report .trade-minute-buy-letter { fill: var(--trade-buy); }
+.trade-report .trade-minute-sell-letter { fill: var(--trade-sell); }
+.trade-report .trade-minute-plot .trade-minute-hit-layer { inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.trade-report .trade-minute-plot .trade-minute-hit { bottom: auto; pointer-events: auto; }
+.trade-report .trade-minute-hit:focus-visible { outline-color: var(--trade-minute-focus); outline-offset: -2px; }
+.trade-report .trade-minute-keyboard-help,
+.trade-report .trade-minute-status { margin: 0; color: var(--trade-minute-muted); font-size: 13px; line-height: 1.5; }
+.trade-report .trade-minute-status { color: var(--trade-minute-body); }
+@media print {
+  .trade-report .trade-minute-plot { min-width: 0; }
+  .trade-report .trade-minute-plot svg { min-width: 0; }
+  .trade-report .trade-minute-keyboard-help { display: none; }
+}

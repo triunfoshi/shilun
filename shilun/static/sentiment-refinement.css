@@ -1,0 +1,73 @@
+/* Hallmark · existing Workbench · VC-Astock design.md · N3 + sticky section rail
+   Polanyi thesis: today's mood leads on the left; only its stage carries solid color.
+   Inactive stages retain legible text and quiet surfaces. Pre-emit: P4 H5 E4 S5 R5 V4. */
+#tab-sentiment {
+  --review-nav-top:44px; --review-target-offset:112px;
+  --sentiment-cold:var(--mv2-focus); --sentiment-normal:color-mix(in oklch,var(--review-blue) 72%,var(--review-ink));
+  --sentiment-active:var(--review-green); --sentiment-hot:var(--review-red);
+  --sentiment-on-stage:var(--review-paper);
+  --sentiment-mood-size:32px;
+  --sentiment-fact-value-size:28px; --sentiment-fact-secondary-size:20px;
+}
+#tab-sentiment .sentiment-section-nav { display:block; position:sticky; top:var(--review-nav-top); z-index:24; overflow:visible; border-radius:var(--terminal-radius,2px); }
+#tab-sentiment .sentiment-section-nav ol { grid-template-columns:repeat(5,minmax(0,1fr)); }
+#tab-sentiment .sentiment-section-nav a { display:flex; align-items:center; justify-content:center; min-height:44px; gap:var(--review-space-1); margin:0; }
+#tab-sentiment .sentiment-section-nav a[aria-current=location] { color:var(--review-blue); background:var(--review-blue-soft); box-shadow:inset 0 -2px var(--review-blue); }
+#tab-sentiment .sentiment-section-nav a:hover { background:var(--review-paper-soft); color:var(--review-blue); }
+#tab-sentiment .sentiment-section-nav a:focus-visible { outline:2px solid var(--mv2-focus); outline-offset:-3px; }
+#tab-sentiment .sentiment-section-nav a:active { background:var(--review-blue-soft); }
+#tab-sentiment :is(#sentimentMarketMood,#sentimentContext,#sentimentLiveEmotion,#sentimentBoardDynamics,#sentimentThemeCycles,#sentiment-downside-panel) { scroll-margin-top:var(--review-target-offset); }
+#tab-sentiment .review-market-mood-head { display:grid; grid-template-columns:minmax(190px,.6fr) minmax(0,1.4fr); align-items:center; gap:var(--review-space-5); }
+#tab-sentiment .review-market-mood-current { display:grid; justify-items:start; gap:var(--review-space-1); min-width:0; }
+#tab-sentiment .review-market-mood-current>span { font-size:var(--review-text-caption); color:var(--review-muted); }
+#tab-sentiment #sentimentMarketMoodValue { font-size:var(--sentiment-mood-size); line-height:1.2; color:var(--review-ink); }
+#tab-sentiment #sentimentBoardDynamics :is(.bd-return-pair strong,.bd-seal-pair strong,.bd-overall>strong) { font-size:var(--sentiment-fact-value-size); }
+#tab-sentiment #sentimentBoardDynamics .bd-return-pair>div:last-child strong { font-size:var(--sentiment-fact-secondary-size); }
+#tab-sentiment .review-market-mood-current small { white-space:normal; line-height:1.5; }
+#tab-sentiment .review-market-mood-context h2 { margin:0 0 var(--review-space-2); font-size:16px; }
+#tab-sentiment .review-market-mood-context p { max-width:65ch; line-height:1.7; }
+#tab-sentiment .review-market-mood-scale { grid-template-columns:repeat(4,minmax(0,1fr)); gap:var(--review-space-2); margin-top:var(--review-space-5); }
+#tab-sentiment .review-market-mood-scale>span { padding:var(--review-space-3); border:1px solid var(--review-line); border-radius:var(--terminal-radius,2px); background:var(--review-paper-soft); }
+#tab-sentiment .review-market-mood-scale b { display:flex; align-items:baseline; flex-wrap:wrap; justify-content:space-between; gap:var(--review-space-1); color:var(--review-muted); font-size:var(--review-text-body); }
+#tab-sentiment .review-market-mood-scale small { color:var(--review-muted); line-height:1.65; }
+#tab-sentiment .review-market-mood-scale .is-cold { --stage-color:var(--sentiment-cold); }
+#tab-sentiment .review-market-mood-scale .is-normal { --stage-color:var(--sentiment-normal); }
+#tab-sentiment .review-market-mood-scale .is-active { --stage-color:var(--sentiment-active); }
+#tab-sentiment .review-market-mood-scale .is-hot { --stage-color:var(--sentiment-hot); }
+#tab-sentiment .review-market-mood-scale .is-current { background:var(--stage-color); border-color:var(--stage-color); }
+#tab-sentiment .review-market-mood-scale .is-current :is(b,small) { color:var(--sentiment-on-stage); }
+#tab-sentiment .sentiment-stage-current { font-size:var(--review-text-caption); font-weight:400; }
+#tab-sentiment .sentiment-stage-current[hidden] { display:none; }
+#tab-sentiment .sentiment-cycle-explainer { margin-top:var(--review-space-4); border-top:1px solid var(--review-line); color:var(--review-muted); font-size:var(--review-text-caption); }
+#tab-sentiment .sentiment-cycle-explainer summary { min-height:40px; display:flex; align-items:center; cursor:pointer; }
+#tab-sentiment .sentiment-cycle-explainer summary::before { content:'＋'; margin-right:var(--review-space-2); color:var(--review-blue); }
+#tab-sentiment .sentiment-cycle-explainer[open] summary::before { content:'−'; }
+#tab-sentiment .sentiment-cycle-explainer summary::-webkit-details-marker { display:none; }
+#tab-sentiment .sentiment-cycle-explainer summary:focus-visible { outline:2px solid var(--mv2-focus); outline-offset:2px; }
+#tab-sentiment .sentiment-cycle-explainer .review-cycle-map { margin-top:0; padding-top:0; border-top:0; }
+#tab-sentiment .review-data-status-slot { width:100%; grid-column:1/-1; }
+@media(max-width:768px) {
+  #tab-sentiment .review-market-mood-head { grid-template-columns:minmax(0,1fr); gap:var(--review-space-3); }
+  #tab-sentiment .review-market-mood-scale { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  #tab-sentiment .sentiment-section-nav a { padding:var(--review-space-2) 2px; }
+  #tab-sentiment .sentiment-section-nav a span { font-size:11px; }
+}
+
+/* Same-date limit-down roster: verified identity and measured return are separate facts. */
+#tab-sentiment .review-down-roster { margin-top:var(--review-space-3); }
+#tab-sentiment .review-down-roster-table :is(th,td) { text-align:left; padding:var(--review-space-3); vertical-align:top; }
+#tab-sentiment .review-down-roster-table th[scope=row] { min-width:116px; background:transparent; font-weight:500; }
+#tab-sentiment .review-down-roster-table th strong { display:block; color:var(--review-ink); font-size:var(--review-text-body); font-weight:600; }
+#tab-sentiment .review-down-roster-table th small, #tab-sentiment .review-down-roster-table td small { display:block; color:var(--review-muted); font-size:var(--review-text-caption); margin-top:var(--review-space-1); }
+#tab-sentiment .review-down-roster-table .review-roster-negative { color:var(--review-chart-down); font-family:var(--review-font-number); font-weight:600; }
+#tab-sentiment .review-down-roster-table td:last-child { color:var(--review-muted); font-size:var(--review-text-caption); }
+@media(max-width:48rem) {
+  #tab-sentiment .review-down-roster-table :is(thead,caption) { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  #tab-sentiment .review-down-roster-table, #tab-sentiment .review-down-roster-table tbody { display:block; width:100%; }
+  #tab-sentiment .review-down-roster-table tr { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--review-space-2) var(--review-space-3); padding:var(--review-space-3); border-top:1px solid var(--review-line); }
+  #tab-sentiment .review-down-roster-table :is(th,td) { display:block; padding:0; border:0; }
+  #tab-sentiment .review-down-roster-table th[scope=row] { min-width:0; grid-column:1/-1; }
+  #tab-sentiment .review-down-roster-table th strong, #tab-sentiment .review-down-roster-table th small { display:inline; margin-right:var(--review-space-2); }
+  #tab-sentiment .review-down-roster-table td:last-child { grid-column:1/-1; }
+  #tab-sentiment .review-down-roster-table td::before { content:attr(data-label); display:block; margin-bottom:var(--review-space-1); color:var(--review-muted); font-size:var(--review-text-caption); font-weight:400; }
+}

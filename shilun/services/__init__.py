@@ -76,6 +76,9 @@ class MongoFirstAnalysisService:
         if bars.empty:
             raise ValueError(f"No Mongo market data found for {ticker} before {analysis_date}. Run TushareSyncJob first.")
         metadata = self._load_metadata(ticker)
+        if self.mongo_store is not None:
+            from shilun.market.taxonomy import classify_stocks
+            metadata = classify_stocks(self.mongo_store, analysis_date, [{**metadata, 'ts_code': ticker}])[0]
         daily_basic = self._load_daily_basic(ticker=ticker, analysis_date=analysis_date)
         benchmark_bars = self._load_benchmark_bars(start_date=start_date, end_date=end_date)
         result = self.pipeline.run_with_bars(
@@ -85,6 +88,8 @@ class MongoFirstAnalysisService:
             benchmark_bars=benchmark_bars,
             sector_context={
                 "industry": metadata.get("industry"),
+                "industry_code": metadata.get("industry_code"),
+                "taxonomy_version": metadata.get("taxonomy_version"),
                 "market": metadata.get("market"),
             },
             daily_basic_context=daily_basic,
@@ -153,6 +158,10 @@ class MongoFirstAnalysisService:
             "name": metadata.get("name"),
             "industry": metadata.get("industry"),
             "market": metadata.get("market"),
+            "industry_code": metadata.get("industry_code"),
+            "taxonomy_date": metadata.get("taxonomy_date"),
+            "taxonomy_version": metadata.get("taxonomy_version"),
+            "concepts": metadata.get("concepts", []),
             "analysis_date": latest["date"].strftime("%Y-%m-%d"),
             "open": number(latest.get("open")),
             "high": number(latest.get("high")),

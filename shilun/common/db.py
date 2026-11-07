@@ -22,10 +22,11 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
-def get_mongo_client(uri: str) -> MongoClient:
+def get_mongo_client(uri: str, *, socket_timeout_ms: int = 3000) -> MongoClient:
     if MongoClient is None:  # pragma: no cover
         raise ImportError("pymongo is required for MongoDB support")
-    return MongoClient(uri, serverSelectionTimeoutMS=3000, connectTimeoutMS=3000, socketTimeoutMS=3000)
+    connection_budget = max(3000, min(socket_timeout_ms, 15000))
+    return MongoClient(uri, serverSelectionTimeoutMS=connection_budget, connectTimeoutMS=connection_budget, socketTimeoutMS=socket_timeout_ms)
 
 
 def get_mongo_database(uri: str, db_name: str) -> Database:
@@ -187,6 +188,12 @@ class RawMarketDataStore(_MongoStoreBase):
         ts_code: str | None = None,
     ) -> list[dict[str, Any]]:
         return self.raw_market.find_moneyflow(start_date=start_date, end_date=end_date, ts_code=ts_code)
+
+    def upsert_price_limits(self, rows: Any) -> int:
+        return self.raw_market.upsert_price_limits(rows)
+
+    def find_price_limits(self, *, trade_date: str, tickers: list[str] | None = None) -> list[dict[str, Any]]:
+        return self.raw_market.find_price_limits(trade_date=trade_date, tickers=tickers)
 
 
 class MarketSnapshotRecordStore(_MongoStoreBase):
@@ -376,10 +383,15 @@ class CandidatePoolStateStore(_MongoStoreBase):
 
 
 class MongoSnapshotStore:
-    def __init__(self, uri: str, db_name: str) -> None:
-        self.client = get_mongo_client(uri)
+    def __init__(self, uri: str, db_name: str, *, socket_timeout_ms: int = 3000, initialize_indexes: bool = True) -> None:
+        self.client = get_mongo_client(uri, socket_timeout_ms=socket_timeout_ms)
         self.db = self.client[db_name]
-        self.ensure_indexes()
+        if initialize_indexes:
+            try:
+                self.ensure_indexes()
+            except Exception:
+                self.client.close()
+                raise
         self.raw_market = RawMarketDataStore(self)
         self.market_snapshots = MarketSnapshotRecordStore(self)
         self.candidate_pools = CandidatePoolStateStore(self)
@@ -408,6 +420,9 @@ class MongoSnapshotStore:
         # imperative calls. This keeps Mongo schema visibility while reducing
         # one of the largest noise blocks inside the store.
         index_specs = [
+            ("review_market_mood", [("date", 1)], "uniq_review_mood_date", True),
+            ("review_daily_suspensions", [("date", 1), ("ticker", 1)], "uniq_review_suspension_date_ticker", True),
+            ("review_industry_members", [("date", 1)], "uniq_review_industry_date", True),
             ("analysis_snapshots", [("ticker", 1), ("analysis_date", 1)], "uniq_ticker_analysis_date", True),
             ("analysis_snapshots", [("analysis_date", -1)], "idx_analysis_date_desc", False),
             ("market_snapshots", [("analysis_date", 1), ("top_n", 1), ("exclude_st", 1)], "uniq_market_snapshot_scope", True),
@@ -432,17 +447,80 @@ class MongoSnapshotStore:
             ("daily_basic", [("trade_date", 1), ("ts_code", 1)], "idx_daily_basic_date_ticker", False),
             ("moneyflow", [("ts_code", 1), ("trade_date", 1)], "uniq_moneyflow_scope", True),
             ("moneyflow", [("trade_date", 1), ("ts_code", 1)], "idx_moneyflow_date_ticker", False),
+            ("daily_price_limits", [("trade_date", 1), ("ticker", 1)], "uniq_daily_price_limit_scope", True),
+            ("daily_price_limits", [("ticker", 1), ("trade_date", -1)], "idx_daily_price_limit_ticker_date", False),
             ("sync_state", [("dataset", 1), ("scope", 1)], "uniq_sync_state_scope", True),
             ("breakout_events", [("ticker", 1), ("breakout_date", 1)], "uniq_breakout_event_scope", True),
             ("breakout_events", [("status", 1), ("breakout_date", 1)], "idx_breakout_event_status_date", False),
             ("breakout_events", [("breakout_date", -1)], "idx_breakout_event_date_desc", False),
+            ("structure_operability_samples", [("sample_id", 1)], "uniq_structure_operability_sample_id", True),
+            ("structure_operability_samples", [("analysis_date", 1), ("ticker", 1), ("sample_version", 1)], "uniq_structure_operability_scope", True),
+            ("structure_operability_samples", [("analysis_date", -1), ("matched_template_ids", 1), ("pool_rank", 1)], "idx_structure_operability_template_rank", False),
+            ("structure_operability_samples", [("settlement_status", 1), ("analysis_date", 1)], "idx_structure_operability_settlement", False),
             # 阶段 7 Job 1：持仓表。ticker 唯一——一只票同时只能有一条 active/reduced/closed 记录，
             # 重新开仓时按 upsert 覆盖老 closed 记录（老记录会归档到 trades，见阶段 8）。
             ("holdings", [("ticker", 1)], "uniq_holdings_ticker", True),
             ("holdings", [("status", 1), ("entry_date", -1)], "idx_holdings_status_entry_date", False),
+            # 阶段 7 Job 3：每只持仓每天一条判定事件，重复 daily-check 只更新同一条。
+            ("holding_events", [("ticker", 1), ("date", 1)], "uniq_holding_event_scope", True),
+            ("holding_events", [("date", -1), ("holding_state", 1)], "idx_holding_event_date_state", False),
+            # 分时共振（v6）：每只候选票的 5min K 线快照。sector 预计算时对 top_sectors 里
+            # 的 leader/zhongjun 候选（每板块 top 20 只）拉 akshare 分钟数据落库，
+            # 后续查询秒回；避免每次评估都发 akshare 请求。
+            ("minute_bars_daily", [("ticker", 1), ("trade_date", 1), ("interval", 1)], "uniq_minute_bars_daily_scope", True),
+            ("minute_bars_daily", [("trade_date", -1), ("ticker", 1)], "idx_minute_bars_daily_date_ticker", False),
+            # Trading Decision Timeline：相同计算结果幂等，同一 ticker 按时间倒序查询。
+            ("trading_decision_events", [("event_id", 1)], "uniq_trading_decision_event_id", True),
+            ("trading_decision_events", [("ticker", 1), ("computed_at", -1)], "idx_trading_decision_ticker_time", False),
+            ("trading_realtime_quotes", [("ticker", 1)], "uniq_trading_realtime_ticker", True),
+            ("intraday_trend_snapshots", [("ticker", 1), ("trade_date", 1)], "uniq_intraday_trend_scope", True),
+            ("intraday_trend_snapshots", [("trade_date", -1), ("source_at", -1)], "idx_intraday_trend_freshness", False),
+            ("execution_market_facts", [("trade_date", 1), ("sector_name", 1)], "uniq_execution_market_fact_scope", True),
+            ("execution_market_fact_snapshots", [("snapshot_id", 1)], "uniq_execution_market_fact_snapshot_id", True),
+            ("execution_market_fact_snapshots", [("trade_date", 1), ("sector_name", 1), ("computed_at", -1)], "idx_execution_market_fact_snapshot_time", False),
+            ("execution_price_limit_facts", [("trade_date", 1), ("ticker", 1)], "uniq_execution_price_limit_fact_scope", True),
+            ("holding_position_events", [("ticker", 1), ("position_revision", 1)], "uniq_holding_position_revision", True),
+            ("holding_position_events", [("occurred_at", -1)], "idx_holding_position_event_time", False),
+            ("trading_watch_plans", [("ticker", 1), ("trade_date", 1), ("playbook_id", 1), ("playbook_version", 1)], "uniq_trading_watch_plan", True),
+            ("execution_scenario_fact_snapshots", [("fact_id", 1)], "uniq_execution_scenario_fact_id", True),
+            ("execution_scenario_fact_snapshots", [("ticker", 1), ("trade_date", 1), ("computed_at", -1)], "idx_execution_scenario_fact_ticker_time", False),
+            ("execution_e7_evaluations", [("trade_date", 1), ("ticker", 1)], "uniq_execution_e7_evaluation_scope", True),
+            ("execution_e7_evaluations", [("trade_date", 1), ("status", 1), ("computed_at", -1)], "idx_execution_e7_evaluation_status", False),
+            ("cffex_positions_daily", [("analysis_date", 1)], "uniq_cffex_positions_date", True),
+            ("trading_live_observation_reports", [("report_id", 1)], "uniq_trading_live_observation_report", True),
+            ("trading_live_observation_reports", [("trade_date", -1), ("generated_at", -1)], "idx_trading_live_observation_date", False),
+            ("execution_scenario_replays", [("session_id", 1)], "uniq_execution_scenario_replay_session", True),
+            ("execution_scenario_replays", [("trade_date", -1), ("audit_eligible", 1)], "idx_execution_scenario_replay_date_audit", False),
+            ("trading_replay_materialization_reports", [("report_id", 1)], "uniq_trading_replay_materialization_report", True),
+            ("trading_replay_materialization_reports", [("trade_date", -1), ("generated_at", -1)], "idx_trading_replay_materialization_date", False),
+            ("account_risk_profiles", [("profile_id", 1)], "uniq_account_risk_profile", True),
+            ("execution_cash_reservations", [("plan_id", 1)], "uniq_execution_cash_reservation_plan", True),
+            ("execution_cash_reservations", [("status", 1), ("expires_at", 1)], "idx_execution_cash_reservation_active", False),
+            ("trade_orders", [("order_id", 1)], "uniq_trade_order_id", True),
+            ("trade_orders", [("ticker", 1), ("status", 1), ("placed_at", -1)], "idx_trade_order_ticker_status", False),
+            ("trade_orders", [("plan_id", 1), ("status", 1)], "idx_trade_order_plan_status", False),
+            ("trade_orders", [("status", 1), ("expires_at", 1)], "idx_trade_order_expiry", False),
+            ("trade_order_events", [("order_id", 1), ("order_revision", 1)], "uniq_trade_order_event_revision", True),
+            ("trade_order_events", [("ticker", 1), ("occurred_at", -1)], "idx_trade_order_event_ticker_time", False),
+            ("trading_quote_latency_samples", [("sample_id", 1)], "uniq_trading_quote_latency_sample", True),
+            ("trading_quote_latency_samples", [("ticker", 1), ("observed_at", -1)], "idx_trading_quote_latency_ticker_time", False),
+            ("daily_review_snapshots", [("analysis_date", 1), ("engine_version", 1)], "uniq_daily_review_snapshot", True),
+            ("daily_review_snapshots", [("analysis_date", -1)], "idx_daily_review_date_desc", False),
+            ("intraday_watchlist", [("ticker", 1)], "uniq_intraday_watchlist_ticker", True),
+            ("intraday_watchlist", [("enabled", 1), ("updated_at", -1)], "idx_intraday_watchlist_enabled", False),
+            ("intraday_decision_events", [("event_id", 1)], "uniq_intraday_decision_event_id", True),
+            ("intraday_decision_events", [("ticker", 1), ("session_date", 1), ("computed_at", -1)], "idx_intraday_decision_ticker_time", False),
+            ("trading_notification_outbox", [("outbox_id", 1)], "uniq_trading_notification_outbox_id", True),
+            ("trading_notification_outbox", [("channel", 1), ("status", 1), ("next_retry_at", 1)], "idx_trading_notification_pending", False),
+            # 实际成交回写：execution_id 保证幂等，ticker + 时间支持持仓成交明细倒序读取。
+            ("trade_executions", [("execution_id", 1)], "uniq_trade_execution_id", True),
+            ("trade_executions", [("ticker", 1), ("executed_at", -1)], "idx_trade_execution_ticker_time", False),
+            ("trade_executions", [("order_id", 1), ("executed_at", 1)], "idx_trade_execution_order_time", False),
         ]
         for collection_name, keys, name, unique in index_specs:
             self._create_index(collection_name, keys, name=name, unique=unique)
+        from shilun.trade_journal.indexes import ensure_journal_indexes
+        ensure_journal_indexes(self)
 
     def _upsert_payloads(self, collection_name: str, payloads: list[dict[str, Any]], key_fields: tuple[str, ...]) -> int:
         collection = self.collection(collection_name)
@@ -773,6 +851,31 @@ class MongoSnapshotStore:
                 continue
             payloads.append({**record, "ts_code": ts_code, "trade_date": trade_date})
         return self._upsert_payloads("daily_basic", payloads, ("ts_code", "trade_date"))
+
+    def upsert_price_limits(self, rows: Any) -> int:
+        payloads: list[dict[str, Any]] = []
+        for record in _records_from_frame_or_records(rows):
+            ticker = str(record.get("ticker") or record.get("ts_code") or "")
+            trade_date = _trade_date_text(record.get("trade_date") or record.get("date"))
+            if not ticker or not trade_date:
+                continue
+            payloads.append({**record, "ticker": ticker, "trade_date": trade_date})
+        return self._upsert_payloads(
+            "daily_price_limits",
+            payloads,
+            ("trade_date", "ticker"),
+        )
+
+    def find_price_limits(
+        self,
+        *,
+        trade_date: str,
+        tickers: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        query: dict[str, Any] = {"trade_date": _trade_date_text(trade_date)}
+        if tickers:
+            query["ticker"] = {"$in": [str(ticker) for ticker in tickers]}
+        return self._find_records("daily_price_limits", query, "ticker")
 
     def find_daily_basic(self, *, trade_date: str, ts_code: str | None = None) -> list[dict[str, Any]]:
         query: dict[str, Any] = {"trade_date": _trade_date_text(trade_date)}

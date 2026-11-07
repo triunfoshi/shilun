@@ -1,0 +1,18 @@
+/* Hallmark · pre-emit critique: P4 H5 E4 S5 R5 V4
+ * Workbench: a shared date, three full-width views, no duplicated topic taxonomy. */
+#tab-sentiment { --sentiment-nav-top:44px; }
+.sentiment-workspace-nav { display:flex; position:sticky; top:var(--sentiment-nav-top); z-index:24; gap:0; padding:0; border:1px solid var(--review-line); background:var(--review-paper); }
+#tab-sentiment .sentiment-workspace-nav button { flex:1; min-height:44px; margin:0; padding:8px 12px; color:var(--review-muted); background:var(--review-paper); border:0; border-bottom:2px solid transparent; border-radius:0; white-space:nowrap; box-shadow:none; }
+#tab-sentiment .sentiment-workspace-nav button[aria-selected=true] { color:var(--review-blue); background:var(--review-blue-soft); border-bottom-color:var(--review-blue); font-weight:600; }
+#tab-sentiment .sentiment-workspace-nav button:hover { color:var(--review-blue); background:var(--review-paper-soft); }
+#tab-sentiment .sentiment-workspace-nav button:focus-visible { outline:2px solid var(--mv2-focus); outline-offset:-3px; }
+#tab-sentiment .sentiment-workspace-nav button:active { background:var(--review-blue-soft); }
+.sentiment-workspace-pane { min-width:0; display:grid; gap:var(--review-space-4); }
+.sentiment-workspace-pane[hidden] { display:none; }
+.sentiment-workspace-pane>:is(section,div,details) { min-width:0; }
+#sentimentThemeEvidence { scroll-margin-top:calc(var(--sentiment-nav-top) + 60px); }
+.sentiment-history-supplement { border:1px solid var(--review-line); background:var(--review-paper); }
+.sentiment-history-supplement>summary { padding:var(--review-space-3); min-height:44px; cursor:pointer; color:var(--review-ink); }
+.sentiment-history-supplement>summary:focus-visible { outline:2px solid var(--mv2-focus); outline-offset:-3px; }
+#tab-sentiment .sentiment-history-supplement .review-surface { margin:0; border:0; }
+@media(max-width:414px) { #tab-sentiment .sentiment-workspace-nav button { padding-inline:4px; font-size:12px; } }

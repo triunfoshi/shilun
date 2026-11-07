@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from shilun.market import evaluate_daily_leaders, evaluate_sector_trends
+from shilun.market.sector import SECTOR_ENGINE_VERSION, _leader_candidates, _zhongjun_candidates
 
 
 def _benchmark_bars() -> pd.DataFrame:
@@ -93,7 +94,43 @@ def _moneyflow_rows(market_bars: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _qualified_ma5_rows():
+    dates = pd.bdate_range(end="2026-03-25", periods=60)
+    rows = []
+    for offset, day in enumerate(dates):
+        close = (10 + offset * .05) * (1.2 if offset >= 56 else 1)
+        rows.append({"ticker": "300001.SZ", "date": day, "open": close * .99,
+                     "high": close * 1.01, "low": close * .98, "close": close,
+                     "amount": 1_000_000., "volume": 1_000_000. / close})
+    bars = pd.DataFrame(rows)
+    basics = pd.DataFrame([{"ts_code": "300001.SZ", "name": "测试股份", "industry": "光通信"}])
+    cap = pd.DataFrame([{"ts_code": "300001.SZ", "trade_date": "20260325", "total_mv": 2_000_000.,
+                         "circ_mv": 1_500_000., "turnover_rate": 5.}])
+    benchmark = bars.assign(ticker="000001.SH")
+    return bars, basics, cap, benchmark
+
+
 class MarketSectorTests(unittest.TestCase):
+    def test_hidden_candidate_pool_keeps_top_ten_for_strategy_scoring(self) -> None:
+        profiles = [
+            {
+                "ticker": f"T{index:02d}",
+                "leader_score": float(index),
+                "return_5d": float(index) / 100,
+                "zhongjun_score": float(20 - index),
+                "amount": float(index),
+                "leader_subscores": {"drive_score": 80},
+                "zhongjun_subscores": {
+                    "capacity_score": 80,
+                    "amount_stability_score": 80,
+                },
+            }
+            for index in range(15)
+        ]
+
+        self.assertEqual(len(_leader_candidates(profiles)), 10)
+        self.assertEqual(len(_zhongjun_candidates(profiles)), 10)
+
     def test_sector_trends_identify_mainline_and_core_candidates(self) -> None:
         market_bars, stock_basic, daily_basic = _market_rows()
 
@@ -107,22 +144,83 @@ class MarketSectorTests(unittest.TestCase):
             top_n=3,
         )
 
-        self.assertEqual("market_sector_v4_ma5_v02_relative_mainline", result["engine_version"])
+        self.assertEqual(SECTOR_ENGINE_VERSION, result["engine_version"])
         self.assertEqual("上证指数", result["benchmark_name"])
-        self.assertIn("不是申万", result["sector_source_note"])
+        self.assertIn("旧行业代理", result["sector_source_note"])
         leader_sector = result["top_sectors"][0]
         self.assertEqual("光通信", leader_sector["sector_name"])
         self.assertIn(leader_sector["stage"], {"confirm", "main_uptrend", "accelerate", "repair"})
         self.assertGreater(leader_sector["scores"]["sector_score"], 40)
         self.assertTrue(leader_sector["leader_candidates"])
         self.assertTrue(leader_sector["zhongjun_candidates"])
+        self.assertGreaterEqual(len(leader_sector["candidate_universe"]), len(leader_sector["leader_candidates"]))
+        self.assertTrue(leader_sector["minute_candidate_tickers"])
+        self.assertLessEqual(len(leader_sector["minute_candidate_tickers"]), 20)
+        self.assertEqual(0, leader_sector["minute_coverage"]["available_count"])
+        self.assertEqual("collecting", leader_sector["minute_coverage"]["ranking_gate"])
         self.assertEqual("moneyflow_data_pending", leader_sector["fund_flow"]["data_status"])
+        self.assertIsNone(leader_sector["metrics"]["main_order_buy"])
+        self.assertIsNone(leader_sector["metrics"]["main_order_sell"])
         self.assertIn("成交额活跃", result["summary"]["warning"])
         data_quality = {item["field"]: item["status"] for item in result["data_quality"]}
         self.assertEqual("data_pending", data_quality["moneyflow"])
         definitions = [item["indicator"] for item in result["indicator_definitions"]]
         self.assertIn("leader_score", definitions)
         self.assertIn("repair_confirmed", definitions)
+
+    def test_strict_minute_gate_keeps_shortlist_but_excludes_unverified_formal_rank(self) -> None:
+        market_bars, stock_basic, daily_basic = _market_rows()
+
+        result = evaluate_sector_trends(
+            analysis_date="2026-03-25",
+            benchmark_ticker="000001.SH",
+            benchmark_bars=_benchmark_bars(),
+            market_bars=market_bars,
+            stock_basic=stock_basic,
+            daily_basic=daily_basic,
+            top_n=3,
+            require_minute_data_for_ranking=True,
+        )
+
+        sector = result["top_sectors"][0]
+        self.assertEqual([], sector["leader_candidates"])
+        self.assertEqual([], sector["zhongjun_candidates"])
+        self.assertTrue(sector["minute_candidate_tickers"])
+        self.assertEqual([], sector["candidate_universe"])
+        self.assertTrue(sector["pending_minute_candidates"])
+        self.assertEqual("strict", result["minute_ranking_gate"])
+
+    def test_candidate_rank_helpers_reassign_ranks_after_minute_gate(self) -> None:
+        profiles = [
+            {
+                "ticker": "MISSING",
+                "leader_score": 99.0,
+                "return_5d": 0.20,
+                "zhongjun_score": 99.0,
+                "amount": 999.0,
+                "leader_subscores": {"drive_score": 90},
+                "zhongjun_subscores": {"capacity_score": 90, "amount_stability_score": 90},
+                "intraday_resonance": {"has_data": False},
+            },
+            {
+                "ticker": "READY",
+                "leader_score": 88.0,
+                "return_5d": 0.10,
+                "zhongjun_score": 88.0,
+                "amount": 888.0,
+                "leader_subscores": {"drive_score": 90},
+                "zhongjun_subscores": {"capacity_score": 90, "amount_stability_score": 90},
+                "intraday_resonance": {"has_data": True},
+            },
+        ]
+
+        leaders = _leader_candidates(profiles, require_intraday_data=True)
+        zhongjun = _zhongjun_candidates(profiles, require_intraday_data=True)
+
+        self.assertEqual(["READY"], [item["ticker"] for item in leaders])
+        self.assertEqual(["READY"], [item["ticker"] for item in zhongjun])
+        self.assertEqual(1, leaders[0]["leader_candidate_rank"])
+        self.assertEqual(1, zhongjun[0]["zhongjun_candidate_rank"])
 
     def test_sector_trends_use_moneyflow_when_available(self) -> None:
         market_bars, stock_basic, daily_basic = _market_rows()
@@ -141,13 +239,22 @@ class MarketSectorTests(unittest.TestCase):
         leader_sector = result["top_sectors"][0]
         self.assertEqual("implemented", leader_sector["fund_flow"]["data_status"])
         self.assertIsNotNone(leader_sector["fund_flow"]["main_net_inflow"])
+        self.assertGreater(leader_sector["metrics"]["main_order_buy"], 0)
+        self.assertGreater(leader_sector["metrics"]["main_order_sell"], 0)
+        self.assertIsNotNone(leader_sector["metrics"]["main_net_inflow"])
+        self.assertNotIn("active_buy_ratio", leader_sector["metrics"])
         self.assertGreater(leader_sector["metrics"]["positive_moneyflow_ratio"], 0)
         data_quality = {item["field"]: item["status"] for item in result["data_quality"]}
         self.assertEqual("implemented", data_quality["moneyflow"])
         self.assertTrue(result["daily_leaders"])
+        self.assertTrue(result["leader_summary"])
+        self.assertLessEqual(len(result["daily_leaders"]), 7)
+        self.assertEqual(7, result["leader_summary"]["window_days"])
 
-    def test_sector_trends_support_lightweight_initial_response(self) -> None:
+    def test_sector_trends_display_previous_moneyflow_without_using_it_as_current_rank_input(self) -> None:
         market_bars, stock_basic, daily_basic = _market_rows()
+        moneyflow = _moneyflow_rows(market_bars)
+        moneyflow = moneyflow.loc[moneyflow["trade_date"] != "20260325"].reset_index(drop=True)
 
         result = evaluate_sector_trends(
             analysis_date="2026-03-25",
@@ -156,7 +263,30 @@ class MarketSectorTests(unittest.TestCase):
             market_bars=market_bars,
             stock_basic=stock_basic,
             daily_basic=daily_basic,
+            moneyflow=moneyflow,
             top_n=3,
+        )
+
+        leader_sector = result["top_sectors"][0]
+        self.assertEqual("implemented", leader_sector["fund_flow"]["data_status"])
+        self.assertTrue(leader_sector["fund_flow"]["is_stale"])
+        self.assertEqual("2026-03-24", leader_sector["fund_flow"]["as_of_date"])
+        self.assertTrue(leader_sector["metrics"]["moneyflow_is_stale"])
+        self.assertEqual("2026-03-24", leader_sector["metrics"]["moneyflow_asof_date"])
+        self.assertGreater(leader_sector["metrics"]["main_order_buy"], 0)
+
+    def test_sector_trends_support_lightweight_initial_response(self) -> None:
+        market_bars, stock_basic, daily_basic, benchmark = _qualified_ma5_rows()
+
+        result = evaluate_sector_trends(
+            analysis_date="2026-03-25",
+            benchmark_ticker="000001.SH",
+            benchmark_bars=benchmark,
+            market_bars=market_bars,
+            stock_basic=stock_basic,
+            daily_basic=daily_basic,
+            top_n=3,
+            min_stock_count=1,
             include_daily_leaders=False,
             include_all_sectors=False,
         )
@@ -205,7 +335,7 @@ class MarketSectorTests(unittest.TestCase):
 
     def test_sector_trends_injects_breakout_events_lookup(self) -> None:
         """Job 6：传入 breakout_events_lookup 时，候选卡带 breakout_tracking 且评分接了事件。"""
-        market_bars, stock_basic, daily_basic = _market_rows()
+        market_bars, stock_basic, daily_basic, benchmark = _qualified_ma5_rows()
 
         # 找一只票，把它假设为已落库的突破，构造 event
         sample_ticker = str(market_bars["ticker"].iloc[0])
@@ -225,11 +355,12 @@ class MarketSectorTests(unittest.TestCase):
         result = evaluate_sector_trends(
             analysis_date="2026-03-25",
             benchmark_ticker="000001.SH",
-            benchmark_bars=_benchmark_bars(),
+            benchmark_bars=benchmark,
             market_bars=market_bars,
             stock_basic=stock_basic,
             daily_basic=daily_basic,
             top_n=3,
+            min_stock_count=1,
             include_daily_leaders=False,
             include_all_sectors=False,
             breakout_events_lookup=lookup,

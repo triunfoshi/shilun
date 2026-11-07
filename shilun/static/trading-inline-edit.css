@@ -1,0 +1,613 @@
+/* Hallmark · component: inline trading facts + holding ledger metrics + searchable stock combobox · existing Workbench system
+ * states: default · hover · focus · active · disabled · loading · error · success
+ * modal policy: none · keyboard: arrow/enter/escape · touch target: 44px · reduced motion: pass
+ * contrast: pass (40–41) · mobile: pass (320/375/414/768) · tokens: pass
+ */
+/* Hallmark · pre-emit critique: P5 H5 E5 S5 R5 V5 */
+
+.trading-stock-field {
+  position: relative;
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  gap: var(--wb-space-1);
+  color: var(--wb-ink);
+  font-family: var(--wb-font-body);
+}
+
+.trading-stock-field > label,
+.holding-create-grid .trading-stock-field > label {
+  display: block;
+  margin: 0;
+  color: var(--wb-ink-soft);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+}
+
+.trading-stock-combobox {
+  position: relative;
+  min-width: 0;
+}
+
+.trading-stock-combobox input,
+.trading-order-form-fields .trading-stock-combobox input,
+.holding-create-grid .trading-stock-combobox input {
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 40px 10px 12px;
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  color: var(--wb-ink);
+  background: var(--wb-paper-raised);
+  box-shadow: none;
+  font: 500 16px/1.35 var(--wb-font-body);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background-color var(--wb-duration) var(--wb-ease-out), border-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.trading-stock-combobox input::placeholder {
+  color: var(--wb-muted);
+  opacity: 1;
+}
+
+.trading-stock-combobox input:focus-visible,
+.trading-stock-field.is-focus .trading-stock-combobox input {
+  border-width: 1px;
+  border-color: var(--wb-ink-soft);
+  outline-color: var(--wb-focus);
+}
+
+.trading-stock-combobox input:active,
+.trading-stock-field.is-active .trading-stock-combobox input {
+  background: var(--wb-paper-muted);
+}
+
+.trading-stock-field.is-hover .trading-stock-combobox input {
+  background: var(--wb-paper-muted);
+}
+
+.trading-stock-combobox input:disabled,
+.trading-stock-field.is-disabled .trading-stock-combobox input {
+  cursor: not-allowed;
+  opacity: .55;
+  background: var(--wb-paper-muted);
+}
+
+.trading-stock-field-mark {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 12px;
+  width: 18px;
+  height: 18px;
+  transform: translateY(-50%);
+  color: var(--wb-muted);
+  pointer-events: none;
+}
+
+.trading-stock-field-mark::before {
+  content: "⌕";
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.trading-stock-field[data-state="loading"] .trading-stock-field-mark::before,
+.trading-stock-field.is-loading .trading-stock-field-mark::before {
+  content: "";
+  border: 2px solid var(--wb-line);
+  border-top-color: var(--wb-accent-deep);
+  border-radius: 50%;
+  animation: trading-inline-spin 760ms linear infinite;
+}
+
+.trading-stock-field[data-state="error"] .trading-stock-combobox input,
+.trading-stock-field.is-error .trading-stock-combobox input {
+  border-color: var(--wb-risk);
+}
+
+.trading-stock-field[data-state="error"] .trading-stock-field-mark::before,
+.trading-stock-field.is-error .trading-stock-field-mark::before {
+  content: "!";
+  color: var(--wb-risk-deep);
+  font-weight: 800;
+}
+
+.trading-stock-field[data-state="success"] .trading-stock-combobox input,
+.trading-stock-field.is-success .trading-stock-combobox input {
+  border-color: var(--wb-accent);
+}
+
+.trading-stock-field[data-state="success"] .trading-stock-field-mark::before,
+.trading-stock-field.is-success .trading-stock-field-mark::before {
+  content: "✓";
+  color: var(--wb-accent-deep);
+  font-weight: 800;
+}
+
+.trading-stock-status {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--wb-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.trading-stock-field[data-state="error"] .trading-stock-status,
+.trading-stock-field.is-error .trading-stock-status {
+  color: var(--wb-risk-deep);
+}
+
+.trading-stock-results {
+  position: absolute;
+  z-index: 40;
+  inset-block-start: calc(100% + var(--wb-space-1));
+  inset-inline: 0;
+  display: grid;
+  max-height: 288px;
+  overflow-y: auto;
+  border: 1px solid var(--wb-line-strong);
+  border-radius: var(--wb-radius-md);
+  color: var(--wb-ink);
+  background: var(--wb-paper-raised);
+  box-shadow: var(--wb-shadow);
+}
+
+.trading-stock-results[hidden] {
+  display: none;
+}
+
+.trading-stock-result,
+.trading-order-panel .trading-stock-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wb-space-3);
+  width: 100%;
+  min-height: 52px;
+  margin: 0;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  border: 0;
+  border-bottom: 1px solid var(--wb-line);
+  border-radius: 0;
+  outline: 2px solid transparent;
+  outline-offset: -3px;
+  color: var(--wb-ink);
+  background: var(--wb-paper-raised);
+  box-shadow: none;
+  text-align: left;
+  transform: none;
+  transition: background-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.trading-stock-result:last-child,
+.trading-order-panel .trading-stock-result:last-child {
+  border-bottom: 0;
+}
+
+.trading-stock-result span,
+.trading-stock-result strong,
+.trading-stock-result small {
+  display: block;
+  min-width: 0;
+}
+
+.trading-stock-result strong {
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trading-stock-result small,
+.trading-stock-result em {
+  color: var(--wb-muted);
+  font-size: 14px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.trading-stock-result em {
+  flex: 0 0 auto;
+  max-width: 36%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trading-stock-result mark {
+  color: var(--wb-ink);
+  background: var(--wb-accent-soft);
+}
+
+.trading-stock-result:focus-visible,
+.trading-order-panel .trading-stock-result:focus-visible {
+  outline-color: var(--wb-focus);
+}
+
+.trading-stock-result.is-active,
+.trading-stock-result[aria-selected="true"],
+.trading-order-panel .trading-stock-result.is-active {
+  color: var(--wb-ink);
+  background: var(--wb-accent-soft);
+}
+
+.trading-stock-result:active,
+.trading-order-panel .trading-stock-result:active {
+  color: var(--wb-ink);
+  background: var(--wb-paper-muted);
+  transform: translateY(1px);
+}
+
+.trading-stock-result-message {
+  display: grid;
+  gap: var(--wb-space-1);
+  min-height: 52px;
+  margin: 0;
+  padding: var(--wb-space-3);
+  color: var(--wb-ink-soft);
+  background: var(--wb-paper-raised);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.trading-order-form-fields .trading-stock-field {
+  grid-column: span 2;
+}
+
+.trading-order-form-fields label > span,
+.trading-order-fill-fields label > span,
+.trading-order-form-title strong,
+.trading-order-ledger-head strong,
+.trading-order-fill-heading strong,
+.trading-order-panel button {
+  font-size: 14px;
+}
+
+.trading-order-form-fields input,
+.trading-order-form-fields select,
+.trading-order-fill-fields input {
+  font-size: 16px;
+}
+
+.trading-risk-profile .trading-risk-inline-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wb-space-2);
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: var(--wb-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  color: var(--wb-ink);
+  background: transparent;
+  box-shadow: none;
+  text-align: left;
+  transition: background-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.trading-risk-profile .trading-risk-inline-value span,
+.trading-risk-profile .trading-risk-inline-value strong {
+  font-size: 14px;
+}
+
+.trading-risk-profile .trading-risk-inline-value:focus-visible {
+  outline-color: var(--wb-focus);
+}
+
+.trading-risk-profile .trading-risk-inline-value:active {
+  transform: translateY(1px);
+}
+
+.trading-inline-editor.is-risk-profile label {
+  color: var(--wb-ink-soft);
+  font-size: 14px;
+}
+
+.trading-inline-editor.is-risk-profile input {
+  min-height: 44px;
+  border-width: 1px;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  font-size: 16px;
+}
+
+.trading-inline-editor.is-risk-profile input:focus-visible {
+  border-width: 1px;
+  outline-color: var(--wb-focus);
+}
+
+.trading-inline-error {
+  min-height: 1.4em;
+  margin: var(--wb-space-1) 0 0;
+  color: var(--wb-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.trading-inline-error.is-error {
+  color: var(--wb-risk-deep);
+}
+
+.execution-workbench-account button {
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: var(--wb-space-1) var(--wb-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  color: var(--wb-ink);
+  background: transparent;
+  text-align: inherit;
+  transition: background-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.execution-workbench-account button:focus-visible {
+  outline-color: var(--wb-focus);
+}
+
+.execution-workbench-account button:active {
+  transform: translateY(1px);
+}
+
+.holding-editable-metric {
+  position: relative;
+  min-height: 44px;
+  padding: var(--wb-space-1) var(--wb-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--wb-radius-sm);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  color: var(--wb-ink);
+  background: transparent;
+  transition: background-color var(--wb-duration) var(--wb-ease-out), border-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.holding-editable-metric:focus-visible,
+.holding-editable-metric.is-focus {
+  border-width: 1px;
+  outline-color: var(--wb-focus);
+}
+
+.holding-editable-metric:active,
+.holding-editable-metric.is-active {
+  background: var(--wb-paper-muted);
+  transform: translateY(1px);
+}
+
+.holding-editable-metric:disabled,
+.holding-editable-metric.is-disabled {
+  cursor: not-allowed;
+  opacity: .55;
+  background: var(--wb-paper-muted);
+}
+
+.holding-editable-metric[data-state="loading"],
+.holding-editable-metric.is-loading {
+  padding-inline-end: calc(var(--wb-space-6) + var(--wb-space-3));
+  color: var(--wb-muted);
+}
+
+.holding-editable-metric[data-state="loading"]::after,
+.holding-editable-metric.is-loading::after {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: 10px;
+  width: 14px;
+  height: 14px;
+  transform: translateY(-50%);
+  border: 2px solid var(--wb-line);
+  border-top-color: var(--wb-accent-deep);
+  border-radius: 50%;
+  content: "";
+  animation: trading-inline-spin 760ms linear infinite;
+}
+
+.holding-editable-metric[data-state="error"],
+.holding-editable-metric.is-error {
+  border-color: var(--wb-risk);
+  color: var(--wb-risk-deep);
+  background: var(--wb-risk-soft);
+}
+
+.holding-editable-metric[data-state="success"],
+.holding-editable-metric.is-success {
+  border-color: var(--wb-accent);
+  color: var(--wb-accent-deep);
+  background: var(--wb-accent-soft);
+}
+
+.holding-inline-editor input {
+  min-height: 44px;
+  border-width: 1px;
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  font-size: 16px;
+  transition: background-color var(--wb-duration) var(--wb-ease-out), border-color var(--wb-duration) var(--wb-ease-out);
+}
+
+.holding-inline-editor input:focus-visible,
+.holding-inline-editor.is-focus input {
+  border-width: 1px;
+  border-color: var(--wb-ink-soft);
+  outline-color: var(--wb-focus);
+}
+
+.holding-inline-editor input:active,
+.holding-inline-editor.is-active input {
+  border-width: 1px;
+  background: var(--wb-paper-muted);
+}
+
+.holding-inline-editor input:disabled,
+.holding-inline-editor.is-disabled input {
+  cursor: not-allowed;
+  opacity: .55;
+  background: var(--wb-paper-muted);
+}
+
+.holding-inline-editor[data-state="loading"] {
+  border-color: var(--wb-line-strong);
+}
+
+.holding-inline-editor[data-state="error"],
+.holding-inline-editor.is-error {
+  border-color: var(--wb-risk);
+  background: var(--wb-risk-soft);
+}
+
+.holding-inline-editor[data-state="success"],
+.holding-inline-editor.is-success {
+  border-color: var(--wb-accent);
+  background: var(--wb-accent-soft);
+}
+
+.holding-inline-editor[data-state="loading"] button[type="submit"]::before {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-inline-end: var(--wb-space-1);
+  border: 2px solid var(--wb-line);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  vertical-align: -2px;
+  content: "";
+  animation: trading-inline-spin 760ms linear infinite;
+}
+
+.holding-inline-status {
+  min-height: 1.4em;
+  margin: var(--wb-space-1) 0 0;
+  color: var(--wb-muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.holding-inline-actions button {
+  min-height: 44px;
+}
+
+.holding-inline-editor[data-state="error"] .holding-inline-status,
+.holding-inline-editor.is-error .holding-inline-status {
+  color: var(--wb-risk-deep);
+}
+
+.holding-inline-editor[data-state="success"] .holding-inline-status,
+.holding-inline-editor.is-success .holding-inline-status {
+  color: var(--wb-accent-deep);
+}
+
+.holding-stop-basis {
+  margin-block-start: var(--wb-space-2);
+  border: 1px solid var(--wb-line);
+  border-radius: var(--wb-radius-sm);
+  color: var(--wb-ink-soft);
+  background: var(--wb-paper-raised);
+}
+
+.holding-stop-basis summary {
+  min-height: 44px;
+  padding: var(--wb-space-2) var(--wb-space-3);
+  outline: 2px solid transparent;
+  outline-offset: 1px;
+  color: var(--wb-ink-soft);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holding-stop-basis summary:focus-visible {
+  outline-color: var(--wb-focus);
+}
+
+.holding-stop-basis[open] summary {
+  color: var(--wb-ink);
+  background: var(--wb-paper-muted);
+}
+
+.holding-stop-basis p {
+  margin: 0;
+  padding: 0 var(--wb-space-3) var(--wb-space-3);
+  color: var(--wb-ink-soft);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .trading-stock-combobox input:hover {
+    background: var(--wb-paper-muted);
+  }
+
+  .holding-inline-editor input:hover {
+    background: var(--wb-paper-muted);
+  }
+
+  .trading-stock-result:hover,
+  .trading-order-panel .trading-stock-result:hover,
+  .trading-risk-profile .trading-risk-inline-value:hover,
+  .execution-workbench-account button:hover,
+  .holding-editable-metric:hover,
+  .holding-editable-metric.is-hover {
+    color: var(--wb-ink);
+    background: var(--wb-accent-soft);
+    transform: none;
+  }
+}
+
+@media (min-width: 40rem) {
+  .trading-order-form-fields .trading-stock-field {
+    grid-column: span 1;
+  }
+}
+
+@media (pointer: coarse) {
+  .trading-stock-combobox input,
+  .trading-stock-result,
+  .trading-risk-profile .trading-risk-inline-value,
+  .execution-workbench-account button,
+  .holding-editable-metric,
+  .holding-inline-editor input {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trading-stock-combobox input,
+  .trading-stock-result,
+  .trading-risk-profile .trading-risk-inline-value,
+  .execution-workbench-account button,
+  .holding-editable-metric,
+  .holding-inline-editor input {
+    transition: none;
+  }
+
+  .trading-stock-field[data-state="loading"] .trading-stock-field-mark::before,
+  .trading-stock-field.is-loading .trading-stock-field-mark::before,
+  .holding-editable-metric[data-state="loading"]::after,
+  .holding-editable-metric.is-loading::after,
+  .holding-inline-editor[data-state="loading"] button[type="submit"]::before {
+    animation-duration: 1.5s;
+  }
+}
+
+@keyframes trading-inline-spin {
+  to { transform: rotate(360deg); }
+}

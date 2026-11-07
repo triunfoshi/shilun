@@ -102,6 +102,24 @@ class FakeProClient:
             ]
         )
 
+    def stk_limit(self, **kwargs) -> pd.DataFrame:
+        return pd.DataFrame([
+            {
+                "trade_date": kwargs["trade_date"],
+                "ts_code": "000001.SZ",
+                "pre_close": 10.0,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            },
+            {
+                "trade_date": kwargs["trade_date"],
+                "ts_code": "600000.SH",
+                "pre_close": 8.0,
+                "up_limit": 8.8,
+                "down_limit": 7.2,
+            },
+        ])
+
 
 class TushareProviderTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -126,7 +144,7 @@ class TushareProviderTests(unittest.TestCase):
 
     def test_fetch_daily_for_trade_date_normalizes_all_stocks(self) -> None:
         df = self.client.fetch_daily_for_trade_date("20240131")
-        self.assertEqual(["ticker", "date", "open", "high", "low", "close", "volume", "amount"], list(df.columns))
+        self.assertEqual(["ticker", "date", "open", "high", "low", "close", "volume", "amount", "pre_close"], list(df.columns))
         self.assertEqual(2, len(df))
         self.assertEqual("000001.SZ", df.iloc[0]["ticker"])
 
@@ -145,6 +163,42 @@ class TushareProviderTests(unittest.TestCase):
         self.assertEqual("000001.SZ", df.iloc[0]["ts_code"])
         self.assertTrue(pd.api.types.is_datetime64_any_dtype(df["trade_date"]))
         self.assertEqual(1200.0, df.iloc[0]["buy_lg_amount"])
+
+    def test_fetch_stock_limits_normalizes_execution_price_contract(self) -> None:
+        df = self.client.fetch_stock_limits("2024-01-31")
+
+        self.assertEqual(df["ticker"].tolist(), ["000001.SZ", "600000.SH"])
+        self.assertEqual(df.iloc[0]["trade_date"], "20240131")
+        self.assertEqual(df.iloc[0]["up_limit"], 11.0)
+        self.assertEqual(df.iloc[0]["source"], "tushare_stk_limit")
+
+    def test_fetch_all_stock_limits_paginates_until_full_market_is_collected(self) -> None:
+        class PagingClient(FakeProClient):
+            def __init__(self):
+                self.offsets = []
+
+            def stk_limit(self, **kwargs) -> pd.DataFrame:
+                self.offsets.append(kwargs["offset"])
+                rows = [
+                    {
+                        "trade_date": kwargs["trade_date"],
+                        "ts_code": f"{index:06d}.SZ",
+                        "pre_close": 10,
+                        "up_limit": 11,
+                        "down_limit": 9,
+                    }
+                    for index in range(5)
+                ]
+                start = kwargs["offset"]
+                return pd.DataFrame(rows[start:start + kwargs["limit"]])
+
+        pro = PagingClient()
+        client = TushareDailyClient(config=self.config, pro_client=pro)
+
+        result = client.fetch_all_stock_limits("20240131", page_size=2)
+
+        self.assertEqual(len(result), 5)
+        self.assertEqual(pro.offsets, [0, 2, 4])
 
 
 if __name__ == "__main__":

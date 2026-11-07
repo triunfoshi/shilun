@@ -18,7 +18,7 @@
       --shadow: 0 28px 70px rgba(0, 0, 0, 0.42);
     }
     * { box-sizing: border-box; }
-    html, body { max-width: 100%; overflow-x: hidden; }
+    html, body { max-width: 100%; overflow-x: clip; }
     body {
       margin: 0;
       color: var(--ink);
@@ -352,6 +352,65 @@
       border-top: 1px solid rgba(244, 240, 232, 0.08);
       min-width: 0;
     }
+    /* v6 · 龙头/中军 Top 3 tabs */
+    .metric-topthree { gap: 10px; }
+    .topthree-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      margin: 4px 0 2px;
+    }
+    .topthree-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 8px;
+      min-width: 0;
+      border: 1px solid rgba(244, 240, 232, 0.12);
+      border-radius: 8px;
+      background: rgba(244, 240, 232, 0.04);
+      color: inherit;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+      box-shadow: none;
+      font-weight: 500;
+      text-align: left;
+    }
+    .topthree-tab:hover {
+      background: rgba(244, 240, 232, 0.08);
+      border-color: rgba(143, 230, 196, 0.32);
+      transform: none;
+      filter: none;
+      box-shadow: none;
+    }
+    .topthree-tab.is-active {
+      background: rgba(143, 230, 196, 0.16);
+      border-color: rgba(143, 230, 196, 0.62);
+    }
+    .topthree-rank {
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.06em;
+    }
+    .topthree-name {
+      flex: 1 1 auto;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-width: 0;
+    }
+    .topthree-score {
+      flex: 0 0 auto;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .topthree-tab.is-active .topthree-score { color: var(--accent); }
     .metric-label {
       display: flex;
       align-items: center;
@@ -469,7 +528,7 @@
     }
     .scorecard-grid {
       display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+      grid-template-columns: repeat(6, minmax(0, 1fr));
       gap: 10px;
     }
     .scorecard-item {
@@ -819,7 +878,7 @@
     }
     .sector-detail-grid {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 14px;
     }
     .sector-detail-card {
@@ -832,6 +891,17 @@
     .sector-detail-card.full {
       grid-column: 1 / -1;
     }
+    .sector-metric-column .metric-block { height: 100%; }
+    .sector-core-candidates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .sector-core-candidates .metric-topthree {
+      grid-template-rows: 22px 42px 24px minmax(0, 1fr);
+      gap: 8px;
+      padding: 0;
+      border-top: 0;
+    }
+    .sector-core-candidates .topthree-tabs { height: 42px; margin: 0; align-items: stretch; }
+    .sector-core-candidates .topthree-tab { height: 42px; min-height: 42px; padding: 7px 8px; }
+    .sector-core-candidates .metric-value { min-height: 24px; line-height: 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .trend-board {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1268,7 +1338,7 @@
     }
     .market-dashboard-grid {
       display: grid;
-      grid-template-columns: 170px minmax(0, 1fr) 170px;
+      grid-template-columns: 190px minmax(0, 1fr) 170px;
       gap: 14px;
       align-items: stretch;
     }
@@ -1283,6 +1353,332 @@
     .market-daily-facts div:last-child { border-bottom: 0; }
     .market-daily-facts span, .market-temperature > span { color: var(--muted); font-size: 12px; font-weight: 800; }
     .market-daily-facts strong { font-size: 18px; }
+
+    .market-compact-workspace { min-width: 0; }
+    .market-decision-workspace {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .market-decision-cell {
+      min-width: 0;
+      padding: 14px;
+      border: 1px solid rgba(244, 240, 232, 0.10);
+      border-radius: 18px;
+      background: #ffffff;
+      box-shadow: 0 5px 16px rgba(30, 49, 83, .05);
+    }
+    .market-decision-cell > span, .decision-step {
+      display: block;
+      color: var(--accent);
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: 0.12em;
+      white-space: nowrap;
+    }
+    .market-decision-cell strong { display: block; margin: 8px 0 6px; color: var(--ink); font-size: 16px; line-height: 1.35; }
+    .market-decision-cell p { margin: 0; color: var(--soft); font-size: 12px; line-height: 1.55; }
+    .market-reason-list { display: grid; gap: 3px; margin: 6px 0 0; padding-left: 17px; color: var(--soft); }
+    .market-reason-list li { font-size: 10px; line-height: 1.35; }
+    .market-action-cell { background: linear-gradient(135deg, #f4fbf8, #ffffff); }
+    .market-risk-cell { border-color: rgba(242, 179, 90, 0.35); background: #fffaf2; }
+    .market-cross-index { display: grid; gap: 8px; padding: 11px 13px; border: 1px solid #dfe7f0; border-radius: 15px; background: #ffffff; }
+    .market-cross-index > header { display: flex; align-items: flex-end; justify-content: space-between; gap: 14px; }
+    .market-cross-index > header span { display: block; color: #2f80ed; font-size: 9px; font-weight: 900; letter-spacing: .12em; }
+    .market-cross-index > header strong { color: #172033; font-size: 14px; }
+    .market-cross-index > header p { margin: 0; color: #52627a; font-size: 10px; }
+    .market-cross-index-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 7px; }
+    .market-cross-index-grid article { min-width: 0; padding: 8px 9px; border: 1px solid #e4eaf2; border-radius: 10px; background: #f7f9fc; }
+    .market-cross-index-grid article.is-selected { border-color: #2f80ed; background: #edf4ff; }
+    .market-cross-index-grid span, .market-cross-index-grid strong, .market-cross-index-grid small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .market-cross-index-grid span { color: #7f8ea4; font-size: 9px; }
+    .market-cross-index-grid strong { margin-top: 3px; font-size: 11px; }
+    .market-cross-index-grid small { margin-top: 2px; color: #7f8ea4; font-size: 8px; }
+    .market-detail-drawer {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(8, 9, 11, 0.38);
+      overflow: hidden;
+    }
+    .market-detail-drawer > summary { padding: 14px 18px; color: var(--ink); font-size: 13px; font-weight: 800; cursor: pointer; }
+    .market-detail-stack { display: grid; gap: 14px; padding: 0 14px 14px; }
+
+    .selection-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; }
+    .selection-header > div { min-width: 0; }
+    .selection-strategy-control { display: grid; gap: 5px; min-width: 240px; }
+    .selection-strategy-control span { color: var(--muted); font-size: 11px; font-weight: 800; white-space: nowrap; }
+    .selection-strategy-control select { width: 100%; }
+    .selection-pool-toolbar { display: grid; grid-template-columns: 230px minmax(280px, 1fr) auto; gap: 10px; align-items: center; margin: 12px 0 8px; }
+    .selection-pool-toolbar > button { margin: 0; white-space: nowrap; }
+    .selection-picked-dropdown, .selection-stock-search { position: relative; min-width: 0; }
+    .selection-picked-dropdown > summary {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 42px;
+      padding: 9px 12px;
+      border: 1px solid #dfe7f0;
+      border-radius: 10px;
+      color: #52627a;
+      background: #ffffff;
+      cursor: pointer;
+      list-style: none;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .selection-picked-dropdown > summary::-webkit-details-marker { display: none; }
+    .selection-picked-dropdown > summary::after { content: "⌄"; margin-left: auto; color: #8b99ad; }
+    .selection-picked-dropdown[open] > summary { border-color: #7aacf2; box-shadow: 0 0 0 3px rgba(47, 128, 237, .10); }
+    .selection-picked-dropdown > summary b { color: #2f80ed; font-size: 16px; }
+    .selection-picked-dropdown > summary span { color: #8b99ad; font-size: 10px; }
+    .selection-picked-list,
+    .selection-search-results {
+      position: absolute;
+      z-index: 80;
+      top: calc(100% + 6px);
+      left: 0;
+      right: 0;
+      max-height: 290px;
+      overflow-y: auto;
+      padding: 6px;
+      border: 1px solid #dce5ef;
+      border-radius: 12px;
+      background: #ffffff;
+      box-shadow: 0 18px 42px rgba(30, 49, 83, .16);
+    }
+    .selection-picked-list p, .selection-search-state { margin: 0; padding: 10px; color: #7f8ea4; font-size: 11px; }
+    .selection-picked-item, .selection-search-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0;
+      padding: 9px 10px;
+      border: 0;
+      border-radius: 8px;
+      color: #26344a;
+      background: transparent;
+      box-shadow: none;
+      text-align: left;
+    }
+    .selection-picked-item:hover, .selection-search-item:hover { transform: none; background: #f2f6fb; box-shadow: none; }
+    .selection-picked-item span, .selection-search-item span { min-width: 0; }
+    .selection-picked-item strong, .selection-picked-item small,
+    .selection-search-item strong, .selection-search-item small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .selection-picked-item strong, .selection-search-item strong { font-size: 12px; }
+    .selection-picked-item small, .selection-search-item small { margin-top: 2px; color: #8b99ad; font-size: 10px; }
+    .selection-picked-item > b { color: #94a3b8; font-size: 16px; }
+    .selection-search-item > b { flex: 0 0 auto; color: #2f80ed; font-size: 10px; }
+    .selection-search-item.is-selected { background: #edf4ff; }
+    .selection-stock-search input { min-height: 42px; padding: 9px 13px; border-color: #dfe7f0; border-radius: 10px; color: #26344a; background: #ffffff; font-size: 12px; }
+    .selection-stock-search input::placeholder { color: #9aa7b8; }
+    .selection-search-state.error { color: #c24141; }
+    .selection-rule-strip { display: flex; align-items: center; gap: 8px; overflow-x: auto; margin: 12px 0; padding-bottom: 3px; }
+    .selection-rule-strip > span { flex: 0 0 auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; color: var(--soft); font-size: 11px; white-space: nowrap; }
+    .selection-rule-strip > span b { color: var(--accent); margin-right: 4px; }
+    .selection-rule-strip button { flex: 0 0 auto; margin-left: auto; white-space: nowrap; }
+
+    .intraday-decision-shell { display: grid; gap: 9px; min-width: 0; }
+    .intraday-status-line { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+    .intraday-status-line span { overflow: hidden; text-overflow: ellipsis; }
+    .intraday-status-line b { color: var(--accent); }
+    .intraday-candidate-rail { display: flex; gap: 8px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 1px 1px 4px; scrollbar-width: thin; }
+    .intraday-rail-card {
+      flex: 0 0 220px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 4px 8px;
+      margin: 0;
+      padding: 9px 12px;
+      color: #172033;
+      text-align: left;
+      background: #ffffff;
+      border: 1px solid #dfe7f0;
+      border-radius: 13px;
+      box-shadow: none;
+    }
+    .intraday-rail-card:hover { transform: none; border-color: rgba(143, 230, 196, 0.42); box-shadow: none; }
+    .intraday-rail-card.is-active { color: #ffffff; background: #2f80ed; border-color: #2f80ed; }
+    .intraday-rail-card span { min-width: 0; }
+    .intraday-rail-card strong, .intraday-rail-card small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-rail-card strong { font-size: 14px; }
+    .intraday-rail-card small { margin-top: 2px; color: inherit; opacity: .68; font-size: 10px; }
+    .intraday-rail-card > b { font-size: 13px; }
+    .intraday-rail-card em { grid-column: 1 / -1; color: inherit; opacity: .76; font-size: 11px; font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-decision-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-areas: "action reason scenario timeline" "evidence evidence market risk"; gap: 9px; align-items: stretch; }
+    .intraday-action-panel { grid-area: action; }
+    .intraday-reason-panel { grid-area: reason; }
+    .intraday-scenario-panel { grid-area: scenario; }
+    .intraday-evidence-panel { grid-area: evidence; }
+    .intraday-market-panel { grid-area: market; }
+    .intraday-risk-panel { grid-area: risk; }
+    .intraday-timeline-panel { grid-area: timeline; }
+    .intraday-decision-panel { min-width: 0; min-height: 0; padding: 10px; border: 1px solid #dfe7f0; border-radius: 16px; background: #ffffff; box-shadow: 0 6px 18px rgba(30, 49, 83, .055); overflow: hidden; }
+    .intraday-action-panel, .intraday-reason-panel, .intraday-scenario-panel, .intraday-timeline-panel { height: 198px; }
+    .intraday-evidence-panel, .intraday-market-panel, .intraday-risk-panel { height: 214px; }
+    .intraday-decision-panel strong { color: #172033; }
+    .intraday-decision-panel p { margin: 7px 0 0; color: #52627a; font-size: 12px; line-height: 1.45; }
+    .intraday-market-panel p { margin-top: 4px; line-height: 1.3; }
+    .intraday-action-panel { background: linear-gradient(145deg, #ffffff, #f6faff); }
+    .intraday-action-panel h2 { margin: 12px 0 5px; color: #172033; font-size: 21px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-action-panel.tone-bullish { border-color: rgba(239, 68, 68, .32); }
+    .intraday-action-panel.tone-bearish { border-color: rgba(16, 185, 129, .34); }
+    .intraday-stock-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 9px; margin-top: 8px; }
+    .intraday-stock-heading strong, .intraday-stock-heading small { display: block; }
+    .intraday-stock-heading strong { font-size: 17px; }
+    .intraday-stock-heading small { margin-top: 3px; color: #7f8ea4; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-stock-heading > b { font-size: 13px; white-space: nowrap; }
+    .intraday-reason-panel > strong, .intraday-risk-panel > strong { display: block; margin-top: 8px; font-size: 17px; }
+    .intraday-reason-list { display: grid; gap: 4px; margin-top: 4px; }
+    .intraday-reason-list > div { min-width: 0; padding: 4px 6px; border-radius: 8px; background: #f5f8fc; }
+    .intraday-reason-list b, .intraday-reason-list small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-reason-list b { color: #26354a; font-size: 11px; }
+    .intraday-reason-list small { margin-top: 1px; color: #73839a; font-size: 10px; line-height: 1.2; }
+    .decision-mini-facts, .decision-level-row, .market-triple { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin-top: 6px; }
+    .decision-mini-facts span, .decision-level-row span, .market-triple span { min-width: 0; padding: 4px 6px; border-radius: 8px; background: #f4f7fb; color: #7f8ea4; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .decision-level-row b, .market-triple b, .market-triple small { display: block; overflow: hidden; text-overflow: ellipsis; }
+    .market-triple b { margin-top: 3px; color: #172033; font-size: 11px; }
+    .scenario-line { display: flex; gap: 8px; margin-top: 9px; }
+    .scenario-line > b { display: grid; place-items: center; flex: 0 0 22px; height: 22px; border-radius: 7px; color: #061511; background: var(--accent); font-size: 10px; }
+    .scenario-line span { min-width: 0; }
+    .scenario-line strong, .scenario-line small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .scenario-line strong { font-size: 12px; }
+    .scenario-line small { margin-top: 2px; color: #7f8ea4; font-size: 10px; }
+    .intraday-decision-chart { margin-top: 7px; }
+    .intraday-chart-caption, .intraday-chart-axis { display: flex; justify-content: space-between; gap: 8px; color: #7f8ea4; font-size: 9px; }
+    .intraday-chart-caption span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-chart-caption small { flex: 0 0 auto; color: #6f819a; white-space: nowrap; }
+    .intraday-chart-caption b { color: #172033; }
+    .intraday-decision-chart svg { width: 100%; height: 68px; margin: 2px 0; border-radius: 10px; background: #f4f8fd; }
+    .intraday-decision-chart line { stroke: #d7e1ed; stroke-width: .4; }
+    .intraday-decision-chart polyline { fill: none; vector-effect: non-scaling-stroke; }
+    .intraday-decision-chart .intraday-price-line { stroke: var(--accent); stroke-width: 2; }
+    .intraday-decision-chart .intraday-vwap-line { stroke: #f2a94a; stroke-width: 1.2; stroke-dasharray: 3 2; }
+    .intraday-decision-chart .intraday-volume-bar { fill: rgba(47, 128, 237, .22); }
+    .intraday-decision-chart circle { fill: var(--accent); }
+    .intraday-candle line { stroke-width: .5; vector-effect: non-scaling-stroke; }
+    .intraday-candle.is-up line, .intraday-candle.is-up rect { stroke: #ef4444; fill: rgba(239, 68, 68, .55); }
+    .intraday-candle.is-down line, .intraday-candle.is-down rect { stroke: #10b981; fill: rgba(16, 185, 129, .55); }
+    .intraday-evidence-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; margin-top: 3px; }
+    .intraday-evidence-facts span { color: #6e7f96; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .market-live-structure { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 5px; }
+    .market-live-structure span { min-width: 0; color: #7f8ea4; font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .market-live-structure b { display: block; margin-top: 2px; color: #172033; font-size: 9px; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-orderbook, .intraday-orderbook-empty { margin-top: 5px; padding: 5px 8px; border: 1px solid #e5ebf3; border-radius: 9px; background: #f8fafd; }
+    .intraday-orderbook header, .intraday-orderbook > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .intraday-orderbook header { margin-bottom: 4px; color: #7f8ea4; font-size: 9px; }
+    .intraday-orderbook header b { color: #172033; }
+    .intraday-orderbook header span { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-orderbook > div span { font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-orderbook-empty { display: flex; align-items: center; gap: 7px; color: #7f8ea4; font-size: 9px; }
+    .intraday-orderbook-empty b { color: #172033; }
+    .intraday-risk-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 6px; margin-top: 6px; }
+    .intraday-risk-grid span { min-width: 0; padding: 5px 7px; border-radius: 8px; background: #f4f7fb; }
+    .intraday-risk-grid small, .intraday-risk-grid b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .intraday-risk-grid small { color: #7f8ea4; font-size: 9px; }
+    .intraday-risk-grid b { margin-top: 2px; color: #172033; font-size: 11px; }
+    .decision-timeline-list { margin-top: 8px; max-height: 115px; overflow-y: auto; }
+    .decision-timeline-list > div { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 7px; padding: 5px 0; border-bottom: 1px solid #e7edf5; }
+    .decision-timeline-list time { color: #7f8ea4; font-size: 9px; }
+    .decision-timeline-list b, .decision-timeline-list small { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .decision-timeline-list b { font-size: 10px; }
+    .decision-timeline-list small { color: #7f8ea4; font-size: 9px; }
+    .intraday-source-warning { color: #f2b35a; font-size: 10px; }
+
+    .trading-inline-editor,
+    .holding-inline-editor {
+      margin-top: 12px;
+      padding: 12px;
+      border: 1px solid #cdddf0;
+      border-radius: 12px;
+      background: #f7faff;
+      color: #26354a;
+    }
+    .trading-inline-editor > strong,
+    .holding-inline-editor > strong { display: block; color: #172033; font-size: 13px; }
+    .trading-inline-editor > p,
+    .holding-inline-editor > p { margin: 3px 0 9px; color: #6d7d93; font-size: 11px; }
+    .trading-inline-fields,
+    .holding-inline-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .trading-inline-fields.is-three,
+    .holding-inline-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .trading-inline-editor label,
+    .holding-inline-editor label { display: grid; gap: 4px; color: #66768d; font-size: 10px; }
+    .trading-inline-editor input,
+    .holding-inline-editor input { width: 100%; min-height: 36px; margin: 0; padding: 7px 9px; border: 1px solid #d7e2ef; border-radius: 8px; background: #fff; color: #172033; font-size: 12px; }
+    .trading-inline-actions,
+    .holding-inline-actions { display: flex; justify-content: flex-end; gap: 7px; margin-top: 9px; }
+    .trading-inline-actions button,
+    .holding-inline-actions button { min-height: 32px; margin: 0; padding: 6px 11px; }
+    .trading-inline-editor.is-risk-profile { margin: 0; }
+    .holding-inline-editor.tone-danger { border-color: rgba(220, 38, 38, .3); background: #fff8f8; }
+    .intraday-empty-state { padding: 28px; text-align: center; border: 1px dashed var(--line); border-radius: 16px; }
+    body.intraday-mode .shell { padding: 12px 24px 18px; }
+    body.intraday-mode .page-heading,
+    body.intraday-mode #tab-intraday .fs-section-header { display: none; }
+    body.intraday-mode #tab-intraday > .grid { margin-top: 0; }
+    body.intraday-mode #tab-intraday .fs-primary-card { padding: 12px; }
+    body.intraday-mode #tab-intraday .intraday-output { margin-top: 8px; }
+    body.intraday-mode #tab-intraday .intraday-toolbar {
+      min-height: 34px;
+      margin: 0;
+      flex-wrap: nowrap;
+    }
+    body.intraday-mode #tab-intraday .intraday-toolbar select { width: auto; min-width: 220px; padding: 7px 10px; }
+    body.intraday-mode #tab-intraday .intraday-toolbar label { margin: 0; white-space: nowrap; }
+    body.intraday-mode #tab-intraday .intraday-toolbar button { padding: 8px 12px; }
+    body.market-mode .shell { padding: 12px 24px 24px; }
+    body.market-mode .page-heading,
+    body.market-mode #tab-market > .grid > .card:first-child > .fs-section-header { display: none; }
+    body.market-mode #tab-market > .grid { margin-top: 0; }
+    body.market-mode #tab-market > .grid > .card:first-child { padding: 12px; }
+    body.market-mode #tab-market .fs-action-bar { margin: 0 0 8px; }
+    body.market-mode #marketPermissionResult { margin-top: 0; }
+    body.market-mode #market-overview { padding: 13px 16px; border-radius: 18px; }
+    body.market-mode #market-overview .market-eyebrow { margin-bottom: 4px; }
+    body.market-mode #market-overview .part1-headline,
+    body.market-mode #market-overview .market-headline { margin: 5px 0; font-size: 23px; line-height: 1.15; }
+    body.market-mode #market-overview .market-subtitle { margin: 4px 0 8px; font-size: 12px; line-height: 1.4; }
+    body.market-mode #market-overview .market-meta { gap: 5px; }
+    body.market-mode #market-overview .meta-chip { padding: 4px 7px; font-size: 9px; }
+    body.market-mode .market-feature-stack { gap: 8px; }
+    body.market-mode .market-decision-workspace { gap: 8px; }
+    body.market-mode .market-decision-cell { padding: 9px 10px; border-radius: 13px; }
+    body.market-mode .market-decision-cell strong,
+    body.market-mode .market-decision-cell p {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+    }
+    body.market-mode .market-decision-cell strong { margin: 5px 0 3px; font-size: 13px; -webkit-line-clamp: 2; }
+    body.market-mode .market-decision-cell p { font-size: 10px; line-height: 1.4; -webkit-line-clamp: 3; }
+    body.market-mode .market-decision-cell:has(.market-reason-list) strong { -webkit-line-clamp: 2; }
+    body.market-mode .market-reason-list { max-height: 64px; overflow-y: auto; }
+    body.market-mode .market-reason-cell strong,
+    body.market-mode .market-reason-cell p {
+      display: block;
+      overflow: visible;
+      -webkit-line-clamp: unset;
+    }
+    body.market-mode .market-reason-cell strong { font-size: 12px; line-height: 1.45; }
+    body.market-mode .market-reason-list { max-height: none; overflow: visible; }
+    body.market-mode #market-visuals { padding: 10px; border-radius: 16px; }
+    body.market-mode #market-visuals .feature-header { margin-bottom: 6px; }
+    body.market-mode #market-visuals .feature-header h3 { margin: 0; font-size: 16px; }
+    body.market-mode #market-visuals .feature-header p { margin: 2px 0 0; font-size: 9px; }
+    body.market-mode #market-visuals .feature-kicker { font-size: 9px; }
+    body.market-mode .market-dashboard-grid { gap: 8px; grid-template-columns: 175px minmax(0, 1fr) 135px; }
+    body.market-mode .market-daily-facts div { gap: 2px; padding: 7px 9px; }
+    body.market-mode .market-daily-facts strong { font-size: 13px; }
+    body.market-mode .market-chart-stage { padding: 8px; }
+    body.market-mode .market-chart-tabs { margin-bottom: 2px; }
+    body.market-mode .market-chart-tab { padding: 4px 8px; font-size: 9px; }
+    body.market-mode .market-bar-chart,
+    body.market-mode .market-line-chart { height: 145px; }
+    body.market-mode .market-temperature { padding: 10px; }
+    body.market-mode .temperature-ring { width: 84px; height: 84px; }
+    body.market-mode .market-detail-drawer > summary { padding: 9px 13px; font-size: 11px; }
     .market-chart-stage { padding: 14px; overflow: hidden; }
     .market-chart-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
     .market-chart-tab { margin: 0; padding: 7px 11px; color: var(--muted); background: transparent; border: 1px solid transparent; box-shadow: none; font-size: 12px; }
@@ -1691,7 +2087,7 @@
       background: #7aa7f8;
       box-shadow: 0 0 0 4px rgba(47, 128, 237, 0.10);
     }
-    .ds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; }
     .ds-card {
       position: relative;
       overflow: hidden;
@@ -2365,30 +2761,21 @@
       .intraday-candidate-grid {
         grid-template-columns: 1fr;
       }
+      .intraday-decision-grid,
+      .market-decision-workspace { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .intraday-decision-grid { grid-template-areas: "action reason" "scenario timeline" "evidence evidence" "market risk"; }
+      .intraday-action-panel, .intraday-reason-panel, .intraday-scenario-panel, .intraday-timeline-panel,
+      .intraday-evidence-panel, .intraday-market-panel, .intraday-risk-panel { height: auto; min-height: 172px; }
+      .sector-core-candidates { grid-template-columns: 1fr; }
     }
-
-    /* 波浪文档导入 */
-    .wave-upload-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 10px 0; }
-    .wave-upload-row input[type=file] {
-      padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 6px;
-      background: #ffffff; color: var(--ink); max-width: 280px;
+    @media (max-width: 720px) {
+      .intraday-decision-grid,
+      .market-decision-workspace { grid-template-columns: 1fr; }
+      .intraday-decision-grid { grid-template-areas: "action" "reason" "scenario" "evidence" "market" "risk" "timeline"; }
+      .selection-header { display: grid; }
+      .selection-strategy-control { min-width: 0; }
+      .selection-pool-toolbar { grid-template-columns: 1fr; }
     }
-    .wave-doc-output { margin-top: 10px; }
-    .wave-doc-card {
-      border: 1px solid var(--line-strong); border-radius: 12px;
-      background: #ffffff; padding: 14px; margin-top: 10px;
-      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-    }
-    .wave-doc-card > header { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
-    .wave-doc-card > header strong { color: var(--ink); font-size: 14px; }
-    .wave-doc-card > header small { color: var(--muted); font-size: 11px; }
-    .wave-doc-ai { background: #f8fafc; border-left: 3px solid var(--accent); padding: 10px 12px; margin-bottom: 10px; border-radius: 6px; }
-    .wave-doc-ai h5 { margin: 0 0 6px; color: var(--accent-dark); font-size: 12px; }
-    .wave-doc-ai p { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.6; }
-    .wave-doc-preview { margin-top: 10px; }
-    .wave-doc-preview summary { cursor: pointer; color: var(--muted); font-size: 12px; }
-    .wave-doc-preview pre { background: #f8fafc; padding: 10px; border-radius: 6px; color: var(--soft); font-size: 11px; overflow-x: auto; max-width: 100%; white-space: pre-wrap; }
-    .wave-doc-list h4 { color: var(--ink); margin: 0 0 8px; font-size: 14px; }
 
     /* Console 风格的指标卡 — 大数字 + chips + 小字解释 */
     .insight-row-card .value-emphasis {
@@ -2582,7 +2969,7 @@
       --danger: #e15241;
       --shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
     }
-    html, body { overflow-x: hidden; background: var(--bg); }
+    html, body { overflow-x: clip; background: var(--bg); }
     body {
       color: var(--ink);
       font-family: "PingFang SC", "Noto Sans SC", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
@@ -2645,6 +3032,16 @@
       box-shadow: none;
       font-size: 14px;
       font-weight: 650;
+      white-space: nowrap;
+    }
+    .app-sidebar .nav-group-label,
+    .app-sidebar .brand-lockup strong,
+    .app-sidebar .brand-lockup span,
+    .app-sidebar .sidebar-foot strong,
+    .app-sidebar .sidebar-foot small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .app-sidebar .tab-button span { width: 23px; color: #6f7e92; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
     .app-sidebar .tab-button:hover { transform: none; color: #f5f8fc; background: rgba(255,255,255,0.045); box-shadow: none; }
@@ -2851,6 +3248,14 @@
     .sector-chip.is-active { color: #225fb2; background: #edf4ff; border-color: #7aacf2; }
     .sector-chip.strength-high:not(.is-active) { border-color: #b9d7fb; background: #f7fbff; }
     .sector-chip.strength-mid:not(.is-active) { border-color: #dae4ef; background: #fbfcfe; }
+    /* v6 · 龙头/中军 Top 3 tabs 亮色主题 */
+    .topthree-tab { border-color: #dfe7f0; background: #fbfcfe; color: #3b4757; }
+    .topthree-tab:hover { background: #f2f6fb; border-color: #a9c8f7; }
+    .topthree-tab.is-active { background: #edf4ff; border-color: #7aacf2; }
+    .topthree-rank { color: #2f80ed; }
+    .topthree-name { color: #1e293b; }
+    .topthree-score { color: #64748b; }
+    .topthree-tab.is-active .topthree-score { color: #2f80ed; }
     .sector-detail-card { padding: 15px; }
     .trend-card { padding: 15px; }
     .trend-card h4 { color: #263449; font-size: 17px; }
@@ -3133,8 +3538,7 @@
     .json-viewer,
     .json-code,
     .stock-output,
-    .candidates-output,
-    .wave-doc-output {
+    .candidates-output {
       border-radius: 8px;
     }
     .decision-card,
@@ -3336,6 +3740,897 @@
       .market-storyline,
       .sector-storyline {
         left: max(250px, calc(50vw - 505px));
+      }
+    }
+
+    /* Job 6: Trading workspace — Action → Reason → Scenario → Evidence */
+    .nav-group-trading {
+      color: #78c6a7;
+    }
+    .app-sidebar .tab-bar-trading {
+      padding-bottom: 9px;
+      border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .app-sidebar .trading-tab-button {
+      min-height: 42px;
+      color: #dcebe5;
+      background: rgba(65, 151, 118, .09);
+      border-color: rgba(111, 204, 166, .10);
+    }
+    .app-sidebar .trading-tab-button.active {
+      color: #f4fff9;
+      background: linear-gradient(90deg, rgba(47, 128, 99, .38), rgba(43, 68, 73, .40));
+      border-color: rgba(116, 219, 176, .28);
+      box-shadow: inset 3px 0 0 #6fd7ad;
+    }
+    .global-toolbar.trading-mode .toolbar-field {
+      display: none;
+    }
+    .trading-cockpit-shell {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+    .trading-command-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 11px 14px;
+      border: 1px solid #dce5ef;
+      border-radius: 11px;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, .035);
+    }
+    .trading-command-bar > div:first-child,
+    .trading-command-actions,
+    .trading-auto-refresh {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .trading-command-bar strong {
+      color: #1c293b;
+      font-size: 13px;
+    }
+    .trading-command-bar small {
+      color: #7c8ba0;
+      font-size: 11px;
+    }
+    .trading-live-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #3fb384;
+      box-shadow: 0 0 0 4px rgba(63,179,132,.12);
+    }
+    .trading-auto-refresh {
+      margin: 0;
+      color: #63748a;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .trading-auto-refresh input {
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      padding: 0;
+    }
+    .trading-command-actions button {
+      min-height: 33px;
+      padding: 6px 10px;
+      font-size: 11px;
+    }
+    .trading-layout {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+      min-width: 0;
+    }
+    .trading-holdings-rail {
+      position: sticky;
+      top: 86px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+      padding: 13px;
+      border: 1px solid #dce5ef;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .trading-rail-head,
+    .trading-risk-profile-head,
+    .trading-holding-meta,
+    .trading-stock-header,
+    .trading-action-footer,
+    .trading-section-heading,
+    .trading-timeline-change {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .trading-rail-head span,
+    .trading-risk-profile-head span,
+    .trading-section-heading > span,
+    .trading-action-copy > span {
+      display: block;
+      color: #7c8ba1;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 9px;
+      font-weight: 850;
+      letter-spacing: .10em;
+    }
+    .trading-rail-head strong {
+      display: block;
+      margin-top: 2px;
+      color: #25334a;
+      font-size: 14px;
+    }
+    .trading-rail-head > b {
+      display: grid;
+      width: 28px;
+      height: 28px;
+      place-items: center;
+      border-radius: 8px;
+      color: #246a50;
+      background: #ecf8f2;
+      font-size: 13px;
+    }
+    .trading-holding-list {
+      display: grid;
+      gap: 6px;
+    }
+    .trading-holding-item {
+      display: grid;
+      gap: 7px;
+      width: 100%;
+      min-height: 106px;
+      margin: 0;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      color: #243249;
+      background: #fbfcfe;
+      box-shadow: none;
+      text-align: left;
+    }
+    .trading-holding-item:hover {
+      transform: none;
+      border-color: #abc7bb;
+      background: #f7fbf9;
+      box-shadow: none;
+    }
+    .trading-holding-item.is-active {
+      border-color: #74b69d;
+      background: #f1f8f5;
+      box-shadow: inset 3px 0 0 #3ca77f;
+    }
+    .trading-holding-identity {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .trading-holding-identity > span:last-child,
+    .trading-holding-identity strong,
+    .trading-holding-identity small {
+      display: block;
+      min-width: 0;
+    }
+    .trading-holding-identity strong {
+      overflow: hidden;
+      font-size: 13px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trading-holding-identity small {
+      color: #8391a4;
+      font-size: 9px;
+    }
+    .trading-rail-logo {
+      display: grid;
+      flex: 0 0 30px;
+      width: 30px;
+      height: 30px;
+      place-items: center;
+      border: 1px solid #dfe7ef;
+      border-radius: 50%;
+      background: #fff;
+    }
+    .trading-holding-decision {
+      overflow: hidden;
+      color: #23334a;
+      font-size: 12px;
+      font-weight: 800;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trading-holding-meta small {
+      overflow: hidden;
+      color: #7c8aa0;
+      font-size: 9px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trading-holding-meta b,
+    .trading-data-badge {
+      flex: 0 0 auto;
+      padding: 2px 6px;
+      border-radius: 999px;
+      font-size: 9px;
+      font-weight: 800;
+    }
+    .trading-holding-meta .tone-normal,
+    .trading-source-strip .tone-normal { color: #197453; }
+    .trading-holding-meta .tone-delayed,
+    .trading-holding-meta .tone-closed,
+    .trading-source-strip .tone-delayed,
+    .trading-source-strip .tone-closed { color: #a76a18; }
+    .trading-holding-meta .tone-missing,
+    .trading-source-strip .tone-missing { color: #b7444c; }
+    .trading-risk-profile {
+      display: grid;
+      gap: 7px;
+      padding: 11px;
+      border: 1px solid #e1e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+    }
+    .trading-risk-profile-head b {
+      color: #217456;
+      font-size: 9px;
+    }
+    .trading-risk-profile > div:not(.trading-risk-profile-head) {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .trading-risk-profile span,
+    .trading-risk-profile small {
+      color: #7b8a9f;
+      font-size: 10px;
+    }
+    .trading-risk-profile strong {
+      color: #2a394e;
+      font-size: 12px;
+    }
+    .trading-risk-profile button {
+      width: 100%;
+      min-height: 30px;
+      padding: 5px 8px;
+      font-size: 10px;
+    }
+    .trading-cockpit-main,
+    .trading-cockpit-content {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+    .trading-cockpit-notice {
+      display: none;
+      padding: 9px 12px;
+      border: 1px solid #dbe5ef;
+      border-radius: 9px;
+      color: #5f7188;
+      background: #fff;
+      font-size: 11px;
+    }
+    .trading-cockpit-notice:not(:empty) { display: block; }
+    .trading-empty-state,
+    .trading-empty-inline,
+    .trading-timeline-empty,
+    .trading-risk-missing,
+    .trading-rail-empty {
+      padding: 28px;
+      border: 1px dashed #cfd9e5;
+      border-radius: 12px;
+      color: #65758c;
+      background: #fafcfe;
+      text-align: center;
+    }
+    .trading-empty-state strong,
+    .trading-timeline-empty strong,
+    .trading-risk-missing strong,
+    .trading-rail-empty strong { color: #2a394e; }
+    .trading-empty-state p,
+    .trading-timeline-empty p,
+    .trading-risk-missing p,
+    .trading-rail-empty p { margin: 5px 0 0; font-size: 12px; }
+    .trading-empty-state.is-error { color: #a83d46; background: #fff8f8; border-color: #e9bdc1; }
+    .trading-action-hero {
+      position: relative;
+      overflow: hidden;
+      padding: 19px;
+      border: 1px solid #24364d;
+      border-radius: 14px;
+      color: #e8eff7;
+      background:
+        radial-gradient(circle at 92% 5%, rgba(91, 195, 156, .14), transparent 18rem),
+        linear-gradient(135deg, #142033, #1a2a3c 58%, #172633);
+      box-shadow: 0 12px 30px rgba(29, 48, 70, .12);
+    }
+    .trading-action-hero::before {
+      content: "";
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: #55bd92;
+    }
+    .trading-action-hero.tone-blocked::before { background: #e3a34e; }
+    .trading-action-hero.tone-exit::before { background: #ef626d; }
+    .trading-action-hero.tone-reduce::before { background: #f0a54b; }
+    .trading-action-hero.tone-wait::before { background: #6ca7e8; }
+    .trading-stock-header { align-items: flex-start; }
+    .trading-stock-identity {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+    }
+    .trading-stock-logo {
+      display: grid;
+      flex: 0 0 42px;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 50%;
+      background: rgba(255,255,255,.94);
+    }
+    .trading-stock-identity h2 {
+      margin: 0;
+      color: #f7fbff;
+      font-size: 18px;
+    }
+    .trading-stock-identity p,
+    .trading-header-badges small {
+      margin: 2px 0 0;
+      color: #92a3b8;
+      font-size: 10px;
+    }
+    .trading-header-badges {
+      display: grid;
+      justify-items: end;
+      gap: 4px;
+    }
+    .trading-data-badge.tone-normal { color: #c8f4e2; background: rgba(61,177,133,.18); }
+    .trading-data-badge.tone-delayed,
+    .trading-data-badge.tone-closed { color: #ffdba4; background: rgba(224,154,58,.17); }
+    .trading-data-badge.tone-missing { color: #ffc3c6; background: rgba(222,75,84,.17); }
+    .trading-action-copy {
+      padding: 29px 0 20px;
+    }
+    .trading-action-copy > span { color: #67cfa6; }
+    .trading-action-copy h2 {
+      max-width: 760px;
+      margin: 6px 0 5px;
+      color: #fff;
+      font-size: clamp(28px, 3.4vw, 44px);
+      font-weight: 920;
+      line-height: 1.05;
+      letter-spacing: -.045em;
+    }
+    .trading-action-copy p {
+      max-width: 760px;
+      margin: 0;
+      color: #aab8c8;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .trading-action-metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 10px;
+      background: rgba(5, 14, 25, .22);
+    }
+    .trading-action-metrics > div {
+      min-width: 0;
+      padding: 10px 12px;
+      border-right: 1px solid rgba(255,255,255,.08);
+    }
+    .trading-action-metrics > div:last-child { border-right: 0; }
+    .trading-action-metrics span,
+    .trading-action-metrics strong,
+    .trading-action-metrics small { display: block; }
+    .trading-action-metrics span { color: #8194aa; font-size: 9px; }
+    .trading-action-metrics strong {
+      overflow: hidden;
+      margin: 3px 0 1px;
+      color: #edf5fd;
+      font-size: 16px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trading-action-metrics strong.is-risk { color: #ffb4b7; }
+    .trading-action-metrics small { color: #788ba1; font-size: 9px; }
+    .trading-action-footer {
+      align-items: flex-end;
+      margin-top: 13px;
+    }
+    .trading-action-footer > div:first-child { min-width: 0; }
+    .trading-action-footer span { color: #778da4; font-size: 9px; }
+    .trading-action-footer p { margin: 2px 0 0; color: #ccd7e3; font-size: 10px; }
+    .trading-action-buttons { display: flex; flex: 0 0 auto; gap: 7px; }
+    .trading-action-buttons button { min-height: 31px; padding: 5px 9px; font-size: 10px; }
+    .trading-action-buttons .secondary { color: #c7d4e2; background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.14); }
+    .trading-reason-section,
+    .trading-scenario-section,
+    .trading-evidence-section,
+    .trading-market-section,
+    .trading-risk-section,
+    .trading-timeline-section,
+    .trading-raw-data {
+      min-width: 0;
+      padding: 17px;
+      border: 1px solid #dce5ef;
+      border-radius: 12px;
+      background: #fff;
+    }
+    .trading-section-heading {
+      align-items: flex-end;
+      padding-bottom: 11px;
+      border-bottom: 1px solid #e7edf4;
+    }
+    .trading-section-heading > span { align-self: flex-start; color: #388b6b; }
+    .trading-section-heading h3 {
+      flex: 1;
+      margin: 0;
+      color: #233149;
+      font-size: 16px;
+    }
+    .trading-section-heading p {
+      max-width: 360px;
+      margin: 0;
+      color: #7d8da2;
+      font-size: 10px;
+      text-align: right;
+    }
+    .trading-reason-list {
+      display: grid;
+      gap: 1px;
+      margin-top: 11px;
+      overflow: hidden;
+      border: 1px solid #e4eaf1;
+      border-radius: 9px;
+      background: #e4eaf1;
+    }
+    .trading-reason-list article {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      align-items: center;
+      min-height: 43px;
+      padding: 7px 11px;
+      background: #fbfcfe;
+    }
+    .trading-reason-list b { color: #3b9b76; font-family: ui-monospace, monospace; font-size: 10px; }
+    .trading-reason-list p { margin: 0; color: #405169; font-size: 11px; }
+    .trading-scenario-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 11px;
+    }
+    .trading-scenario-card {
+      overflow: hidden;
+      border: 1px solid #e0e7ef;
+      border-left: 3px solid #aeb9c7;
+      border-radius: 9px;
+      background: #fbfcfe;
+    }
+    .trading-scenario-card.tone-triggered { border-left-color: #3aaa7e; }
+    .trading-scenario-card.tone-waiting,
+    .trading-scenario-card.tone-approaching { border-left-color: #e2a246; }
+    .trading-scenario-card.is-current { border-color: #70b69b; background: #f7fcfa; }
+    .trading-scenario-card summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 11px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .trading-scenario-card summary::-webkit-details-marker { display: none; }
+    .trading-scenario-card summary span,
+    .trading-scenario-card summary b,
+    .trading-scenario-card summary small { display: block; }
+    .trading-scenario-card summary b { color: #2c3b51; font-size: 12px; }
+    .trading-scenario-card summary small { margin-top: 2px; color: #8392a5; font-size: 9px; }
+    .trading-scenario-card summary em { flex: 0 0 auto; color: #697b90; font-size: 9px; font-style: normal; }
+    .trading-rule-traces {
+      display: grid;
+      gap: 7px;
+      padding: 10px 11px;
+      border-top: 1px solid #e8edf3;
+      background: #fff;
+    }
+    .trading-rule-traces article {
+      display: grid;
+      grid-template-columns: 7px minmax(0, 1fr);
+      gap: 8px;
+    }
+    .trading-rule-traces article > span { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: #a9b4c2; }
+    .trading-rule-traces .rule-state-satisfied { background: #37a879; }
+    .trading-rule-traces .rule-state-pending { background: #e3a343; }
+    .trading-rule-traces .rule-state-blocked { background: #d9525c; }
+    .trading-rule-traces strong { color: #334258; font-size: 10px; }
+    .trading-rule-traces p { margin: 1px 0; color: #5f7086; font-size: 10px; }
+    .trading-rule-traces small { color: #8b98a9; font-size: 8px; line-height: 1.5; }
+    .trading-cancel-condition { padding: 6px 8px; border-radius: 6px; color: #89601f !important; background: #fff8e9; }
+    .trading-evidence-grid,
+    .trading-market-grid,
+    .trading-risk-grid {
+      display: grid;
+      gap: 8px;
+      margin-top: 11px;
+    }
+    .trading-evidence-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .trading-evidence-grid article,
+    .trading-market-grid article,
+    .trading-risk-grid article {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      background: #fafbfd;
+    }
+    .trading-evidence-grid span,
+    .trading-evidence-grid strong,
+    .trading-evidence-grid small,
+    .trading-market-grid span,
+    .trading-market-grid strong,
+    .trading-market-grid small,
+    .trading-risk-grid span,
+    .trading-risk-grid strong { display: block; }
+    .trading-evidence-grid span,
+    .trading-market-grid span,
+    .trading-risk-grid span { color: #8391a5; font-size: 9px; }
+    .trading-evidence-grid strong,
+    .trading-market-grid strong,
+    .trading-risk-grid strong { margin: 2px 0; color: #26364c; font-size: 14px; }
+    .trading-evidence-grid small,
+    .trading-market-grid small { color: #8a98aa; font-size: 8px; }
+    .trading-source-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 8px;
+      overflow: hidden;
+      border: 1px solid #e5ebf2;
+      border-radius: 8px;
+      background: #e5ebf2;
+    }
+    .trading-source-strip > div { min-width: 0; padding: 8px; background: #fff; }
+    .trading-source-strip span,
+    .trading-source-strip strong,
+    .trading-source-strip small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .trading-source-strip span,
+    .trading-source-strip small { color: #8795a8; font-size: 8px; }
+    .trading-source-strip strong { margin: 2px 0; font-size: 10px; }
+    .trading-evidence-time,
+    .trading-risk-method { margin: 8px 0 0; color: #7e8da1; font-size: 9px; }
+    .trading-market-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .trading-market-grid article { border-top: 3px solid #94a4b7; }
+    .trading-market-grid article.tone-strong { border-top-color: #39a779; background: #f7fcfa; }
+    .trading-market-grid article.tone-weak { border-top-color: #dd5962; background: #fff9f9; }
+    .trading-market-grid span,
+    .trading-market-grid strong,
+    .trading-market-grid small {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .trading-risk-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .trading-risk-grid article.is-result { border-color: #acd6c5; background: #f2faf6; }
+    .trading-risk-grid article.is-result strong { color: #207654; }
+    .trading-risk-missing button { margin-top: 10px; }
+    .trading-timeline-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 11px;
+      padding-left: 14px;
+      border-left: 2px solid #dfe7ef;
+    }
+    .trading-timeline-list article {
+      position: relative;
+      padding: 10px 12px;
+      border: 1px solid #e1e7ef;
+      border-radius: 8px;
+      background: #fbfcfe;
+    }
+    .trading-timeline-list article::before {
+      content: "";
+      position: absolute;
+      left: -20px;
+      top: 15px;
+      width: 9px;
+      height: 9px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      background: #3ca77e;
+      box-shadow: 0 0 0 1px #a8cdbf;
+    }
+    .trading-timeline-list time { color: #7f8ea2; font-size: 9px; }
+    .trading-timeline-change { justify-content: flex-start; margin-top: 3px; }
+    .trading-timeline-change span { color: #8090a4; font-size: 10px; }
+    .trading-timeline-change b { color: #3ca77e; }
+    .trading-timeline-change strong { color: #27364c; font-size: 12px; }
+    .trading-timeline-list p { margin: 4px 0; color: #596a80; font-size: 10px; }
+    .trading-timeline-list small { color: #8a98aa; font-size: 8px; }
+    .trading-raw-data { padding: 0; }
+    .trading-raw-data summary {
+      padding: 11px 14px;
+      color: #607188;
+      cursor: pointer;
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .trading-raw-data pre {
+      max-height: 420px;
+      margin: 0;
+      overflow: auto;
+      border: 0;
+      border-top: 1px solid #e4eaf1;
+      border-radius: 0 0 12px 12px;
+      font-size: 9px;
+    }
+    @media (max-width: 1180px) {
+      .trading-layout { grid-template-columns: 210px minmax(0, 1fr); }
+      .trading-action-metrics,
+      .trading-evidence-grid,
+      .trading-market-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trading-risk-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .trading-source-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 820px) {
+      .trading-command-bar,
+      .trading-action-footer,
+      .trading-section-heading { align-items: stretch; flex-direction: column; }
+      .trading-command-actions,
+      .trading-action-buttons { flex-wrap: wrap; }
+      .trading-layout { grid-template-columns: 1fr; }
+      .trading-holdings-rail { position: static; }
+      .trading-holding-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trading-scenario-grid { grid-template-columns: 1fr; }
+      .trading-section-heading p { max-width: none; text-align: left; }
+      .trading-action-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .trading-risk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+@media (max-width: 560px) {
+      .trading-holding-list,
+      .trading-action-metrics,
+      .trading-evidence-grid,
+      .trading-market-grid,
+      .trading-risk-grid,
+      .trading-source-strip { grid-template-columns: 1fr; }
+      .trading-action-copy h2 { font-size: 28px; }
+}
+
+/* Job 7 · strategy-derived stop plans */
+.holding-stop-plan-preview,
+.trading-stop-evidence {
+  display: grid;
+  gap: 6px;
+  padding: 13px 15px;
+  border: 1px solid rgba(38, 81, 64, 0.16);
+  border-radius: 12px;
+  background: rgba(235, 244, 239, 0.72);
+  color: #29453a;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.holding-stop-plan-preview strong,
+.trading-stop-evidence strong {
+  color: #173a2c;
+  font-size: 14px;
+}
+
+.holding-stop-plan-preview small,
+.trading-stop-evidence small {
+  color: #657970;
+}
+
+.trading-stop-evidence {
+  margin: 14px 0 0;
+}
+
+.holding-editable-metric {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 72px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.holding-editable-metric:hover,
+.holding-editable-metric:focus-visible {
+  color: #1f6a4c;
+  transform: none;
+  box-shadow: none;
+}
+
+.holding-editable-metric strong {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 4px;
+}
+
+    /* Strategy separation: single-stock facts stay compact; strategy output is isolated. */
+    .analyze-input-row select,
+    .holding-create-grid select {
+      min-height: 36px;
+      padding: 7px 34px 7px 10px;
+      border: 1px solid #d8e2ee;
+      border-radius: 9px;
+      color: #34435a;
+      background: #fff;
+      font: inherit;
+    }
+    .analyze-input-row select {
+      width: min(250px, 30vw);
+    }
+    .holding-create-grid select {
+      width: 100%;
+    }
+    .sv-ai-terminal .sv-header.sv-neutral-header {
+      display: grid;
+      grid-template-columns: minmax(0, 7fr) minmax(280px, 3fr);
+      gap: 16px;
+      min-height: 0;
+      padding: 14px;
+      align-items: stretch;
+    }
+    .sv-neutral-header .sv-stock-compact-card {
+      min-height: 146px;
+    }
+    .sv-fact-scope-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 7px;
+      min-width: 0;
+      padding: 16px 18px;
+      border: 1px solid #dfe8f2;
+      border-radius: 14px;
+      background: #fbfdff;
+    }
+    .sv-fact-scope-card > span {
+      color: #2f80ed;
+      font-size: 10px;
+      font-weight: 900;
+      letter-spacing: .12em;
+    }
+    .sv-fact-scope-card strong {
+      color: #1d2a40;
+      font-size: 17px;
+      line-height: 1.25;
+    }
+    .sv-fact-scope-card p {
+      margin: 0;
+      color: #75859c;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .sv-strategy-workspace {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border: 1px solid #bfd5fb;
+      border-left: 4px solid #2f80ed;
+      border-radius: 16px;
+      background: #f8fbff;
+    }
+    .sv-strategy-decision-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.35fr) repeat(4, minmax(105px, 1fr));
+      gap: 10px;
+    }
+    .sv-strategy-decision-row > div {
+      display: flex;
+      min-width: 0;
+      min-height: 72px;
+      padding: 10px 12px;
+      border: 1px solid #d9e6f8;
+      border-radius: 11px;
+      background: #fff;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .sv-strategy-decision-row span,
+    .sv-fact-metric-grid span {
+      color: #8493a8;
+      font-size: 10px;
+      font-weight: 750;
+    }
+    .sv-strategy-decision-row strong {
+      margin-top: 4px;
+      color: #1d2a40;
+      font-size: 18px;
+      line-height: 1.15;
+    }
+    .sv-strategy-verdict strong {
+      color: #236fd1;
+    }
+    .sv-strategy-evidence {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sv-strategy-evidence p {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      gap: 7px;
+      margin: 0;
+      color: #596a82;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .sv-strategy-evidence p b {
+      display: grid;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      color: #fff;
+      background: #2f80ed;
+      place-items: center;
+    }
+    .sv-strategy-evidence small {
+      grid-column: 1 / -1;
+      color: #8392a7;
+    }
+    .sv-fact-metric-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+    }
+    .sv-fact-metric-grid > div {
+      min-width: 0;
+      padding: 10px;
+      border: 1px solid #e6edf5;
+      border-radius: 10px;
+      background: #fbfdff;
+    }
+    .sv-fact-metric-grid strong {
+      display: block;
+      margin-top: 4px;
+      color: #26344a;
+      font-size: 15px;
+      overflow-wrap: anywhere;
+    }
+    .sv-method-note {
+      margin: 10px 0 0;
+      padding: 9px 10px;
+      border-radius: 9px;
+      color: #6f7f95;
+      background: #f3f6fa;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+    .sv-ai-terminal .signal-filters {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    @media (max-width: 1199px) {
+      .sv-ai-terminal .sv-header.sv-neutral-header,
+      .sv-strategy-decision-row,
+      .sv-strategy-evidence {
+        grid-template-columns: 1fr;
+      }
+      .analyze-input-row {
+        flex-wrap: wrap;
+      }
+      .analyze-input-row select,
+      .analyze-input-row input {
+        width: min(100%, 320px);
       }
     }
     @media (min-width: 781px) and (max-width: 1120px) {
@@ -3783,6 +5078,29 @@
       background: #f4f8ff;
       font-size: 22px;
       font-weight: 900;
+    }
+    .stock-logo-shell {
+      position: relative;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .stock-logo-shell img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      padding: 5px;
+      box-sizing: border-box;
+      object-fit: contain;
+      border-radius: inherit;
+      background: #fff;
+    }
+    .stock-logo-fallback {
+      width: 100%;
+      height: 100%;
+      place-items: center;
+    }
+    .stock-logo-fallback[hidden] {
+      display: none !important;
     }
     .sv-ai-terminal .sv-name-row {
       gap: 12px;
@@ -5038,3 +6356,693 @@
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
     }
+
+    /* Stage 7 Job 4: holdings workbench */
+    .candidate-holding-action {
+      min-height: 30px;
+      padding: 5px 10px;
+      border: 1px solid #bfd4f4;
+      border-radius: 8px;
+      background: #f4f8ff;
+      color: #2768bd;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .candidate-holding-action:hover {
+      border-color: #2f80ed;
+      background: #eaf2ff;
+    }
+    .holdings-workbench {
+      gap: 16px;
+    }
+    .holdings-primary-card,
+    .holdings-create-card,
+    .holdings-list-card,
+    .holding-event-panel {
+      overflow: visible;
+    }
+    .holdings-toolbar,
+    .holding-section-head,
+    .holding-card-head,
+    .holding-card-actions,
+    .holding-form-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .holdings-toolbar {
+      padding: 14px 0 4px;
+      border-top: 1px solid #e7edf5;
+    }
+    .holdings-toolbar-actions,
+    .holding-form-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    .holdings-toolbar-actions button,
+    .holding-form-actions button {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .holdings-filter {
+      display: flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      margin: 0;
+      color: #687891;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .holdings-filter select {
+      min-width: 132px;
+      min-height: 38px;
+      margin: 0;
+    }
+    .holdings-notice {
+      display: none;
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid #dbe5f2;
+      border-radius: 9px;
+      background: #f7f9fc;
+      color: #5d6d84;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .holdings-notice:not(:empty) {
+      display: block;
+    }
+    .holdings-notice.tone-success {
+      border-color: #bfe6d2;
+      background: #f1fbf6;
+      color: #18734d;
+    }
+    .holdings-notice.tone-error {
+      border-color: #f2c7ca;
+      background: #fff6f6;
+      color: #b43a42;
+    }
+    .holding-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .holding-summary-grid article {
+      min-height: 90px;
+      padding: 13px 15px;
+      border: 1px solid #dce5f0;
+      border-radius: 11px;
+      background: #fbfcfe;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .holding-summary-grid span,
+    .holding-summary-grid small {
+      color: #8190a6;
+      font-size: 12px;
+    }
+    .holding-summary-grid strong {
+      margin: 3px 0;
+      color: #182338;
+      font-size: 25px;
+      line-height: 1.1;
+    }
+    .holding-summary-grid article.needs-action {
+      border-color: #f2c1c5;
+      background: #fff8f8;
+    }
+    .holding-summary-grid article.needs-action strong,
+    .holding-summary-grid .negative {
+      color: #d54750;
+    }
+    .holding-summary-grid .positive {
+      color: #16845b;
+    }
+    details.holdings-create-card {
+      padding: 0;
+    }
+    .holdings-create-card > summary {
+      min-height: 70px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .holdings-create-card > summary::-webkit-details-marker {
+      display: none;
+    }
+    .holdings-create-card > summary span {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    .holdings-create-card > summary b {
+      color: #19253a;
+      font-size: 17px;
+    }
+    .holdings-create-card > summary small,
+    .holdings-create-card > summary em {
+      color: #7f8ea3;
+      font-size: 12px;
+      font-style: normal;
+    }
+    .holdings-create-card > summary em::after {
+      content: " +";
+      color: #2f80ed;
+    }
+    .holdings-create-card[open] > summary em::after {
+      content: " -";
+    }
+    .holdings-create-card form {
+      padding: 18px 20px 20px;
+      border-top: 1px solid #e7edf5;
+    }
+    .holding-create-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .holding-create-grid label,
+    .holding-note-field {
+      display: grid;
+      gap: 6px;
+      color: #6d7d93;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .holding-create-grid input,
+    .holding-note-field textarea {
+      width: 100%;
+      min-height: 40px;
+      margin: 0;
+      padding: 8px 10px;
+      border: 1px solid #d7e1ee;
+      border-radius: 8px;
+      background: #fff;
+      color: #1f2b3e;
+      font: inherit;
+      font-size: 13px;
+    }
+    .holding-note-field {
+      margin-top: 12px;
+    }
+    .holding-note-field textarea {
+      min-height: 58px;
+      resize: vertical;
+    }
+    .holding-form-actions {
+      justify-content: flex-start;
+      margin-top: 12px;
+    }
+    .holding-section-head {
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e7edf5;
+    }
+    .holding-section-head h2 {
+      margin: 3px 0 0;
+      color: #172238;
+      font-size: 22px;
+    }
+    .holding-section-head p {
+      margin: 0;
+      color: #7a899f;
+      font-size: 13px;
+    }
+    .holding-list {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+      margin-top: 16px;
+    }
+    #tab-holdings .fs-section-header > span,
+    #tab-holdings .fs-section-header > h2,
+    #tab-holdings .fs-section-header > p,
+    #tab-holdings .holdings-notice,
+    #tab-holdings .holding-summary-grid span,
+    #tab-holdings .holding-summary-grid strong,
+    #tab-holdings .holding-summary-grid small,
+    #tab-holdings .holdings-create-card > summary span,
+    #tab-holdings .holdings-create-card > summary b,
+    #tab-holdings .holdings-create-card > summary small,
+    #tab-holdings .holdings-create-card > summary em,
+    #tab-holdings .holding-section-head span,
+    #tab-holdings .holding-section-head h2,
+    #tab-holdings .holding-section-head p,
+    #tab-holdings .holding-card-head strong,
+    #tab-holdings .holding-card-head span,
+    #tab-holdings .holding-decision-row span,
+    #tab-holdings .holding-decision-row strong,
+    #tab-holdings .holding-decision-row small,
+    #tab-holdings .holding-level-strip span,
+    #tab-holdings .holding-level-strip strong,
+    #tab-holdings .holding-level-strip small,
+    #tab-holdings .holding-signal-list li,
+    #tab-holdings .holding-card-actions button,
+    #tab-holdings .holding-risk-pending > * {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #tab-holdings .fs-section-header > p,
+    #tab-holdings .holding-section-head p,
+    #tab-holdings .holdings-notice {
+      max-width: 100%;
+    }
+    #tab-holdings .holding-identity-copy,
+    #tab-holdings .holding-action,
+    #tab-holdings .holding-decision-row > div,
+    #tab-holdings .holding-level-strip > div {
+      min-width: 0;
+    }
+    .holding-card {
+      position: relative;
+      overflow: hidden;
+      padding: 20px;
+      border: 1px solid #dce5ef;
+      border-radius: 16px;
+      background: linear-gradient(180deg, #fff 0%, #fbfcfe 100%);
+      box-shadow: 0 10px 28px rgba(34, 55, 85, .06);
+    }
+    .holding-card::before {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 4px;
+      background: #8ba2bf;
+      content: "";
+    }
+    .holding-card.tone-strong::before { background: #2f80ed; }
+    .holding-card.tone-normal::before { background: #36a878; }
+    .holding-card.tone-reduce { background: linear-gradient(180deg, #fff 0%, #fffaf3 100%); }
+    .holding-card.tone-reduce::before { background: #e99a32; }
+    .holding-card.tone-exit { border-color: #efd7da; background: linear-gradient(180deg, #fff 0%, #fff7f8 100%); }
+    .holding-card.tone-exit::before { background: #d94b55; }
+    .holding-card.tone-closed { opacity: .82; }
+    .holding-card.tone-closed::before { background: #a8b2c1; }
+    .holding-card-head {
+      align-items: flex-start;
+      padding-bottom: 15px;
+      border-bottom: 1px solid #e9eef5;
+    }
+    .holding-card-head > button {
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+      box-shadow: none;
+    }
+    .holding-card-head > button:hover {
+      color: #216fce;
+      transform: none;
+    }
+    .holding-identity {
+      display: flex !important;
+      align-items: center;
+      gap: 10px;
+      margin: 0 !important;
+    }
+    .holding-identity-copy {
+      min-width: 0;
+      margin: 0 !important;
+    }
+    .holding-stock-logo {
+      display: grid !important;
+      flex: 0 0 38px;
+      width: 38px;
+      height: 38px;
+      margin: 0 !important;
+      border: 1px solid #dfe8f2;
+      border-radius: 50%;
+      color: #2f80ed !important;
+      background: #f4f8ff;
+      font-size: 15px !important;
+      font-weight: 900;
+    }
+    .holding-card-head > button .holding-stock-logo .stock-logo-fallback {
+      display: grid;
+      margin: 0;
+      color: #2f80ed;
+    }
+    .holding-card-head > button strong,
+    .holding-card-head > button span,
+    .holding-pnl strong,
+    .holding-pnl small {
+      display: block;
+    }
+    .holding-card-head > button strong {
+      color: #19253a;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+    .holding-card-head > button span,
+    .holding-pnl small {
+      margin-top: 3px;
+      color: #8291a7;
+      font-size: 12px;
+    }
+    .holding-pnl {
+      flex: 0 0 auto;
+      text-align: right;
+    }
+    .holding-pnl strong {
+      color: #16845b;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+    .holding-pnl.negative strong {
+      color: #d54750;
+    }
+    .holding-decision-row {
+      display: grid;
+      grid-template-columns: minmax(110px, .75fr) minmax(0, 1.75fr);
+      gap: 10px;
+      margin-top: 15px;
+    }
+    .holding-decision-row > div {
+      min-height: 80px;
+      padding: 12px 14px;
+      border: 1px solid #e5ebf3;
+      border-radius: 11px;
+      background: rgba(245, 248, 252, .84);
+    }
+    .holding-decision-row span,
+    .holding-decision-row strong,
+    .holding-decision-row small {
+      display: block;
+    }
+    .holding-decision-row span {
+      color: #8291a7;
+      font-size: 12px;
+    }
+    .holding-decision-row strong {
+      margin-top: 3px;
+      color: #1f2d43;
+      font-size: 16px;
+      line-height: 1.4;
+    }
+    .holding-decision-row small {
+      margin-top: 3px;
+      color: #6f7f95;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .holding-card.tone-exit .holding-decision-row strong { color: #c83d47; }
+    .holding-card.tone-reduce .holding-decision-row strong { color: #b56d16; }
+    .holding-level-strip {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+    .holding-level-strip div {
+      min-width: 0;
+      padding: 10px 11px;
+      border: 1px solid #e5ebf3;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, .9);
+    }
+    .holding-level-strip span,
+    .holding-level-strip strong,
+    .holding-level-strip small {
+      display: block;
+    }
+    .holding-level-strip span,
+    .holding-level-strip small {
+      color: #8795aa;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .holding-level-strip strong {
+      margin: 2px 0;
+      color: #27354a;
+      font-size: 16px;
+      line-height: 1.45;
+    }
+    .holding-signal-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 10px 0 0;
+      padding: 0;
+      list-style: none;
+    }
+    .holding-signal-list li {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background: #fff0f1;
+      color: #b6424a;
+      font-size: 12px;
+    }
+    .holding-signal-list li > span {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #d94b55;
+    }
+    .holding-signal-list li.holding-signal-clear {
+      background: #eef8f3;
+      color: #257553;
+    }
+    .holding-card-actions {
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #edf1f6;
+    }
+    .holding-card-actions button {
+      min-height: 34px;
+      padding: 6px 12px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .holding-card-actions .danger {
+      border-color: #efc5c8;
+      background: #fff5f5;
+      color: #c33f48;
+    }
+    .holding-card-actions .primary-risk-action {
+      margin-right: auto;
+      border-color: #c83d47;
+      background: #c83d47;
+      color: #fff;
+    }
+    .holding-risk-pending {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      padding: 10px 12px;
+      border: 1px solid #efcfd2;
+      border-radius: 10px;
+      background: #fff0f1;
+      color: #8d2f37;
+      font-size: 12px;
+    }
+    .holding-risk-pending > span {
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #c83d47;
+      color: #fff;
+      font-weight: 700;
+    }
+    .holding-risk-pending > strong {
+      font-size: 13px;
+    }
+    .holding-risk-pending > small {
+      color: #9f5359;
+      font-size: 12px;
+      text-align: right;
+    }
+    .holdings-empty {
+      grid-column: 1 / -1;
+      min-height: 180px;
+      padding: 28px;
+      border: 1px dashed #ccd8e7;
+      border-radius: 12px;
+      background: #fafbfd;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .holdings-empty strong {
+      color: #26344a;
+      font-size: 18px;
+    }
+    .holdings-empty p {
+      max-width: 620px;
+      margin: 7px 0 13px;
+      color: #7a899f;
+      font-size: 13px;
+    }
+    .holding-event-panel[hidden] {
+      display: none;
+    }
+    .holding-event-list {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .holding-event-item {
+      display: grid;
+      grid-template-columns: 100px minmax(0, 1fr) 100px;
+      gap: 14px;
+      align-items: start;
+      padding: 12px 14px;
+      border: 1px solid #e0e7f0;
+      border-left: 3px solid #8ba2bf;
+      border-radius: 9px;
+      background: #fbfcfe;
+    }
+    .holding-event-item.tone-strong { border-left-color: #2f80ed; }
+    .holding-event-item.tone-normal { border-left-color: #36a878; }
+    .holding-event-item.tone-reduce { border-left-color: #e99a32; }
+    .holding-event-item.tone-exit { border-left-color: #d94b55; }
+    .holding-event-item time,
+    .holding-event-main span,
+    .holding-event-main small,
+    .holding-event-metrics span {
+      color: #7f8ea4;
+      font-size: 11px;
+    }
+    .holding-event-main > div {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .holding-event-main strong {
+      color: #26344a;
+      font-size: 14px;
+    }
+    .holding-event-main p {
+      margin: 4px 0;
+      overflow: hidden;
+      color: #52627a;
+      font-size: 12px;
+      line-height: 1.5;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .holding-event-metrics {
+      text-align: right;
+    }
+    .holding-event-metrics strong,
+    .holding-event-metrics span {
+      display: block;
+    }
+    .holding-event-metrics strong {
+      color: #26344a;
+      font-size: 15px;
+    }
+    @media (max-width: 1100px) {
+      .holding-summary-grid,
+      .holding-create-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .holding-level-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 780px) {
+      .holdings-toolbar,
+      .holding-section-head,
+      .holding-card-head {
+        align-items: stretch;
+        flex-direction: column;
+      }
+      .holding-summary-grid,
+      .holding-create-grid,
+      .holding-decision-row {
+        grid-template-columns: 1fr;
+      }
+      .holding-level-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .holding-risk-pending {
+        grid-template-columns: 1fr;
+      }
+      .holding-risk-pending > small {
+        text-align: left;
+      }
+      .holding-pnl {
+        text-align: left;
+      }
+      .holding-card-actions {
+        flex-wrap: wrap;
+      }
+      .holding-event-item {
+        grid-template-columns: 1fr;
+      }
+      .holding-event-metrics {
+        text-align: left;
+      }
+      .holdings-create-card > summary span {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 3px;
+      }
+    }
+
+/* Hallmark · component: sync inventory · genre: modern-minimal · theme: existing Workbench
+ * Polanyi: dates, scope and execution share one reading axis.
+ * pre-emit critique: P5 H4 E4 S5 R5 V4 · motion-cut · existing tokens only */
+body #tab-data.tab-panel .ds-grid { grid-template-columns: minmax(0, 1fr); gap: var(--wb-space-3); }
+body #tab-data.tab-panel .ds-tier > h3 { margin: var(--wb-space-5) 0 var(--wb-space-3); font-size: 14px; color: var(--wb-ink); }
+body #tab-data.tab-panel .ds-inventory-row {
+  padding: var(--wb-space-4); min-width: 0; min-height: 0;
+  background: var(--wb-paper-raised); border: 1px solid var(--wb-line);
+  border-radius: 4px; box-shadow: none; overflow: visible; color: var(--wb-ink);
+}
+body #tab-data.tab-panel .ds-inventory-row::before { display: none; }
+body #tab-data.tab-panel .ds-inventory-row header { flex-wrap: wrap; justify-content: space-between; gap: var(--wb-space-2); }
+body #tab-data.tab-panel .ds-inventory-row header strong { font-size: 14px; color: var(--wb-ink); }
+body #tab-data.tab-panel .ds-state-label { font-size: 12px; color: var(--wb-ink-soft); white-space: nowrap; }
+body #tab-data.tab-panel .ds-state-attention .ds-state-label { color: var(--wb-warning); font-weight: 600; }
+body #tab-data.tab-panel .ds-detail { color: var(--wb-ink-soft); font-weight: 400; }
+body #tab-data.tab-panel .ds-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  gap: var(--wb-space-4); margin: var(--wb-space-3) 0;
+  padding-block: var(--wb-space-3); border-block: 1px solid var(--wb-line);
+}
+body #tab-data.tab-panel .ds-facts > div { min-width: 0; }
+body #tab-data.tab-panel .ds-facts dt { color: var(--wb-muted); font-size: 12px; margin-bottom: var(--wb-space-1); }
+body #tab-data.tab-panel .ds-facts dd { margin: 0; color: var(--wb-ink); font-size: 13px; line-height: 1.6; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+body #tab-data.tab-panel .ds-facts dd.ds-secondary { color: var(--wb-ink-soft); font-size: 12px; }
+body #tab-data.tab-panel .ds-jobs { display: flex; flex-wrap: wrap; column-gap: var(--wb-space-2); }
+body #tab-data.tab-panel .ds-job { white-space: normal; }
+body #tab-data.tab-panel .ds-source, body #tab-data.tab-panel .ds-catalog-note, body #tab-data.tab-panel #dataPipelineStatus { color: var(--wb-ink-soft); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+body #tab-data.tab-panel .ds-impact { color: var(--wb-warning); font-size: 12px; font-weight: 400; }
+body #tab-data.tab-panel .ds-extra-details { margin-top: var(--wb-space-2); font-size: 12px; color: var(--wb-ink-soft); }
+body #tab-data.tab-panel .ds-extra-details summary { width: fit-content; padding-block: var(--wb-space-1); cursor: pointer; }
+body #tab-data.tab-panel .ds-extra-details dl { margin: var(--wb-space-2) 0 0; }
+body #tab-data.tab-panel .ds-extra-details dl > div { display: flex; flex-wrap: wrap; gap: var(--wb-space-2); }
+body #tab-data.tab-panel .ds-extra-details dd { margin: 0; overflow-wrap: anywhere; }
+body #tab-data.tab-panel .ds-extra-details summary:focus-visible, body #tab-data.tab-panel button:focus-visible { outline: 2px solid var(--wb-focus); outline-offset: 2px; }
+body #tab-data.tab-panel #dataStatusGrid[aria-busy="true"] { opacity: .55; }
+body #tab-data.tab-panel .data-source-tabs { gap: var(--wb-space-2); }
+body #tab-data.tab-panel .data-source-tab { white-space: nowrap; border-radius: 2px; box-shadow: none; font-family: var(--wb-font-body); }
+body #tab-data.tab-panel .fs-action-bar button, body #tab-data.tab-panel .sync-button-grid button { white-space: nowrap; }
+@media (max-width: 600px), (pointer: coarse) {
+  body #tab-data.tab-panel { --terminal-control: 44px; }
+  body #tab-data.tab-panel button, body #tab-data.tab-panel .ds-extra-details summary { min-height: 44px; }
+  body #tab-data.tab-panel .ds-inventory-row { padding: var(--wb-space-3); }
+}
+
+body #tab-data.tab-panel #dataStatus { color: var(--wb-ink-soft); }

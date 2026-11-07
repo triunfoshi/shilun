@@ -390,7 +390,7 @@ class DailyPushJob:
             raise ValueError("Snapshot table is empty.")
         top_rows = table.head(max(1, int(top_k)))
         lines = [
-            f"石论日报 {analysis_date}",
+            f"VC-Astock 日报 {analysis_date}",
             f"扫描 {scanned_count or len(table)} 只，跳过 {skipped_count} 只。",
         ]
         candidate_pool_lines = cls._build_candidate_pool_lines(

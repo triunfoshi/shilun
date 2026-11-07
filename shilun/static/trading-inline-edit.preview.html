@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>交易原位编辑组件状态</title>
+  <link rel="stylesheet" href="/static/execution-workbench.tokens.css" />
+  <link rel="stylesheet" href="/static/trading-inline-edit.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { overflow-x: clip; }
+    body { margin: 0; padding: 24px; color: var(--wb-ink); background: var(--wb-paper); font-family: var(--wb-font-body); }
+    main { width: min(960px, 100%); margin: auto; }
+    h1 { font-size: 24px; }
+    h1:not(:first-child) { margin-top: 40px; }
+    .states { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 20px; }
+    .state { min-width: 0; padding: 16px; border: 1px solid var(--wb-line); background: var(--wb-paper-raised); }
+    .state h2 { margin: 0 0 12px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>股票模糊搜索 · 8 状态</h1>
+    <div class="states">
+      <section class="state"><h2>默认</h2><div class="trading-stock-field"><label for="p-default">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-default" placeholder="代码或名称" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">输入代码或名称，选择匹配股票。</p></div></section>
+      <section class="state"><h2>悬停</h2><div class="trading-stock-field is-hover"><label for="p-hover">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-hover" value="兆易" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">等待输入停止。</p></div></section>
+      <section class="state"><h2>聚焦</h2><div class="trading-stock-field is-focus"><label for="p-focus">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-focus" value="603986" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">键盘可用方向键选择。</p></div></section>
+      <section class="state"><h2>按下</h2><div class="trading-stock-field is-active"><label for="p-active">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-active" value="603986.SH" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">正在操作。</p></div></section>
+      <section class="state"><h2>禁用</h2><div class="trading-stock-field is-disabled"><label for="p-disabled">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-disabled" value="603986.SH" disabled aria-disabled="true" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">账户正在结算，暂不可修改。</p></div></section>
+      <section class="state"><h2>加载</h2><div class="trading-stock-field is-loading"><label for="p-loading">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-loading" value="兆易" aria-busy="true" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">正在匹配股票…</p></div></section>
+      <section class="state"><h2>错误</h2><div class="trading-stock-field is-error"><label for="p-error">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-error" value="999999" aria-invalid="true" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">没有匹配股票，请检查代码或名称。</p></div></section>
+      <section class="state"><h2>成功</h2><div class="trading-stock-field is-success"><label for="p-success">股票代码或名称</label><div class="trading-stock-combobox"><input id="p-success" value="603986.SH" /><span class="trading-stock-field-mark"></span></div><p class="trading-stock-status">已选择 兆易创新 603986.SH。</p></div></section>
+    </div>
+    <h1>持仓台账可编辑价格 · 8 状态</h1>
+    <div class="states">
+      <section class="state"><h2>默认</h2><button class="holding-editable-metric" type="button"><strong>36.00</strong><small>点击纠错</small></button></section>
+      <section class="state"><h2>悬停</h2><button class="holding-editable-metric is-hover" type="button"><strong>39.00</strong><small>点击修改</small></button></section>
+      <section class="state"><h2>聚焦</h2><button class="holding-editable-metric is-focus" type="button"><strong>36.38</strong><small>MA8 趋势防线</small></button></section>
+      <section class="state"><h2>按下</h2><button class="holding-editable-metric is-active" type="button"><strong>36.00</strong><small>正在打开编辑</small></button></section>
+      <section class="state"><h2>禁用</h2><button class="holding-editable-metric is-disabled" type="button" disabled aria-disabled="true"><strong>36.00</strong><small>结算中不可修改</small></button></section>
+      <section class="state"><h2>加载</h2><button class="holding-editable-metric is-loading" type="button" data-state="loading" aria-busy="true"><strong>39.00</strong><small>正在保存</small></button></section>
+      <section class="state"><h2>错误</h2><button class="holding-editable-metric is-error" type="button" data-state="error" aria-invalid="true"><strong>—</strong><small>价格必须大于 0</small></button></section>
+      <section class="state"><h2>成功</h2><button class="holding-editable-metric is-success" type="button" data-state="success"><strong>39.00</strong><small>已保存</small></button></section>
+    </div>
+  </main>
+</body>
+</html>

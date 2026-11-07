@@ -3,40 +3,81 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>石论控制台</title>
-  <link rel="stylesheet" href="/static/app.css?v=20260709-crosshair-hover-retry" />
+  <title>VC-Astock</title>
+  <link rel="icon" type="image/svg+xml" href="/static/vc-astock-mark.svg?v=20260903-vc-astock-v1" />
+  <link rel="stylesheet" href="/static/tokens.css?v=20260923-decision-v2.1" />
+  <link rel="stylesheet" href="/static/app.css?v=20261102-sync-inventory-v3" />
+  <link rel="stylesheet" href="/static/market-v2.css?v=20260720-index-align-v1" />
+  <link rel="stylesheet" href="/static/trading-order-panel.css?v=20260716-job12j-v3" />
+  <link rel="stylesheet" href="/static/execution-workbench.css?v=20260716-job12j-v5" />
+  <link rel="stylesheet" href="/static/trading-inline-edit.css?v=20260715-cockpit-v3" />
+  <link rel="stylesheet" href="/static/research-insights.css?v=20260716-job12j-v3" />
+  <link rel="stylesheet" href="/static/trading-terminal.css?v=20260716-job12j-v3" />
+  <link rel="stylesheet" href="/static/brand.css?v=20260903-vc-astock-v1" />
+  <link rel="stylesheet" href="/static/workspace-navigation.css?v=20260915-review-v4" />
+  <link rel="stylesheet" href="/static/review-dashboard.css?v=20261102-review-v12" />
+  <link rel="stylesheet" href="/static/review-wave.css?v=20261102-v1" />
+  <link rel="stylesheet" href="/static/review-refinement.css?v=20261102-v4" />
+  <link rel="stylesheet" href="/static/sentiment-refinement.css?v=20261102-v3" />
+  <link rel="stylesheet" href="/static/review-sentiment-context.css?v=20261102-context-v2" />
+  <link rel="stylesheet" href="/static/board-dynamics.css?v=20261102-day-facts-v1" />
+  <link rel="stylesheet" href="/static/board-research.css?strong-stock-v1&v=20260921-firstboard-amounts-v1" />
+  <link rel="stylesheet" href="/static/workspace-controls.css?v=20260915-p2-memberships-v11" />
+  <link rel="stylesheet" href="/static/selection-research.css?v=20260922-v2" />
+  <link rel="stylesheet" href="/static/workbench-density.css?v=20260924-selection-align-v9" />
+  <link rel="stylesheet" href="/static/strength-review.css?v=20260923-strength-terminal-v2" />
+  <link rel="stylesheet" href="/static/trade-decision.css?v=20260924-toolbar-v8" />
+  <link rel="stylesheet" href="/static/theme-cycles.css?v=20261103-center-v1" />
+  <link rel="stylesheet" href="/static/theme-acceptance.css?v=20260923-v4" />
+  <link rel="stylesheet" href="/static/sentiment-workspace.css?v=20261102-vibe-v2" />
+  <link rel="stylesheet" href="/static/shortline-views.css?v=20261103-light-v1" />
+  <link rel="stylesheet" href="/static/trade-journal.css?v=20261104-review-complete-v2" />
+  <link rel="stylesheet" href="/static/journal-workspace.css?v=20261104-review-complete-v2" />
+  <link rel="stylesheet" href="/static/sync-inventory.css?v=20261102-ledger-v3" />
 </head>
-<body>
+<body data-workspace="review">
   <div class="workbench">
-    <aside class="app-sidebar" aria-label="石论研究导航">
+    <aside class="app-sidebar" aria-label="VC-Astock 工作区导航">
       <div class="brand-lockup">
-        <div class="brand-mark">石</div>
-        <div><strong>石论</strong><span>SHILUN RESEARCH</span></div>
+        <span class="brand-mark brand-candlestick-mark" aria-hidden="true"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <div class="brand-wordmark"><strong>VC-Astock</strong><span>A-SHARE WORKBENCH</span></div>
       </div>
       <nav class="sidebar-nav">
-        <p class="nav-group-label">研究主流程</p>
-        <div class="tab-bar" role="tablist" aria-label="石论控制台功能分区">
-          <button class="tab-button active" type="button" data-tab="permission" onclick="switchTab('permission')"><span>01</span>权限确认</button>
-          <button class="tab-button" type="button" data-tab="market" onclick="switchTab('market')"><span>02</span>大盘计算</button>
-          <button class="tab-button" type="button" data-tab="sectors" onclick="switchTab('sectors')"><span>03</span>板块动向</button>
-          <button class="tab-button" type="button" data-tab="analysis" onclick="switchTab('analysis')"><span>04</span>单票分析</button>
-          <button class="tab-button" type="button" data-tab="intraday" onclick="switchTab('intraday')"><span>05</span>盘中监控</button>
-        </div>
-        <p class="nav-group-label">系统与交付</p>
-        <div class="tab-bar tab-bar-secondary" role="tablist" aria-label="石论系统功能分区">
-          <button class="tab-button" type="button" data-tab="push" onclick="switchTab('push')"><span>06</span>日报推送</button>
-          <button class="tab-button" type="button" data-tab="data" onclick="switchTab('data')"><span>07</span>数据同步</button>
-          <button class="tab-button" type="button" data-tab="system" onclick="switchTab('system')"><span>08</span>系统状态</button>
-        </div>
+        <details class="nav-group" data-nav-group="review" open><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16M5 15l4-5 4 3 6-9"/></svg><span>复盘</span></summary><div class="tab-bar tab-bar-review" role="tablist" aria-label="VC-Astock 复盘工作区" data-workspace="review">
+          <button id="nav-review" class="tab-button active" type="button" role="tab" aria-controls="tab-review" aria-selected="true" data-tab="review" data-workspace="review" onclick="switchTab('review')"><span>P1</span>指数复盘</button>
+          <button id="nav-sentiment" class="tab-button" type="button" role="tab" aria-controls="tab-sentiment" aria-selected="false" data-tab="sentiment" data-workspace="review" onclick="switchTab('sentiment')"><span>P2</span>短线情绪</button>
+          <button id="nav-trade-journal" class="tab-button" type="button" role="tab" aria-controls="tab-trade-journal" aria-selected="false" data-tab="trade-journal" data-workspace="review" onclick="switchTab('trade-journal')"><span>P3</span>交易记录与复盘</button>
+        </div></details>
+        <details class="nav-group" data-nav-group="research" open><summary><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="6"/><path d="m15 15 5 5"/></svg><span>研究</span></summary><div class="tab-bar" role="tablist" aria-label="VC-Astock 研究工作区" data-workspace="research">
+          <button id="nav-sectors" class="tab-button" type="button" role="tab" aria-controls="tab-sectors" aria-selected="false" data-tab="sectors" data-workspace="research" onclick="switchTab('sectors')"><span>R2</span>板块研究</button>
+          <button id="nav-selection" class="tab-button" type="button" role="tab" aria-controls="tab-selection" aria-selected="false" data-tab="selection" data-workspace="research" onclick="switchTab('selection')"><span>R3</span>选品研究</button>
+          <button id="nav-analysis" class="tab-button" type="button" role="tab" aria-controls="tab-analysis" aria-selected="false" data-tab="analysis" data-workspace="research" onclick="switchTab('analysis')"><span>R4</span>个股研究</button>
+          <button id="nav-firstboard" class="tab-button" type="button" role="tab" aria-controls="tab-firstboard" aria-selected="false" data-tab="firstboard" data-workspace="research" onclick="switchTab('firstboard')"><span>R5</span>涨停聚焦</button>
+          <button id="nav-boardeffects" class="tab-button" type="button" role="tab" aria-controls="tab-boardeffects" aria-selected="false" data-tab="boardeffects" data-workspace="research" onclick="switchTab('boardeffects')"><span>R6</span>打板效应</button>
+          <button id="nav-decision-research" class="tab-button " type="button" role="tab" aria-controls="tab-decision-research" aria-selected="false" data-tab="decision-research" data-workspace="research" onclick="switchTab('decision-research')"><span>R7</span>市场模式观察</button>
+        </div></details>
+        <details class="nav-group" data-nav-group="trading" open><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M16 3l4 4-4 4M20 17H4l4-4m-4 4 4 4"/></svg><span>交易</span></summary><div class="tab-bar tab-bar-trading" role="tablist" aria-label="VC-Astock 交易工作区" data-workspace="trading">
+          <button id="nav-permission" hidden data-review-retired="true" class="tab-button trading-tab-button" type="button" role="tab" aria-controls="tab-permission" aria-selected="false" data-tab="permission" data-workspace="trading" onclick="switchTab('permission')"><span>T1</span>交易决策</button>
+          <button id="nav-decision-plan" hidden data-review-retired="true" class="tab-button trading-tab-button decision-child" type="button" role="tab" aria-controls="tab-decision-plan" aria-selected="false" data-tab="decision-plan" data-workspace="trading" onclick="switchTab('decision-plan')"><span>↳</span>明日预案</button>
+          <button id="nav-decision-live" hidden data-review-retired="true" class="tab-button trading-tab-button decision-child" type="button" role="tab" aria-controls="tab-decision-live" aria-selected="false" data-tab="decision-live" data-workspace="trading" onclick="switchTab('decision-live')"><span>↳</span>今日跟踪</button>
+          <button id="nav-trading" hidden data-review-retired="true" class="tab-button trading-tab-button" type="button" role="tab" aria-controls="tab-trading" aria-selected="false" data-tab="trading" data-workspace="trading" onclick="switchTab('trading')"><span>T2</span>持仓执行</button>
+          <button id="nav-intraday" class="tab-button trading-tab-button" type="button" role="tab" aria-controls="tab-intraday" aria-selected="false" data-tab="intraday" data-workspace="trading" onclick="switchTab('intraday')"><span>T3</span>盘中监控</button>
+          <button id="nav-holdings" hidden data-review-retired="true" class="tab-button trading-tab-button" type="button" role="tab" aria-controls="tab-holdings" aria-selected="false" data-tab="holdings" data-workspace="trading" onclick="switchTab('holdings')"><span>T4</span>成交台账</button>
+        </div></details>
+        <details class="nav-group" data-nav-group="system" open><summary><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M6 6l2 2m8 8 2 2M6 18l2-2m8-8 2-2"/><circle cx="12" cy="12" r="6"/></svg><span>系统与交付</span></summary><div class="tab-bar tab-bar-secondary" role="tablist" aria-label="VC-Astock 系统与交付工作区" data-workspace="system">
+          <button id="nav-push" class="tab-button" type="button" role="tab" aria-controls="tab-push" aria-selected="false" data-tab="push" data-workspace="system" onclick="switchTab('push')"><span>S1</span>日报推送</button>
+          <button id="nav-data" class="tab-button" type="button" role="tab" aria-controls="tab-data" aria-selected="false" data-tab="data" data-workspace="system" onclick="switchTab('data')"><span>S2</span>数据同步</button>
+          <button id="nav-system" class="tab-button" type="button" role="tab" aria-controls="tab-system" aria-selected="false" data-tab="system" data-workspace="system" onclick="switchTab('system')"><span>S3</span>系统状态</button>
+        </div></details>
       </nav>
       <div class="sidebar-foot">
-        <span class="sidebar-avatar">石</span>
-        <div><strong>研究工作台</strong><small>Mongo-first · 本地运行</small></div>
+        <span class="sidebar-avatar" aria-hidden="true"><i class="fa-thin fa-chart-candlestick" style="color: rgb(239, 20, 20);"></i></span>
+        <div><strong>VC-Astock 工作台</strong><small>复盘 → 研究 → 交易 → 交付</small></div>
       </div>
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <div class="topbar-context"><strong id="pageTitle">权限确认</strong><span id="pageSubtitle">交易前先确认风险边界</span></div>
+        <div class="topbar-context"><span id="workspaceDomain" class="workspace-domain is-review">复盘</span><strong id="pageTitle">指数复盘</strong><span id="pageSubtitle">指数事实 → 市场姿态 → 次日验证</span></div>
         <section class="global-toolbar" aria-label="全局参数">
           <div class="toolbar-field">
             <label for="globalDate">分析日期</label>
@@ -53,17 +94,174 @@
       </header>
       <main class="shell">
         <section class="page-heading">
-          <div><p id="pageKicker">研究主流程</p><h1 id="pageHeading">权限确认</h1></div>
-          <p id="pageDescription">先确认今天可做什么、不能做什么，再进入大盘和板块推演。</p>
+          <div><p id="pageKicker">复盘工作区</p><h1 id="pageHeading">指数复盘</h1></div>
+          <p id="pageDescription">先复原四大指数与市场广度，再用量能、关键位和机构旁证形成次日验证边界。</p>
         </section>
         <section class="tabs">
 
-      <section id="tab-permission" class="tab-panel active" role="tabpanel">
+      <section id="tab-review" class="tab-panel active" role="tabpanel" aria-labelledby="nav-review">
+        <div class="review-dashboard">
+          <section id="reviewCommandBar" class="review-command-bar" aria-label="复盘快照控制栏">
+            <div>
+              <span class="review-status-dot" aria-hidden="true"></span>
+              <strong>指数复盘 · 收盘快照</strong>
+              <small id="reviewFreshnessText">正在读取最近一次收盘复盘...</small>
+            </div>
+            <div class="review-command-actions">
+              <div class="review-date-field">
+                <label for="reviewDate">复盘日期</label>
+                <input id="reviewDate" type="date" value="__DEFAULT_DATE__" aria-describedby="reviewDateHint" onchange="changeReviewDate()" />
+              </div>
+              <button id="reviewLatestButton" type="button" class="secondary" onclick="latestReviewDate()">最近交易日</button>
+              <button id="reviewReadButton" type="button" class="secondary" onclick="loadReviewDashboard({force:true})">读取快照</button>
+              <button id="reviewBuildButton" type="button" onclick="materializeReviewDashboard()">生成所选日复盘</button>
+            </div>
+            <p id="reviewDateHint" class="review-date-hint" aria-live="polite">选择日期查看历史复盘；无当日数据时会标明实际采用的交易日。</p>
+            <div id="reviewDataStatus" class="review-data-status-slot"></div>
+          </section>
+          <nav class="review-loop-nav" aria-label="指数复盘目录">
+            <div class="review-loop-title"><strong>P1 · 指数复盘</strong><small>指数与量能定环境，外围作参照</small></div>
+            <ol>
+              <li><a href="#review-step-conclusion"><b>01</b><span>指数复盘</span></a></li>
+              <li><a href="#review-step-facts"><b>02</b><span>大盘与量能</span></a></li>
+              <li><a href="#review-patterns"><b>03</b><span>形态推演</span></a></li>
+              <li><a href="#review-step-overseas"><b>04</b><span>隔夜外围</span></a></li>
+            </ol>
+          </nav>
+          <div id="reviewNotice" class="review-notice" aria-live="polite"></div>
+          <div id="reviewDashboardRoot" class="review-dashboard-root is-loading" aria-busy="true">
+            <div class="review-loading"><span aria-hidden="true"></span><div><strong>正在装配指数复盘页</strong><p>读取四大指数、量能、广度、关键位与机构旁证。</p></div></div>
+          </div>
+          <section id="review-step-overseas" class="review-section review-overseas review-scroll-target" aria-labelledby="reviewOverseasTitle">
+            <header class="review-section-head">
+              <div><h2 id="reviewOverseasTitle"><span class="review-section-number">04</span>隔夜外围</h2><p>美股 / 港股 · A 股开盘前的外部参照</p></div>
+              <button id="reviewOverseasRefresh" class="secondary" type="button" onclick="loadReviewOverseas({force:true})">刷新外围</button>
+            </header>
+            <p class="review-source-note">最新外围，暂未保存按复盘日查询的历史归档。各卡片标明实际行情日期；抓取时间不等于行情日期。涨跌幅对比各市场前一交易日收盘。</p>
+            <p id="reviewOverseasStatus" class="review-overseas-status" role="status">正在读取外围行情…</p>
+            <div id="reviewOverseasRoot" aria-busy="true"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-sentiment" class="tab-panel" role="tabpanel" aria-labelledby="nav-sentiment" hidden>
+        <div class="review-dashboard">
+          <section id="sentimentCommandBar" class="review-command-bar" aria-label="短线情绪快照控制栏">
+            <div><span class="review-status-dot" aria-hidden="true"></span><strong>短线情绪 · 收盘快照</strong><small id="sentimentFreshnessText">尚未读取短线情绪复盘</small></div>
+            <div class="review-command-actions">
+              <div class="review-date-field"><label for="sentimentDate">情绪复盘日期</label><input id="sentimentDate" type="date" value="__DEFAULT_DATE__" aria-describedby="sentimentDateHint" onchange="changeSentimentDate()" /></div>
+              <button id="sentimentLatestButton" type="button" class="secondary" onclick="latestSentimentDate()">最近交易日</button>
+              <button id="sentimentReadButton" type="button" class="secondary" onclick="loadSentimentDashboard({force:true})">读取快照</button>
+              <button id="sentimentBuildButton" type="button" onclick="materializeSentimentDashboard()">生成所选日复盘</button>
+              <button type="button" class="secondary" onclick="SentimentWorkspace.showEvidence()">题材证据</button>
+            </div>
+            <p id="sentimentDateHint" class="review-date-hint" aria-live="polite">与 P1 共用收盘快照，日期选择独立；生成时更新所选日完整快照。</p>
+            <div id="sentimentDataStatus" class="review-data-status-slot"></div>
+          </section>
+          <nav class="sentiment-workspace-nav" role="tablist" aria-label="短线情绪视图">
+            <button id="sentiment-view-today" type="button" role="tab" aria-controls="sentiment-pane-today" aria-selected="true" data-sentiment-view="today">今日情绪</button>
+            <button id="sentiment-view-rotation" type="button" role="tab" aria-controls="sentiment-pane-rotation" aria-selected="false" tabindex="-1" data-sentiment-view="rotation">题材轮动</button>
+            <button id="sentiment-view-history" type="button" role="tab" aria-controls="sentiment-pane-history" aria-selected="false" tabindex="-1" data-sentiment-view="history">情绪历史</button>
+          </nav>
+          <div id="sentimentNotice" class="review-notice" aria-live="polite"></div>
+          <div id="sentiment-pane-today" class="sentiment-workspace-pane" role="tabpanel" aria-labelledby="sentiment-view-today">
+          <section id="sentimentMarketMood" class="review-market-mood review-surface" aria-labelledby="sentimentMarketMoodTitle">
+            <header class="review-market-mood-head">
+              <div class="review-market-mood-current"><span>当日情绪档位</span><strong id="sentimentMarketMoodValue">待判断</strong><small id="sentimentMarketMoodScore">等待收盘快照</small><small id="sentimentMarketMoodAsOf"></small></div>
+              <div class="review-market-mood-context"><h2 id="sentimentMarketMoodTitle">题材投机</h2><p>结合题材扩散、前排集中度与回流强度判断情绪；高分不代表风险消失。</p></div>
+            </header>
+            <div class="review-market-mood-scale" role="list" aria-label="市场情绪档位">
+              <span role="listitem" class="is-cold" data-mood-stage="cold"><b>冰点<span class="sentiment-stage-current" hidden>当日</span></b><small>扩散弱，涨停供给与接力意愿同步收缩</small></span>
+              <span role="listitem" class="is-normal" data-mood-stage="normal"><b>普通<span class="sentiment-stage-current" hidden>当日</span></b><small>有局部题材，前排可看但后排跟随有限</small></span>
+              <span role="listitem" class="is-active" data-mood-stage="active"><b>活跃<span class="sentiment-stage-current" hidden>当日</span></b><small>题材扩散与接力改善，强势方向有持续性</small></span>
+              <span role="listitem" class="is-hot" data-mood-stage="hot"><b>亢奋<span class="sentiment-stage-current" hidden>当日</span></b><small>普涨与高位加速并存，追价与分歧风险上升</small></span>
+            </div>
+            <details class="sentiment-cycle-explainer"><summary>题材周期的三阶段说明</summary><div class="review-cycle-map" aria-label="题材情绪周期定义">
+              <article><span>01 · 突发信息</span><strong>热启动 / 冷启动</strong><p>量化读取到字段后直线拉板；看开盘或盘中直线、万手单、发酵力度与涨停数量。</p></article>
+              <article><span>02 · 去弱留强</span><strong>分化阶段</strong><p>后排掉队，资金集中到前排；看梯队是否完整、核心是否能换手承接。</p></article>
+              <article><span>03 · 散货 / 回流</span><strong>循环或熄火</strong><p>龙头强势会刺激资金回流并重新进入阶段 1；通常一轮后熄火，除非赚钱效应足够强。</p></article>
+            </div></details>
+          </section>
+          <section id="sentimentBoardDynamics" class="board-dynamics review-surface" aria-label="赚钱效应、晋级率与封板质量" aria-busy="false"></section>
+          <section id="sentimentThemeTree" aria-label="题材事件树与情绪周期" aria-busy="false"></section>
+          <section id="sentimentLiveEmotion" class="review-live-emotion review-surface" aria-labelledby="sentimentLiveEmotionTitle">
+            <header class="review-section-head">
+              <div><h2 id="sentimentLiveEmotionTitle"><span class="review-section-number">LIVE</span>今日实时打板情绪</h2><p>盘中快照，回答“此刻打板好不好做”；与收盘复盘分开计算。</p></div>
+              <button id="sentimentLiveEmotionRefresh" class="secondary" type="button" onclick="loadSentimentLiveEmotion({force:true})">刷新实时</button>
+            </header>
+            <p id="sentimentLiveEmotionStatus" class="review-source-note" role="status">正在读取东财涨停、炸板、跌停池…</p>
+            <div id="sentimentLiveEmotionRoot" class="review-live-emotion-root" aria-busy="true"><div class="review-empty">实时打板情绪加载中…</div></div>
+          </section>
+          <div id="sentimentDashboardRoot" class="review-dashboard-root" aria-busy="false"></div>
+          </div>
+          <div id="sentiment-pane-rotation" class="sentiment-workspace-pane" role="tabpanel" aria-labelledby="sentiment-view-rotation" hidden>
+            <section id="sentimentThemeRotation" aria-label="题材轮动近五日" aria-busy="false"></section>
+            <section id="sentimentThemeCycles" aria-label="短线题材周期"></section>
+            <section id="sentimentThemeEvidence" aria-label="当日题材证据" aria-busy="false"></section>
+          </div>
+          <div id="sentiment-pane-history" class="sentiment-workspace-pane" role="tabpanel" aria-labelledby="sentiment-view-history" hidden>
+            <section id="sentimentEmotionHistory" aria-label="情绪历史" aria-busy="false"></section>
+            <details id="sentimentHistorySupplement" class="sentiment-history-supplement"><summary>接力与封板 · 补充日趋势</summary><section id="sentimentBoardHistory" class="board-dynamics review-surface" aria-label="接力与封板日趋势" aria-busy="false"></section></details>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-trading" class="tab-panel" role="tabpanel" aria-labelledby="nav-trading" hidden>
+        <div class="trading-cockpit-shell">
+          <section class="trading-command-bar" aria-label="交易驾驶舱控制栏">
+            <div>
+              <span class="trading-live-dot" aria-hidden="true"></span>
+              <strong>Decision Engine</strong>
+              <small id="tradingFreshnessText">正在读取持仓与决策状态...</small>
+            </div>
+            <div class="trading-command-actions">
+              <label class="trading-auto-refresh"><input id="tradingAutoRefresh" type="checkbox" checked /> 30 秒只读刷新</label>
+              <button id="tradingReadButton" type="button" class="terminal-primary" onclick="loadTradingWorkspace({force:true})" title="只读取已有持仓、机会和事件，不生成新决策">读取当前状态</button>
+              <button id="tradingComputeButton" type="button" class="secondary" onclick="recomputeTradingWorkspace()" title="同步行情后重算全部持仓与选品池；仅在语义变化时记录事件">同步行情并重算</button>
+            </div>
+          </section>
+
+          <section id="executionWorkbench" class="execution-workbench is-loading" aria-labelledby="executionWorkbenchTitle" aria-busy="true">
+            <div class="execution-workbench-loading" role="status">
+              <span class="execution-workbench-loading-mark" aria-hidden="true"></span>
+              <div><h2 id="executionWorkbenchTitle">正在组装执行工作台</h2><p>核对风险、机会、确认条件和同源事件时间线。</p></div>
+            </div>
+          </section>
+
+          <div class="trading-layout">
+            <aside class="trading-holdings-rail" aria-label="活动持仓">
+              <div class="trading-rail-head">
+                <div><span>POSITIONS</span><strong>活动持仓</strong></div>
+                <b id="tradingHoldingCount">-</b>
+              </div>
+              <div id="tradingHoldingList" class="trading-holding-list">
+                <p class="hint">正在读取...</p>
+              </div>
+              <div id="tradingRiskProfile" class="trading-risk-profile"></div>
+            </aside>
+
+            <main class="trading-cockpit-main">
+              <div id="tradingCockpitNotice" class="trading-cockpit-notice" aria-live="polite"></div>
+              <div id="tradingCockpitContent" class="trading-cockpit-content">
+                <div class="trading-empty-state"><strong>正在组装交易驾驶舱</strong><p>读取 Action、原因、剧本、证据和决策时间线。</p></div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-permission" class="tab-panel" role="tabpanel" aria-labelledby="nav-permission" hidden>
+        <div class="decision-entry">
+          <h2>交易决策</h2><p>从指数量能与赚钱效应，形成方向、主备候选和次日观察条件。</p>
+          <button type="button" onclick="switchTab('decision-research')">模式收益</button>
+          <button type="button" class="secondary" onclick="switchTab('decision-plan')">明日预案</button>
+          <button type="button" class="secondary" onclick="switchTab('decision-live')">今日跟踪</button>
+        </div>
         <div class="grid">
           <div class="card wide fs-primary-card">
             <div class="fs-section-header">
               <span class="fs-eyebrow">SUMMARY · 交易闸门</span>
-              <h2>权限确认</h2>
+              <h2>交易权限</h2>
               <p>先回答今天能不能开仓、能不能加仓、最大策略强度是多少。详细评分和证据链进入「大盘计算」继续验证。</p>
             </div>
             <div class="fs-action-bar">
@@ -77,44 +275,82 @@
         </div>
       </section>
 
-      <section id="tab-data" class="tab-panel" role="tabpanel">
+      <section id="tab-decision-research" class="tab-panel decision-page" role="tabpanel" aria-labelledby="nav-decision-research" hidden>
+        <div class="decision-toolbar">
+          <label>盘后评估日期<input type="date" id="decisionResearchDate" /></label>
+          <button type="button" data-decision-action="load-research">读取最新评估</button>
+          <button type="button" class="secondary" data-decision-action="build-research">生成／更新评估</button>
+        </div>
+        <p id="decisionResearchStatus" class="decision-status" role="status" aria-live="polite">按已收盘日期查看模式收益与参与条件；明日预案引用冻结评估。</p>
+        <div id="decisionResearchResult"></div>
+      </section>
+      <section id="tab-decision-plan" class="tab-panel decision-page" role="tabpanel" aria-labelledby="nav-decision-plan" hidden>
+        <div class="decision-toolbar">
+          <label>盘后分析日期<input type="date" id="decisionPlanDate" /></label>
+          <button type="button" data-decision-action="load-plan">读取预案</button>
+          <button type="button" class="secondary" data-decision-action="build">生成并冻结预案</button>
+        </div>
+        <p id="decisionPlanStatus" class="decision-status" role="status" aria-live="polite">选择盘后日期，查看下一交易日预案。</p>
+        <div id="decisionPlanResult"></div>
+      </section>
+      <section id="tab-decision-live" class="tab-panel decision-page" role="tabpanel" aria-labelledby="nav-decision-live" hidden>
+        <div class="decision-toolbar">
+          <label>盘后依据日<input type="date" id="decisionLiveDate" /></label>
+          <label>观察时点<input type="time" id="decisionLiveTime" step="300" aria-describedby="decisionLiveTimeHelp" /></label>
+          <button type="button" data-decision-action="load-live">读取跟踪</button>
+          <label class="decision-check"><input type="checkbox" id="decisionAutoRefresh" />每30秒读取缓存</label>
+        </div>
+        <p id="decisionLiveTimeHelp" class="decision-muted">时点留空则读取当天可用进度；历史日截止15:00。依托现有分钟缓存更新。</p>
+        <p id="decisionLiveStatus" class="decision-status" role="status" aria-live="polite">先选择已冻结的盘后预案。</p>
+        <div id="decisionLiveResult"></div>
+      </section>
+      <section id="tab-data" class="tab-panel" role="tabpanel" aria-labelledby="nav-data" hidden>
         <div class="grid">
 
       <!-- 数据源子 Tab 切换器 -->
       <div class="card wide fs-tab-switch-card">
         <div class="data-source-tabs">
           <button class="data-source-tab active" type="button" data-source-tab="status" onclick="switchDataSourceTab('status')">总览 · 数据状态</button>
-          <button class="data-source-tab" type="button" data-source-tab="tushare" onclick="switchDataSourceTab('tushare')">Tushare（核心）</button>
-          <button class="data-source-tab" type="button" data-source-tab="akshare" onclick="switchDataSourceTab('akshare')">AkShare（增强）</button>
+          <button class="data-source-tab" type="button" data-source-tab="tushare" onclick="switchDataSourceTab('tushare')">基础行情</button>
+          <button class="data-source-tab" type="button" data-source-tab="minutes" onclick="switchDataSourceTab('minutes')">分钟行情</button>
+          <button class="data-source-tab" type="button" data-source-tab="limits" onclick="switchDataSourceTab('limits')">涨停池</button>
+          <button class="data-source-tab" type="button" data-source-tab="futures" onclick="switchDataSourceTab('futures')">股指期货</button>
+          <button class="data-source-tab" type="button" data-source-tab="review" onclick="switchDataSourceTab('review')">题材与复盘</button>
         </div>
       </div>
 
       <!-- 子 Tab 1：总览 · 数据状态 -->
-      <div class="card wide data-source-panel fs-primary-card" data-source-panel="status">
-        <div class="fs-section-header">
-          <span class="fs-eyebrow">SUMMARY · 数据可用性</span>
-          <h2>全部数据源状态</h2>
-          <p id="dataStatus">正在检查所有数据源...</p>
-        </div>
+      <div class="card wide data-source-panel fs-primary-card sync-overview" data-source-panel="status">
+        <div class="sync-overview-head">
+          <div><h2>数据总览</h2>
+          <p id="dataStatus" role="status" aria-live="polite">正在检查所选交易日的数据与归档…</p>
+          </div>
         <div class="fs-action-bar">
-          <button class="secondary" onclick="loadDataStatus()">刷新数据状态</button>
-          <button class="secondary" onclick="useLatestHistoryDate()">使用最近历史日期分析</button>
+          <button id="dataStatusRefresh" type="button" class="secondary" onclick="loadDataStatus()">刷新数据状态</button>
+          <button type="button" class="secondary" onclick="useLatestHistoryDate()">最近历史日</button>
         </div>
-        <div id="dataStatusGrid" class="data-status-grid"></div>
-        <pre id="syncResult" style="display:none">链路规则：核心数据缺失阻断 PART1/2/3；增强数据缺失自动降级，相关维度按 0 计算。</pre>
+        </div>
+        <div id="dataSyncSummary" class="sync-summary" aria-label="数据目录概况"></div>
+        <div class="sync-runtime">
+        <p id="dataPipelineStatus" role="status" aria-live="polite"></p>
+        <p id="dataScheduleStatus" class="ds-catalog-note"></p>
+        </div>
+        <p class="sync-explainer">调度状态与功能接入分别核对；存储跨度不代表逐日完整。时间均为北京时间。</p>
+        <div id="dataStatusGrid" class="data-status-grid sync-catalog" aria-busy="true"><p class="sync-empty">正在读取数据目录…</p></div>
+        <pre id="syncResult" style="display:none">缺失数据保留缺口，按模块报告影响。</pre>
       </div>
 
       <!-- 子 Tab 2：Tushare 核心数据 -->
       <div class="card wide data-source-panel fs-primary-card" data-source-panel="tushare" style="display:none">
         <div class="fs-section-header">
           <span class="fs-eyebrow">ACTION · 核心数据补齐</span>
-          <h2>Tushare 核心数据同步</h2>
+          <h2>基础行情同步</h2>
           <p>同步个股日线、基准指数、股票基础信息、资金流向。先看缺口，再执行最小必要同步。</p>
         </div>
         <div class="sync-button-grid">
           <button onclick="syncLatestData()" title="同步当日个股日线 + 基准指数 + 资金流向">① 同步最新交易日</button>
           <button onclick="syncIncrementalData()" title="检查最近 N 天缺口，按缺口同步">② 增量同步缺口</button>
-          <button onclick="syncIndexHistoryYear()" title="只同步 4 个基准指数 1 年历史（约 5 秒）">③ 补齐指数 1 年历史</button>
+          <button onclick="syncIndexHistoryYear()" title="同步 7 个宽基指数 1 年历史，含中证500/1000">③ 补齐指数 1 年历史</button>
           <button class="secondary" onclick="syncHistoryYear()" title="全市场 1 年历史，耗时较长">④ 导入全市场 1 年历史</button>
         </div>
         <pre id="tushareSyncResult">先看"总览"判断缺什么，再选对应按钮同步。补齐指数 1 年历史可解决 MA120 计算缺口。</pre>
@@ -126,90 +362,85 @@
         <pre id="tushareHealthResult">健康检查会固定测试 stock_basic、trade_cal、daily、daily_basic，避免把"已配置"误认为"可用"。</pre>
       </div>
 
-      <!-- 子 Tab 3：AkShare 增强数据 -->
-      <div class="card wide data-source-panel fs-primary-card" data-source-panel="akshare" style="display:none">
-        <div class="fs-section-header">
-          <span class="fs-eyebrow">EXPLORE · 增强数据</span>
-          <h2>AkShare 增强数据同步</h2>
-          <p>免费、不需要 token。用于涨停池、概念板块、北向资金等增强维度；任一接口失败会直接报错，不做多源回退。</p>
-        </div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="minutes" style="display:none">
+        <div class="fs-section-header"><h2>分钟行情</h2><p>补齐所选日候选股与基准指数的 5 分钟线。KlineShare、Tushare 与东方财富分别保留来源；仅同步缺口。</p></div>
+        <button type="button" onclick="syncDataDomain('minutes', this)">补齐分钟行情</button>
+        <pre id="minutesSyncResult" role="status" aria-live="polite">历史超出接口可用窗口时会保留缺口，不以其他日期代替。</pre>
+      </div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="limits" style="display:none">
+        <div class="fs-section-header"><h2>涨停池</h2><p>东方财富按交易日提供连板数、封板时间和炸板次数。返回日期与所选日一致才会入库。</p></div>
+        <button type="button" onclick="syncDataDomain('limits', this)">同步所选日涨停池</button>
+        <pre id="limitsSyncResult" role="status" aria-live="polite">确认空池与接口不可用分别记录；历史数据继续用于复盘验证。</pre>
+      </div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="review" style="display:none">
+        <div class="fs-section-header"><h2>题材与复盘归档</h2><p>行情同步后，通过 Tushare 兼容通道更新东方财富概念、细分行业成分及当日复盘。查看复盘只读取归档。</p></div>
         <div class="sync-button-grid">
-          <button onclick="syncAkshare('limit_up_pool')" title="东方财富涨停池：连板数/封板时间/炸板次数">① 同步涨停池</button>
-          <button onclick="syncAkshare('concept_boards')" title="东方财富概念板块当日快照">② 同步概念板块</button>
-          <button onclick="syncAkshare('north_capital_flow')" title="北向资金历史净流入">③ 同步北向资金</button>
-          <button class="secondary" onclick="syncAkshare('all')" title="一次性同步上述全部">④ 一键全部同步</button>
+          <button type="button" onclick="syncDataDomain('topics', this)">更新题材成分</button>
+          <button type="button" onclick="syncDataDomain('review', this)">生成所选日复盘</button>
         </div>
-        <pre id="akshareSyncResult">单一来源策略：每类数据只对应一个最稳定的 akshare 接口，失败直接报错。</pre>
+        <pre id="reviewSyncResult" role="status" aria-live="polite">服务器自动按交易日完成同步与复盘；这里可手动补齐指定日期。</pre>
+      </div>
+      <div class="card wide data-source-panel fs-primary-card" data-source-panel="futures" style="display:none">
+        <div class="fs-section-header"><h2>股指期货机构持仓</h2><p>同步 IF、IH、IC、IM 当前展示合约的机构持仓。数据日期须与所选日一致；部分产品未发布时保留缺口。</p></div>
+        <p class="ds-catalog-note">手动同步会更新所选日，并补齐近7个交易日的缺失归档。</p>
+        <button type="button" onclick="syncDataDomain('futures', this)">补齐期指持仓</button>
+        <pre id="futuresSyncResult" role="status" aria-live="polite">线上任务独立于复盘流水线；实际启用状态、调度时间和最近执行结果见总览。</pre>
       </div>
 
         </div>
       </section>
 
-      <section id="tab-market" class="tab-panel" role="tabpanel">
-        <div class="grid">
-
-      <div class="card wide fs-primary-card">
-        <div class="fs-section-header">
-          <span class="fs-eyebrow">SUMMARY → EVIDENCE · 大盘交易闸门</span>
-          <h2>PART1 大盘计算和解读</h2>
-          <p>先给出交易权限结论，再展示趋势、量能、广度、主线和风险证据链。板块口径当前是 Tushare stock_basic.industry 行业聚合 proxy。</p>
+      <section id="tab-firstboard" class="tab-panel board-workspace" role="tabpanel" aria-labelledby="nav-firstboard" hidden>
+        <div class="br-toolbar">
+        <header class="br-page-header"><h2>涨停聚焦</h2><p>首板与连板 · 核心资格 · 区间强势股复盘</p></header>
+        <div class="br-command">
+          <div class="trading-date-control" role="group" aria-label="涨停聚焦交易日"><button type="button" aria-label="上一交易日" onclick="BoardResearch.shiftDate(-1)">‹</button><input id="firstboardDate" type="date" aria-label="交易日" onchange="BoardResearch.load('firstboard')" /><button type="button" aria-label="下一交易日" onclick="BoardResearch.shiftDate(1)" id="firstboardNext">›</button></div>
+          <button type="button" onclick="BoardResearch.load('firstboard', {latest:true})">最近归档</button>
+          <button id="firstboardRefresh" type="button" class="br-primary" onclick="BoardResearch.load('firstboard', {refresh:true})">刷新数据</button>
+          <span id="firstboardStatus" role="status" aria-live="polite">读取已归档首板：竞价成交金额降序优先，同金额再按封单金额降序。</span>
         </div>
-        <div class="fs-action-bar">
-          <button id="marketQueryButton" onclick="runMarketPermission()">查询并更新解读</button>
-          <button class="secondary" onclick="forceRunMarketPermission()" title="跳过缓存，重新计算（约 20-30 秒）">强制重算</button>
-          <button id="marketSyncMissingButton" class="secondary" onclick="syncMarketMissingData()" title="同步当前日期缺失的个股日线、资金流向和基准指数后自动重新计算">同步缺失数据</button>
-          <a class="link-button secondary" href="/api/v1/market/permission?date=__DEFAULT_DATE__" target="_blank">查看 PART1 JSON</a>
         </div>
-        <div id="marketProgress" class="task-progress" hidden aria-live="polite">
-          <div class="task-progress-head">
-            <strong id="marketProgressLabel">准备计算</strong>
-            <span id="marketProgressPercent" class="task-progress-percent">0%</span>
-          </div>
-          <div class="task-progress-track"><span id="marketProgressBar" class="task-progress-bar"></span></div>
-          <div class="task-progress-meta">
-            <span id="marketProgressElapsed">已等待 0 秒</span>
-            <span id="marketProgressRemaining">预计剩余约 12 秒</span>
-          </div>
-        </div>
-        <div id="marketPermissionResult" class="market-output">等待计算...</div>
-      </div>
-
-      <div class="card wide fs-secondary-card">
-        <div class="fs-section-header">
-          <span class="fs-eyebrow">EXPLAIN · 外部证据校准</span>
-          <h2>波浪/外部分析文档导入</h2>
-          <p>
-          上传黑兔量化等外部分析文档（.docx / .pdf / .txt / .md），系统会用正则提取
-          "支撑/压力/波浪位 + 价位" 组合，并叠加到当前日期的 PART1 关键位上。可选 AI 解读（需配置 ANTHROPIC_API_KEY）。
-          </p>
-        </div>
-        <div class="wave-upload-row">
-          <input type="file" id="waveDocFile" accept=".docx,.pdf,.txt,.md" />
-          <label class="check"><input id="waveUseAi" type="checkbox" /> 启用 AI 解读（Claude Haiku）</label>
-          <button onclick="uploadWaveDoc()">上传并解析</button>
-          <button class="secondary" onclick="loadWaveDocs()">查看已上传</button>
-          <button class="secondary" onclick="deleteWaveDocs()" style="color:#d97706">清空今日文档</button>
-        </div>
-        <div id="waveDocResult" class="wave-doc-output">等待上传... 上传后会在下次 PART1 计算时自动叠加到关键位上。</div>
-      </div>
-        </div>
+        <div class="br-view-tabs" role="tablist" aria-label="涨停聚焦视图"><button type="button" role="tab" id="focus-list-tab" aria-selected="true" aria-controls="firstboardRoot" onclick="BoardResearch.setView('list')">首板名单</button><button type="button" role="tab" id="focus-ladder-tab" aria-selected="false" aria-controls="firstboardLadder" onclick="BoardResearch.setView('ladder')">连板天梯</button><button type="button" role="tab" id="focus-strong-tab" aria-selected="false" aria-controls="firstboardStrong" tabindex="-1" onclick="BoardResearch.setView('strong')">核心资格</button><button type="button" role="tab" id="focus-strength-tab" aria-selected="false" aria-controls="firstboardStrength" tabindex="-1" onclick="BoardResearch.setView('strength')">强势股复盘</button></div>
+        <div id="firstboardRoot" role="tabpanel" aria-labelledby="focus-list-tab" aria-busy="false"></div><div id="firstboardLadder" role="tabpanel" aria-labelledby="focus-ladder-tab" hidden></div><div id="firstboardStrong" role="tabpanel" aria-labelledby="focus-strong-tab" hidden></div><div id="firstboardStrength" role="tabpanel" aria-labelledby="focus-strength-tab" hidden></div>
       </section>
 
-      <section id="tab-sectors" class="tab-panel" role="tabpanel">
+      <section id="tab-boardeffects" class="tab-panel board-workspace" role="tabpanel" aria-labelledby="nav-boardeffects" hidden>
+        <div class="br-toolbar">
+        <header class="br-page-header"><h2>打板效应</h2><p>昨日固定样本的次日反馈 · 全窗口与最近7日对照</p></header>
+        <div class="br-command">
+          <label>截至交易日<input id="boardeffectsDate" type="date" onchange="BoardResearch.load('boardeffects')" /></label>
+          <label>观察窗口<select id="boardeffectsDays" onchange="BoardResearch.load('boardeffects')"><option value="30">近30个交易日</option><option value="20">近20个交易日</option></select></label>
+          <label>日趋势指标<select id="boardeffectsMetric" onchange="BoardResearch.renderEffects()"><option value="avg">均值</option><option value="median">中位数</option></select></label>
+          <button type="button" onclick="BoardResearch.load('boardeffects', {latest:true})">最近归档</button>
+          <button id="boardeffectsRefresh" type="button" class="br-primary" onclick="BoardResearch.load('boardeffects', {refresh:true})">刷新统计</button>
+          <span id="boardeffectsStatus" role="status" aria-live="polite">昨日固定样本的次日反馈，按已收盘交易日统计。</span>
+        </div>
+        </div>
+        <div class="br-view-tabs" role="tablist" aria-label="打板效应视图"><button type="button" role="tab" id="effects-returns-tab" aria-selected="true" aria-controls="boardeffectsRoot" onclick="BoardResearch.setEffectsView('returns')">涨停收益</button><button type="button" role="tab" id="effects-labels-tab" aria-selected="false" aria-controls="boardeffectsLabels" tabindex="-1" onclick="BoardResearch.setEffectsView('labels')">标签溢价与预期管理</button></div>
+        <div id="boardeffectsRoot" role="tabpanel" aria-labelledby="effects-returns-tab" aria-busy="false"></div><div id="boardeffectsLabels" role="tabpanel" aria-labelledby="effects-labels-tab" hidden></div>
+      </section>
+
+      <section id="tab-sectors" class="tab-panel" role="tabpanel" aria-labelledby="nav-sectors" hidden>
         <div class="grid">
+
+      <div class="card wide review-workspace" id="sectorCapacity">
+        <header class="capacity-header"><div><h2>容量新晋</h2><p>今日成交额≥20亿，过去20个交易日未达到20亿的容量新成员。</p></div>
+          <div class="fs-action-bar"><label>观察日 <input type="date" id="sectorNewFacesDate" value="__DEFAULT_DATE__" /></label><button type="button" id="sectorNewFacesLoad" onclick="ResearchEvidence.loadNewFaces()">读取容量新晋</button></div>
+        </header><div id="sectorNewFacesRoot" aria-busy="false"><p>读取所选交易日的容量新成员。</p></div>
+      </div>
 
       <div class="card wide fs-primary-card">
         <div class="fs-section-header">
           <span class="fs-eyebrow">EVIDENCE → EXPLORE · 板块生命线</span>
           <h2>PART2 板块动向</h2>
-          <p>先展示今日强力板块，再给趋势板块、龙头榜、指标口径。Tushare moneyflow 已接入；分钟启动时间和封板质量仍会明确标记为待接入。</p>
+          <p>与短线情绪共用东方财富概念与行业成分；这里看中期趋势与持续性，题材归因及短线筛选可在下方单独核验。</p>
         </div>
         <div class="fs-action-bar">
           <button id="sectorQueryButton" onclick="runSectorTrends()" title="读取当日板块动向缓存。命中秒回；缺失时会自动引导预计算。">
             查询板块动向 <small class="button-hint">读缓存 · 秒回</small>
           </button>
-          <button id="sectorPrecomputeButton" class="secondary" onclick="runPrecomputeSectorsFromPage()" title="强制重跑 60 日趋势窗口，覆盖已有缓存。耗时 60-120 秒。仅在数据源或算法更新后使用。">
-            强制重新计算 <small class="button-hint">跑全量 · 60-120s</small>
+          <button id="sectorPrecomputeButton" class="secondary" onclick="runPrecomputeSectorsFromPage()" title="生成所选日板块与MA5结果；已有同版本结果复用，运行中任务继续查询；关闭页面不取消计算。">
+            生成 / 查询任务 <small class="button-hint">后台任务 · 可关闭页面</small>
           </button>
           <a class="link-button secondary" href="/api/v1/market/sectors?date=__DEFAULT_DATE__" target="_blank">查看板块 JSON</a>
         </div>
@@ -221,57 +452,327 @@
           <div class="task-progress-track"><span id="sectorProgressBar" class="task-progress-bar"></span></div>
           <div class="task-progress-meta">
             <span id="sectorProgressElapsed">已等待 0 秒</span>
-            <span id="sectorProgressRemaining">预计完整结果剩余约 65 秒</span>
-            <!-- partial_error 状态下显示，其他状态下 hidden。仅重跑龙头榜，不重跑板块动向 -->
-            <button id="sectorProgressRetryLeaders" class="secondary" hidden onclick="retryLeadersOnly()">重试龙头榜</button>
+            <span id="sectorProgressRemaining">正在读取板块缓存</span>
           </div>
         </div>
+        <details id="themeAcceptance" class="theme-acceptance">
+          <summary>归因与筛选依据（验收）</summary>
+          <section id="ta-root" class="ta-root" aria-label="题材归因验收" aria-busy="false">
+            <p class="ta-note">专项历史回放 · 2026-09-01 至 2026-09-22。验收日期独立于板块趋势日期；先看原始原因，再核对计入的跟随股。</p>
+            <div class="ta-toolbar">
+              <label>验收日期<select id="ta-date" aria-label="验收日期"><option value="">等待读取日期</option></select></label>
+              <button id="ta-retry" type="button">重新读取</button>
+            </div>
+            <p id="ta-status" class="ta-status" role="status" aria-live="polite">展开后读取回放归档。</p>
+            <div id="ta-content" hidden>
+              <div id="ta-summary" class="ta-summary"></div>
+              <div class="ta-toolbar">
+                <label>题材范围<select id="ta-topic" aria-label="题材范围"></select></label>
+                <label>记录状态<select id="ta-filter" aria-label="记录状态"><option value="all">全部状态</option><option value="changed">仅看变化</option><option value="matched">已归因</option><option value="pending">待核验</option><option value="unmapped">未计入</option></select></label>
+                <label class="ta-search">搜索股票、代码或原因<input id="ta-search" type="search" autocomplete="off" placeholder="输入名称、代码或原因词" /></label>
+              </div>
+              <div id="ta-tabs" class="ta-tabs" role="tablist" aria-label="验收内容">
+                <button id="ta-tab-members" type="button" role="tab" aria-selected="true" aria-controls="ta-panel" data-ta-tab="members">成员观察</button>
+                <button id="ta-tab-events" type="button" role="tab" aria-selected="false" aria-controls="ta-panel" tabindex="-1" data-ta-tab="events">逐股归因</button>
+                <button id="ta-tab-directions" type="button" role="tab" aria-selected="false" aria-controls="ta-panel" tabindex="-1" data-ta-tab="directions">方向对照</button>
+                <button id="ta-tab-rules" type="button" role="tab" aria-selected="false" aria-controls="ta-panel" tabindex="-1" data-ta-tab="rules">缺口与规则</button>
+              </div>
+              <div id="ta-panel" role="tabpanel" aria-labelledby="ta-tab-members" tabindex="-1"></div>
+              <section id="ta-detail" class="ta-detail" aria-label="归因证据详情" tabindex="-1" hidden></section>
+            </div>
+          </section>
+        </details>
         <div id="sectorTrendResult" class="market-output">等待计算...</div>
       </div>
 
-      <div class="card wide story-aligned-card fs-secondary-card" id="candidatesCard">
-        <div class="fs-section-header">
-          <span class="fs-eyebrow">ACTION · 候选票池</span>
-          <h2>MA5 趋势战法候选</h2>
-          <p>从板块动向的龙头/中军候选里，筛出符合 MA5 趋势战法的多头排列、入场形态和交易价位。勾选后可进入盘中监控实时验证。</p>
-        </div>
-        <div id="candidatesResult" class="candidates-output">等待板块动向计算完成...</div>
-      </div>
+
         </div>
       </section>
 
-      <section id="tab-analysis" class="tab-panel" role="tabpanel">
+      <section id="tab-selection" class="tab-panel" role="tabpanel" aria-labelledby="nav-selection" hidden>
+        <div class="grid selection-workbench">
+          <div class="card wide fs-primary-card selection-primary-card" id="candidatesCard">
+            <div class="fs-section-header selection-header">
+              <div>
+                <h2>选品池</h2>
+                <p>按战法查看候选范围、入选依据与条件缺口；形态、资金和交易计划分别展示。</p>
+              </div>
+              <label class="selection-strategy-control">
+                <span>当前战法</span>
+                <select id="candidateStrategySelect" onchange="changeCandidateStrategy(this.value)">
+                  <option value="ma5_v0_2" selected>MA5 趋势</option>
+                  <option value="red_k_net_inflow">红K净流入</option>
+                  <option value="structure_repair_520">结构修复520</option>
+                  <option value="weekly_breakout">周K突破套利</option>
+                  <option value="oversold_first_board@0.1.0">超跌首板点火</option>
+                </select>
+              </label>
+            </div>
+            <div class="selection-pool-toolbar">
+              <label>研究日 <input id="selectionResearchDate" type="date" value="__DEFAULT_DATE__" onchange="syncMarketDates(this.value); loadSelectionPool(true)" /></label>
+              <details id="selectionPickedDropdown" class="selection-picked-dropdown">
+                <summary>当前已选 <b id="selectionPickedCount">0</b><span>只</span></summary>
+                <div id="selectionPickedList" class="selection-picked-list"><p>尚未选择股票</p></div>
+              </details>
+              <div class="selection-stock-search">
+                <input id="selectionStockSearch" type="search" autocomplete="off" aria-label="搜索股票加入监控" placeholder="搜索股票加入监控" oninput="scheduleSelectionStockSearch(this.value)" />
+                <div id="selectionStockSearchResults" class="selection-search-results" hidden></div>
+              </div>
+              <button type="button" onclick="loadSelectionPool(true)">刷新选品池</button>
+            </div>
+            <div id="selectionRuleStrip" class="selection-rule-strip" aria-label="选品口径">
+              <span><b>范围</b> 全市场独立扫描</span>
+              <span><b>条件</b> 原硬条件 + 大盘量能动态上限</span>
+              <span><b>输出</b> 入池后验证触发条件</span>
+            </div>
+            <div id="candidatesResult" class="candidates-output">等待读取所选策略候选...</div>
+          </div>
+        </div>
+      </section>
+
+      <section id="tab-trade-journal" class="tab-panel" role="tabpanel" aria-labelledby="nav-trade-journal" hidden>
+        <div id="tradeJournalRoot" class="tj-workbench" data-jw-stage="home" data-jw-archive="false">
+          <div id="journalWorkspaceOverview"></div>
+          <form id="tradeJournalFilters" class="tj-toolbar jw-search-form" aria-label="交易复盘筛选">
+            <label class="tj-search">查找交易<input name="query" type="search" autocomplete="off" placeholder="输入股票名称或代码" /></label>
+            <button type="submit">查找</button>
+            <details class="jw-filter-more"><summary>按日期或状态筛选</summary><div class="tj-toolbar">
+              <label>开始日期<input name="start_date" type="date" /></label>
+              <label>结束日期<input name="end_date" type="date" /></label>
+              <label>交易状态<select name="status"><option value="">全部</option><option value="open">尚有持仓</option><option value="closed">已清仓</option></select></label>
+              <button type="button" class="secondary" data-tj-action="reset">清除筛选</button>
+            </div></details>
+          </form>
+          <p id="tradeJournalStatus" class="tj-status" role="status" aria-live="polite">尚未读取归档成交。选择日期或股票后读取。</p>
+
+
+
+
+          <div id="journalRecords" class="tj-layout">
+            <section class="tj-roster" aria-label="库存轮名单"><div id="tradeJournalList"></div><div id="tradeJournalPagination" class="tj-pagination"></div></section>
+            <section id="tradeJournalDetail" class="tj-detail" tabindex="-1" aria-label="库存轮与决策详情"><p class="tj-empty">选取一轮库存，核对逐笔成交、决策版本与缺项。</p></section>
+          </div>
+          <section id="journalWorkspaceVerification" aria-label="本轮预期与规则收益对照"></section>
+
+
+
+
+          <details id="journalTools" class="jw-toolbox">
+            <summary>更多工具与完整记录</summary>
+            <p class="tj-muted">模式统计、买前预案和账户对账，在需要时打开。</p>
+          <div id="tradeJournalSummary" class="tj-summary"></div>
+            <details id="tradeJournalPlanSection" class="tj-section tj-archive-section">
+            <summary>交易前预案</summary>
+            <p class="tj-muted">首笔成交前即可独立保存预期。每次保存生成服务器时点与新版本；缺项保留未知，保存不发送订单。</p>
+            <div class="tj-actions"><button type="button" data-tj-action="plans">读取已存预案</button><button type="button" class="secondary" data-tj-action="new-plan">新建交易前预案</button></div>
+            <p id="tradeJournalPlanStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取独立预案。库存轮与成交记录可在之后明确关联。</p>
+            <div id="tradeJournalPlanEditor"></div><div id="tradeJournalPlans"></div>
+          </details>
+            <details id="tradeJournalMethodSection" class="tj-section tj-archive-section">
+            <summary>模式卡与研究假设</summary>
+            <p class="tj-muted">模式定义、实验协议和实际成交分别保存。使用状态不等于收益优势；历史版本和失败尝试持续保留。</p>
+            <form id="tradeJournalMethodFilters" class="tj-toolbar"><label class="tj-search">模式名称或研究问题<input name="query" type="search" /></label><label>使用状态<select name="status"><option value="">全部</option><option value="draft">草稿</option><option value="trial">试用</option><option value="active">使用中</option><option value="retired">已退役</option></select></label><button type="submit">读取模式与假设</button><button type="button" class="secondary" data-tj-action="new-mode">新建模式卡</button><button type="button" class="secondary" data-tj-action="new-hypothesis">登记研究假设</button></form>
+            <p id="tradeJournalMethodStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取模式与假设目录。</p>
+            <div id="tradeJournalMethodEditor"></div><div id="tradeJournalModeCards"></div><div id="tradeJournalHypotheses"></div>
+          </details>
+            <details id="tradeJournalAnalyticsSection" class="tj-section tj-archive-section">
+            <summary>真实成交统计与分组</summary>
+            <p class="tj-muted">筛选沿用上方股票与日期；整体按完整闭知库存轮，模式按明确股数切片分别列示。IPO、ETF和普通二级证券保留分组，未知与排除项不补零。</p>
+            <form id="tradeJournalAnalyticsForm" class="tj-toolbar"><label>分组维度（可多选）<select name="group_by" multiple size="4"><option value="mode">模式数量切片</option><option value="month" selected>清仓月份</option><option value="environment">记录的市场环境</option><option value="role">记录的角色</option><option value="execution_difference">记录的执行差异</option><option value="security_type" selected>证券类型</option></select></label><button type="submit">读取真实成交统计</button></form>
+            <p id="tradeJournalAnalyticsStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取统计。</p><div id="tradeJournalAnalytics"></div>
+          </details>
+            <details id="tradeJournalPortfolioSection" class="tj-section tj-archive-section">
+            <summary>仓位与风险 · 当前账户事实</summary>
+            <p class="tj-muted">读取当前持仓、原报价时点与已保存风险配置，不能当成历史交易日的账户状态。情景仅为用户提议，不改持仓、现金或生产风险设置。</p>
+            <form id="tradeJournalPortfolioForm" class="tj-toolbar"><label>已有账户配置标识<input name="profile_id" value="default" /></label><button type="submit">读取当前事实</button><button type="button" class="secondary" data-tj-action="portfolio-history">读取事实快照目录</button></form>
+            <p id="tradeJournalPortfolioStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取当前账户事实。</p><div id="tradeJournalPortfolio"></div>
+            <form id="tradeJournalScenarioForm" class="tj-editor"><h3>逐腿提议情景</h3><p class="tj-muted">按表内顺序假设以用户价格成交；未填费用保留未知，不假设未来买入已经可卖。</p><div id="tradeJournalScenarioLegs"></div><div class="tj-actions"><button type="button" class="secondary" data-tj-action="scenario-add">增加一腿</button></div><div class="tj-form-grid"><label>提议动作<input name="action" placeholder="减仓 / 换票 / 腾出资金" /></label><label>提议理由<input name="reason" /></label><label class="tj-span">用户提议边界（不修改账户配置）<textarea name="user_limits" rows="2"></textarea></label></div><p id="tradeJournalScenarioStatus" class="tj-form-status" role="status" aria-live="polite"></p><div class="tj-actions"><button type="submit">只读预览情景</button><button type="button" class="secondary" data-tj-action="portfolio-capture">保存当前事实与已预览情景</button></div></form><div id="tradeJournalPortfolioHistory"></div>
+          </details>
+            <details id="tradeJournalObservationSection" class="tj-section tj-archive-section">
+            <summary>观察与未买样本</summary>
+            <p class="tj-muted">观察名单单独保存；未买、未触发和未成交不进入真实交易收益分母。</p>
+            <div class="tj-actions"><button type="button" data-tj-action="observations">读取观察记录</button><button type="button" class="secondary" data-tj-action="observe-research">保存研究快照候选</button></div>
+            <p id="tradeJournalObservationStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取观察归档；日期与股票筛选沿用上方条件。</p>
+            <div id="tradeJournalObservationEditor"></div><div id="tradeJournalObservations"></div>
+          </details>
+            <details id="tradeJournalSourceSection" class="tj-section tj-archive-section">
+            <summary>来源原件与导入批次</summary>
+            <div class="tj-actions"><button type="button" data-tj-action="sources">读取来源归档</button></div>
+            <p id="tradeJournalSourceStatus" class="tj-form-status" role="status" aria-live="polite">尚未读取来源和批次。原件内容按需读取。</p>
+            <div id="tradeJournalSources"></div>
+          </details>
+            <details id="journalAccountTools" class="tj-section tj-archive-section jw-account-tools">
+            <summary>账户事实工具 · 委托回写与当前库存</summary>
+            <p class="tj-muted">这里记录已在券商发生的委托与成交，并维护当前账户库存。历史导入和归档库存轮不会自动改写当前账户；同笔成交须在轮次内明确关联。</p>
+            <div id="tab-holdings" aria-label="账户事实工具">
+        <div class="grid holdings-workbench">
+          <div class="card wide fs-primary-card holdings-primary-card">
+            <div class="fs-section-header">
+              <span class="fs-eyebrow">TRADES → POSITION · 成交事实与派生持仓</span>
+              <h2>账户成交与当前库存</h2>
+              <p>先记录券商真实委托与每一笔成交；系统再自动计算是否持仓、数量、成本、仓位与收益。</p>
+            </div>
+            <div class="holdings-toolbar">
+              <div class="holdings-toolbar-actions">
+                <button type="button" onclick="loadHoldings()">刷新持仓</button>
+                <button type="button" class="secondary" onclick="runHoldingDailyCheck()">执行今日检测</button>
+              </div>
+              <label class="holdings-filter">查看范围
+                <select id="holdingsStatusFilter" onchange="loadHoldings()">
+                  <option value="open">活动持仓</option>
+                  <option value="all">全部记录</option>
+                  <option value="closed">已结束</option>
+                </select>
+              </label>
+            </div>
+            <div id="holdingsNotice" class="holdings-notice" aria-live="polite"></div>
+            <div id="holdingsSummary" class="holding-summary-grid">
+              <article><span>活动持仓</span><strong>-</strong><small>等待加载</small></article>
+              <article><span>需处理</span><strong>-</strong><small>减仓或退出</small></article>
+              <article><span>平均浮盈</span><strong>-</strong><small>以最新日检为准</small></article>
+              <article><span>今日检测</span><strong>-</strong><small>等待加载</small></article>
+            </div>
+          </div>
+
+          <section id="tradingOrderPanel" class="trading-order-panel is-loading" aria-labelledby="tradingOrderPanelTitle" aria-busy="true">
+            <div class="trading-order-panel-loading" role="status">
+              <span class="trading-order-loading-mark" aria-hidden="true"></span>
+              <div><strong id="tradingOrderPanelTitle">正在读取交易流水</strong><p>核对真实委托、逐笔成交与自动派生持仓。</p></div>
+            </div>
+          </section>
+
+          <details id="holdingCreatePanel" class="card wide holdings-create-card">
+            <summary>
+              <span><b>历史持仓校准</b><small>仅用于迁移券商已有持仓；新交易请使用上方交易流水</small></span>
+              <em>需要时展开</em>
+            </summary>
+            <form id="holdingCreateForm" onsubmit="submitHolding(event)">
+              <div class="holding-create-grid">
+                <div class="trading-stock-field holding-stock-field" data-picker="holding" data-state="idle">
+                  <label for="holdingTicker">股票代码或名称</label>
+                  <div class="trading-stock-combobox">
+                    <input id="holdingTicker" name="ticker" type="search" required placeholder="代码或名称" autocomplete="off" spellcheck="false" role="combobox" aria-autocomplete="list" aria-controls="tradingStockResults-holding" aria-describedby="tradingStockStatus-holding" aria-expanded="false" oninput="scheduleTradingStockSearch('holding', this.value)" onkeydown="handleTradingStockSearchKeydown(event, 'holding')" />
+                    <span class="trading-stock-field-mark" aria-hidden="true"></span>
+                    <div id="tradingStockResults-holding" class="trading-stock-results" role="listbox" hidden></div>
+                  </div>
+                  <p id="tradingStockStatus-holding" class="trading-stock-status" aria-live="polite">输入代码或名称，选择匹配股票。</p>
+                </div>
+                <label>股票名称<input id="holdingName" placeholder="兆易创新" /></label>
+                <label>所属板块<input id="holdingSector" placeholder="半导体" /></label>
+                <label>买入日期<input id="holdingEntryDate" type="date" required /></label>
+                <label>实际买入价<input id="holdingEntryPrice" type="number" min="0.01" step="0.01" required oninput="updateHoldingEntrySize()" onchange="previewNewHoldingStopPlan({silent:true})" /></label>
+                <label>真实股数<input id="holdingQuantity" type="number" min="1" step="1" required placeholder="100" oninput="updateHoldingEntrySize()" /></label>
+                <label>仓位比例（自动，%）<input id="holdingEntrySize" type="number" step="0.01" readonly required placeholder="股数 × 成本价 ÷ 总资产" /></label>
+                <label>建仓场景
+                  <select id="holdingEntrySignal" required onchange="syncHoldingStrategyForScenario()">
+                    <option value="E1">E1 · 低开承接恢复</option>
+                    <option value="E2">E2 · 均线回踩收复</option>
+                    <option value="E3">E3 · 区间支撑反转</option>
+                    <option value="E4">E4 · 箱体/前高突破</option>
+                    <option value="E5">E5 · 弱转强</option>
+                    <option value="E6">E6 · 高开强突破</option>
+                    <option value="E7">E7 · 超跌反弹隔夜</option>
+                    <option value="ma5_candidate">MA5 候选成交</option>
+                    <option value="manual_entry">人工建仓</option>
+                  </select>
+                </label>
+                <label>执行策略
+                  <select id="holdingStrategyId" onchange="previewNewHoldingStopPlan({silent:true})">
+                    <option value="ma5_v0_2">MA5 趋势战法 v0.2</option>
+                    <option value="e7_oversold_overnight">E7 · 超跌反弹隔夜套利</option>
+                    <option value="manual">人工计划</option>
+                  </select>
+                </label>
+                <label>目标价<input id="holdingTargetPrice" type="number" min="0.01" step="0.01" oninput="markHoldingTargetManual()" /></label>
+                <label>第一止损（有效）<input id="holdingStopLoss1" type="number" min="0.01" step="0.01" oninput="markHoldingStopManual()" /></label>
+                <label>第二止损（参考）<input id="holdingStopLoss2" type="number" min="0.01" step="0.01" oninput="markHoldingStopManual()" /></label>
+                <label>主升破坏位<input id="holdingBreakdownLevel" type="number" min="0.01" step="0.01" /></label>
+                <label>信号 K 开盘价<input id="holdingSignalOpen" type="number" min="0.01" step="0.01" /></label>
+              </div>
+              <div id="holdingStopPlanPreview" class="holding-stop-plan-preview">填写代码、买入日期和价格后，MA5 策略按 MA8 / 确认前低，人工计划按 MA8 / 支撑位−1ATR 生成止损。</div>
+              <label class="holding-note-field">交易备注<textarea id="holdingNote" rows="2" placeholder="主线、入场理由或需要人工复核的条件"></textarea></label>
+              <div class="holding-form-actions">
+                <button type="submit">确认校准持仓</button>
+                <button type="button" class="secondary" onclick="previewNewHoldingStopPlan()">生成目标与止损</button>
+                <button type="button" class="secondary" onclick="resetHoldingForm()">清空</button>
+              </div>
+            </form>
+          </details>
+
+          <div class="card wide holdings-list-card">
+            <div class="holding-section-head">
+              <div><span class="fs-eyebrow">DERIVED POSITION · 成交自动汇总</span><h2>成交派生持仓</h2></div>
+              <p>数量、成本与仓位来自真实成交；目标价和风险边界仍可人工维护。</p>
+            </div>
+            <div id="holdingsList" class="holding-list"><p class="hint">正在读取持仓...</p></div>
+          </div>
+
+          <section id="holdingEventPanel" class="card wide holding-event-panel" hidden>
+            <div class="holding-section-head">
+              <div><span class="fs-eyebrow">AUDIT TRAIL · 决策留痕</span><h2 id="holdingEventTitle">持仓事件</h2></div>
+              <button type="button" class="secondary" onclick="closeHoldingEventPanel()">收起</button>
+            </div>
+            <div id="holdingEventList" class="holding-event-list"></div>
+          </section>
+        </div>
+                  </div>
+          </details>
+            <details class="tj-section tj-archive-section jw-legacy-research">
+            <summary>历史预案与研究工具</summary>
+            <p class="tj-muted">保留旧研究和预案供回看。个人预期与真实交易核验在本账本完成。</p>
+            <div class="tj-actions"><button type="button" class="secondary" onclick="switchTab('decision-plan', {legacy:true})">历史研究预案</button><button type="button" class="secondary" onclick="switchTab('decision-live', {legacy:true})">历史研究跟踪</button></div>
+          </details>            <button type="button" class="secondary" data-tj-action="definitions">术语与计算口径</button>
+          </details>
+        </div>
+        <dialog id="tradeJournalDefinitions" class="tj-drawer" aria-labelledby="tradeJournalDefinitionsTitle">
+          <header><h2 id="tradeJournalDefinitionsTitle">术语与计算口径</h2><button type="button" class="secondary" data-tj-action="close-definitions">关闭</button></header>
+          <label>查找术语<input id="tradeJournalDefinitionSearch" type="search" autocomplete="off" placeholder="名称、公式或来源" /></label>
+          <div id="tradeJournalDefinitionBody"></div>
+        </dialog>
+        <dialog id="tradeJournalArtifact" class="tj-drawer" aria-labelledby="tradeJournalArtifactTitle">
+          <header><h2 id="tradeJournalArtifactTitle">归档详情</h2><button type="button" class="secondary" data-tj-action="close-artifact">关闭</button></header>
+          <div id="tradeJournalArtifactBody"></div>
+        </dialog>
+      </section>
+
+      <section id="tab-analysis" class="tab-panel" role="tabpanel" aria-labelledby="nav-analysis" hidden>
         <div class="grid">
 
       <div class="card wide fs-primary-card">
         <div class="fs-section-header">
-          <span class="fs-eyebrow">SUMMARY → EVIDENCE → ACTION · 单票技术面</span>
+          <span class="fs-eyebrow">FACTS → EVENTS → OPTIONAL STRATEGY · 单票研究</span>
           <h2>单票分析</h2>
-          <p>按 FinScope 阅读路径展示：先看 AI 综合结论，再看 K 线信号、支撑阻力、穿透分析和同类技术事件。</p>
+          <p>默认只看 K 线、资金方向代理和通用事件；需要买卖点时，再显式应用一套策略。</p>
         </div>
         <div class="analyze-header">
           <div class="analyze-input-row">
             <label>股票代码</label>
             <input id="analyzeTicker" value="603986.SH" />
-            <button onclick="runStockPanel()">运行分析</button>
+            <select id="stockStrategySelect" aria-label="选择叠加策略">
+              <option value="">通用分析（不应用策略）</option>
+              <option value="ma5_v0_2">MA5 趋势战法 v0.2</option>
+              <option value="manual">人工计划</option>
+            </select>
+            <button onclick="runStockPanel()">查看分析</button>
+            <button type="button" class="secondary" onclick="TradeJournal.openForTicker(document.getElementById('analyzeTicker').value)">查看交易复盘</button>
           </div>
           <div id="analyzeHint" class="hint"></div>
         </div>
         <div id="stockPanelResult" class="stock-panel-output">
-          <p class="hint">输入股票代码，点击"运行分析"查看图 4 风格的单票面板：分时图 + 信号点 + 支撑压力 + 智能评级 + 大盘穿透。</p>
+          <p class="hint">输入股票代码查看日 K、5 分钟走势、资金流向代理和通用技术事件；策略交易计划默认不加载。</p>
         </div>
       </div>
         </div>
       </section>
 
-      <section id="tab-intraday" class="tab-panel" role="tabpanel">
+      <section id="tab-intraday" class="tab-panel" role="tabpanel" aria-labelledby="nav-intraday" hidden>
         <div class="grid">
           <div class="card wide fs-primary-card">
             <div class="fs-section-header">
               <span class="fs-eyebrow">ACTION · 实时触发验证</span>
               <h2>盘中监控 · 实时验证</h2>
               <p>
-                基于当日 PART1 缓存的关键位 + 实时行情，判断大盘/候选票是否已触发关键位。
+                基于上一已完成交易日的 PART1 盘前基线 + 当前会话实时行情，判断大盘/候选票是否触发关键位。
                 数据延迟 15-30 秒。建议在交易时段（9:30-11:30 / 13:00-15:00）使用。
               </p>
             </div>
@@ -279,9 +780,9 @@
               <button onclick="runIntraday()">立即刷新</button>
               <label class="check"><input id="intradayAutoRefresh" type="checkbox" checked /> 30 秒自动刷新</label>
               <select id="intradaySource" onchange="runIntraday()">
-                <option value="auto">数据源：自动（推荐）</option>
-                <option value="tushare" selected>数据源：Tushare（新浪源，最稳定）</option>
-                <option value="akshare">数据源：AkShare（东财，本地限流慎用）</option>
+                <option value="auto" selected>数据源：自动（推荐）</option>
+                <option value="tushare">数据源：Tushare（新浪源，最稳定）</option>
+                <option value="eastmoney">数据源：东方财富（东财，本地限流慎用）</option>
               </select>
               <span id="intradayCountdown" class="hint" style="margin-left: 10px"></span>
             </div>
@@ -290,7 +791,7 @@
         </div>
       </section>
 
-      <section id="tab-push" class="tab-panel" role="tabpanel">
+      <section id="tab-push" class="tab-panel" role="tabpanel" aria-labelledby="nav-push" hidden>
         <div class="grid">
 
       <div class="card wide fs-primary-card">
@@ -328,7 +829,7 @@
         </div>
       </section>
 
-      <section id="tab-system" class="tab-panel" role="tabpanel">
+      <section id="tab-system" class="tab-panel" role="tabpanel" aria-labelledby="nav-system" hidden>
         <div class="grid">
           <div class="card wide fs-primary-card">
             <div class="fs-section-header">
@@ -348,6 +849,23 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/luxon@3.4.4/build/global/luxon.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.min.js"></script>
-  <script src="/static/app.js?v=20260709-crosshair-hover-retry" defer></script>
+  <script src="/static/app.js?v=20261102-sentiment-vibe-v2&sync_inventory=20261102-ledger-v4&journal=20261104-review-complete-v2&compute=20261104-p0-v1" defer></script>
+  <script src="/static/trade-decision.js?v=20260923-v8" defer></script>
+  <script src="/static/trade-journal.js?v=20261104-review-complete-v2" defer></script>
+  <script src="/static/journal-workspace.js?v=20261104-review-complete-v2" defer></script>
+  <script src="/static/selection-research.js?v=20260923-strength-review-v4" defer></script>
+  <script src="/static/review-overseas.js?v=20261102-session-v2" defer></script>
+  <script src="/static/research-evidence.js?v=20261103-dated-industry-v1" defer></script>
+  <script src="/static/board-dynamics.js?v=20261102-vibe-v2" defer></script>
+  <script src="/static/review-sentiment-context.js?v=20261102-context-v2" defer></script>
+  <script src="/static/shortline-views.js?v=20261102-vibe-v2" defer></script>
+  <script src="/static/sentiment-workspace.js?v=20261102-vibe-v2" defer></script>
+  <script src="/static/review-dashboard.js?v=20261103-pipeline-reconcile" defer></script>
+  <script src="/static/review-navigation.js?v=20261102-v3" defer></script>
+  <script src="/static/strength-review.js?v=20260923-theme-scope-v2" defer></script>
+  <script src="/static/strong-stocks.js?v=20261103-dated-industry-v1" defer></script>
+  <script src="/static/board-research.js?v=20261103-auction-priority-v2" defer></script>
+  <script src="/static/theme-cycles.js?v=20261103-core-context-v1" defer></script>
+  <script src="/static/theme-acceptance.js?v=20261102-event-v1" defer></script>
 </body>
 </html>

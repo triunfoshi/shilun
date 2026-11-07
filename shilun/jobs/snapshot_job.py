@@ -11,7 +11,13 @@ import pandas as pd
 from shilun.common.config import AppConfig, load_config
 from shilun.common.db import MarketSnapshotRecordStore, MongoSnapshotStore
 from shilun.data import MongoMarketDataProvider, TushareConfig, TushareDailyClient
-from shilun.jobs.snapshot_ranking import build_output_table, build_snapshot_record, rank_snapshot_records, render_markdown
+from shilun.jobs.snapshot_ranking import (
+    attach_oversold_first_board_selection,
+    build_output_table,
+    build_snapshot_record,
+    rank_snapshot_records,
+    render_markdown,
+)
 from shilun.pipeline import ShilunPipeline
 
 
@@ -110,6 +116,9 @@ class SnapshotJob:
         output_dir.mkdir(parents=True, exist_ok=True)
 
         universe = self._load_universe(request.tickers, exclude_st=request.exclude_st)
+        if self.mongo_store is not None and not universe.empty:
+            from shilun.market.taxonomy import classify_stocks
+            universe = pd.DataFrame(classify_stocks(self.mongo_store, analysis_date, universe.to_dict('records')))
         if universe.empty:
             raise ValueError("No eligible tickers found for the requested snapshot.")
 
@@ -177,6 +186,10 @@ class SnapshotJob:
                     latest_bar=latest_bar,
                     metadata=metadata,
                 )
+            attach_oversold_first_board_selection(
+                record,
+                bars.to_dict(orient="records"),
+            )
             record.update(future_label_map.get(ticker, {}))
             for horizon in label_horizons:
                 benchmark_return = benchmark_label_map.get(f"benchmark_future_return_{horizon}d")

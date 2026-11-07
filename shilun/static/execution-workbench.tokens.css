@@ -1,0 +1,37 @@
+/* Job 12G · execution workbench portable tokens */
+:root {
+  --wb-font-display: "PingFang SC", "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --wb-font-body: "PingFang SC", "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+  --wb-paper: oklch(98% 0.008 162);
+  --wb-paper-raised: oklch(99.4% 0.004 162);
+  --wb-paper-muted: oklch(95.5% 0.012 162);
+  --wb-ink: oklch(23% 0.025 248);
+  --wb-ink-soft: oklch(42% 0.028 238);
+  --wb-muted: oklch(50% 0.022 238);
+  --wb-line: oklch(88% 0.017 180);
+  --wb-line-strong: oklch(72% 0.055 163);
+  --wb-accent: oklch(51% 0.112 160);
+  --wb-accent-deep: oklch(40% 0.1 160);
+  --wb-accent-ink: oklch(99% 0.004 160);
+  --wb-accent-soft: oklch(94% 0.035 160);
+  --wb-risk: oklch(48% 0.15 25);
+  --wb-risk-deep: oklch(38% 0.12 25);
+  --wb-risk-soft: oklch(95% 0.035 25);
+  --wb-warning: oklch(52% 0.12 75);
+  --wb-warning-soft: oklch(96% 0.04 75);
+  --wb-neutral-soft: oklch(95% 0.012 240);
+  --wb-focus: oklch(20% 0.04 248);
+  --wb-shadow: 0 12px 36px oklch(24% 0.02 240 / 0.08);
+  --wb-radius-sm: 6px;
+  --wb-radius-md: 10px;
+  --wb-space-1: 4px;
+  --wb-space-2: 8px;
+  --wb-space-3: 12px;
+  --wb-space-4: 16px;
+  --wb-space-5: 20px;
+  --wb-space-6: 24px;
+  --wb-duration: 140ms;
+  --wb-ease-out: cubic-bezier(.2, .8, .2, 1);
+  --wb-ease-in: cubic-bezier(.4, 0, 1, 1);
+  --wb-ease-in-out: cubic-bezier(.4, 0, .2, 1);
+}

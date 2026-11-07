@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>中期趋势切换 · 状态预览</title>
+  <link rel="stylesheet" href="/static/tokens.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/review-dashboard.css">
+  <link rel="stylesheet" href="/static/workbench-density.css?v=20260923-sector-v8">
+  <style>
+    main { padding: var(--terminal-inset); max-width: 48rem; margin: auto; }
+    .preview-row { margin-block: var(--terminal-gap); }
+    .preview-row > p { color: var(--terminal-muted); }
+  </style>
+</head>
+<body>
+  <main class="tab-panel active">
+    <h1>中期趋势切换 · 状态预览</h1>
+    <p>布局样例，不包含研究分数。板块名、阶段、分数各自保持单行；名称过长可查看完整提示。</p>
+    <section class="sector-trend-candidates" id="preview"></section>
+  </main>
+  <script>
+    const states = [
+      ['默认', '', '', '待确认'], ['悬停', 'is-hover', '', '待确认'],
+      ['键盘焦点', 'is-focus', '', '待确认'], ['按下', 'is-pressed', '', '待确认'],
+      ['禁用：数据尚未就绪', '', 'disabled', '待更新'],
+      ['加载', '', 'disabled data-state="loading" aria-busy="true"', '读取中'],
+      ['失败', '', 'data-state="error"', '读取失败'],
+      ['已选中', 'is-active', 'data-state="success" aria-pressed="true"', '已选中'],
+    ];
+    document.getElementById('preview').innerHTML = states.map(([label, cls, attrs, state]) => `
+      <div class="preview-row"><p>${label}</p><div class="sector-switcher">
+        <button type="button" class="sector-chip ${cls}" ${attrs}>
+          <strong title="汽车电子电气系统">汽车电子电气系统</strong>
+          <span class="sector-chip-stage">${state}</span><span class="sector-chip-score">—</span>
+        </button>
+      </div></div>`).join('');
+  </script>
+</body>
+</html>

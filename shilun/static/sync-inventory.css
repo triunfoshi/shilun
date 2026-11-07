@@ -1,0 +1,82 @@
+/* Hallmark · genre: modern-minimal · macrostructure: Workbench Ledger
+ * design-system: design.md · designed-as-app · pre-emit critique: P5 H5 E4 S5 R5 V4
+ * Polanyi: compare storage, automatic updates and usage along one stable row. */
+body #tab-data .sync-overview { padding: 0; overflow: clip; background: var(--terminal-paper); }
+body #tab-data .sync-overview-head { display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-4); padding: var(--wb-space-5) var(--wb-space-5) var(--wb-space-3); }
+body #tab-data .sync-overview-head h2 { margin: 0; font-size: var(--terminal-title); color: var(--terminal-ink); }
+body #tab-data .sync-overview #dataStatus { margin: var(--wb-space-1) 0 0; color: var(--terminal-muted); font-size: var(--terminal-font); }
+body #tab-data .sync-overview-head .fs-action-bar { display: flex; align-items: center; flex-wrap: wrap; gap: var(--wb-space-2); width: auto; margin: 0; }
+body #tab-data .sync-overview-head button { white-space: nowrap; margin: 0; }
+body #tab-data #dataSyncSummary { display: flex; flex-wrap: wrap; gap: var(--wb-space-3) var(--wb-space-6); padding: var(--wb-space-3) var(--wb-space-5); border-block: 1px solid var(--terminal-line); background: var(--terminal-header); }
+body #tab-data #dataSyncSummary > span { display: flex; align-items: baseline; gap: var(--wb-space-2); color: var(--terminal-muted); }
+body #tab-data #dataSyncSummary strong { color: var(--terminal-ink); font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+body #tab-data #dataSyncSummary strong small { color: var(--terminal-muted); font-size: 12px; font-weight: 400; }
+body #tab-data .sync-runtime { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: var(--wb-space-1) var(--wb-space-4); padding: var(--wb-space-3) var(--wb-space-5) 0; }
+body #tab-data .sync-runtime p { margin: 0; font-size: 12px; color: var(--terminal-muted); line-height: 1.6; }
+body #tab-data .sync-explainer { margin: 0; padding: var(--wb-space-2) var(--wb-space-5) var(--wb-space-3); color: var(--terminal-muted); font-size: 12px; line-height: 1.65; }
+body #tab-data #dataStatusGrid { margin: 0; min-width: 0; }
+body #tab-data #dataStatusGrid .sync-ledger { width: 100%; border-collapse: collapse; table-layout: fixed; margin: 0; background: var(--terminal-paper); color: var(--terminal-ink); }
+body #tab-data #dataStatusGrid .sync-col-name { width: 19%; }
+body #tab-data #dataStatusGrid .sync-col-storage { width: 23%; }
+body #tab-data #dataStatusGrid .sync-col-schedule { width: 23%; }
+body #tab-data #dataStatusGrid .sync-col-run { width: 17%; }
+body #tab-data #dataStatusGrid .sync-col-usage { width: 18%; }
+body #tab-data #dataStatusGrid caption { text-align: left; color: var(--terminal-muted); padding: var(--wb-space-2) var(--wb-space-5); border-top: 1px solid var(--terminal-line); font-size: 12px; }
+body #tab-data #dataStatusGrid thead { background: var(--terminal-header); }
+body #tab-data #dataStatusGrid th { text-align: left; font-size: 12px; font-weight: 550; color: var(--terminal-muted); padding: var(--wb-space-2) var(--wb-space-4); border-block: 1px solid var(--terminal-line); }
+body #tab-data #dataStatusGrid td { padding: var(--wb-space-3) var(--wb-space-4); border: 0; border-bottom: 1px solid var(--terminal-line); vertical-align: top; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+body #tab-data #dataStatusGrid td small { display: block; margin-top: var(--wb-space-1); color: var(--terminal-muted); font-size: 12px; font-weight: 400; line-height: 1.55; }
+body #tab-data #dataStatusGrid .sync-date-range { font-variant-numeric: tabular-nums; font-size: 12px; }
+body #tab-data #dataStatusGrid .sync-date-range > span { display: inline-block; white-space: nowrap; }
+body #tab-data #dataStatusGrid .sync-dataset-name { display: flex; align-items: center; gap: var(--wb-space-1); min-width: 0; }
+body #tab-data #dataStatusGrid .sync-dataset-name strong { font-size: 13px; font-weight: 600; color: var(--terminal-ink); }
+body #tab-data #dataStatusGrid .sync-row-toggle { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; min-width: 24px; min-height: 28px; padding: 0; margin: 0; border: 1px solid transparent; border-radius: 2px; color: var(--terminal-muted); background: transparent; box-shadow: none; cursor: pointer; }
+body #tab-data #dataStatusGrid .sync-row-toggle span { display: block; font-size: 20px; line-height: 1; transform: rotate(0deg); }
+body #tab-data #dataStatusGrid .sync-row-toggle[aria-expanded="true"] span { transform: rotate(90deg); }
+body #tab-data #dataStatusGrid .sync-row-toggle:hover { background: var(--terminal-header); color: var(--terminal-ink); }
+body #tab-data #dataStatusGrid .sync-row-toggle:active { background: var(--wb-neutral-soft); }
+body #tab-data #dataStatusGrid .sync-row-toggle:focus-visible { outline: 2px solid var(--terminal-focus); outline-offset: 2px; }
+body #tab-data #dataStatusGrid .sync-row-toggle:disabled { opacity: .55; cursor: not-allowed; }
+body #tab-data #dataStatusGrid .sync-data-state { display: inline-block; margin-left: 28px; font-size: 12px; color: var(--terminal-muted); }
+body #tab-data #dataStatusGrid .sync-tone-attention { color: var(--wb-warning); font-weight: 550; }
+body #tab-data #dataStatusGrid .sync-update-state { font-size: 12px; color: var(--terminal-ink); }
+body #tab-data #dataStatusGrid .sync-update-line { display: flex; align-items: baseline; flex-wrap: wrap; column-gap: var(--wb-space-2); row-gap: var(--wb-space-1); }
+body #tab-data #dataStatusGrid .sync-update-line small { margin-top: 0; }
+body #tab-data #dataStatusGrid .sync-update-state.is-online::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: var(--wb-space-2); border-radius: 50%; background: var(--mv2-blue); vertical-align: 2px; }
+body #tab-data #dataStatusGrid .sync-detail-row[hidden] { display: none; }
+body #tab-data #dataStatusGrid .sync-detail-row > td { background: var(--terminal-header); padding: var(--wb-space-4) var(--wb-space-5); }
+body #tab-data #dataStatusGrid .sync-detail-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--wb-space-5); }
+body #tab-data #dataStatusGrid .sync-detail-grid section { min-width: 0; }
+body #tab-data #dataStatusGrid .sync-detail-grid h4 { font-size: 12px; font-weight: 600; margin: 0 0 var(--wb-space-2); color: var(--terminal-ink); }
+body #tab-data #dataStatusGrid .sync-detail-grid p { margin: var(--wb-space-1) 0 0; color: var(--terminal-muted); font-size: 12px; line-height: 1.65; }
+body #tab-data #dataStatusGrid .sync-detail-grid .sync-impact { color: var(--wb-warning); }
+body #tab-data #dataStatusGrid .sync-extra-values { margin: var(--wb-space-2) 0 0; font-size: 12px; }
+body #tab-data #dataStatusGrid .sync-extra-values div { display: flex; flex-wrap: wrap; gap: var(--wb-space-2); }
+body #tab-data #dataStatusGrid .sync-extra-values dd { margin: 0; }
+body #tab-data #dataStatusGrid .sync-empty { margin: 0; padding: var(--wb-space-5); color: var(--terminal-muted); }
+@media (max-width: 1050px) {
+  body #tab-data #dataStatusGrid .sync-ledger { table-layout: auto; }
+  body #tab-data #dataStatusGrid td { font-size: 12px; }
+}
+@media (max-width: 760px) {
+  body #tab-data.tab-panel { --terminal-control: 44px; }
+  body #tab-data .sync-overview-head { flex-direction: column; align-items: start; }
+  body #tab-data #dataSyncSummary { column-gap: var(--wb-space-4); }
+  body #tab-data #dataSyncSummary > span { flex: 1 1 40%; }
+  body #tab-data #dataStatusGrid .sync-ledger, body #tab-data #dataStatusGrid tbody { display: block; }
+  body #tab-data #dataStatusGrid caption { display: block; width: 100%; }
+  body #tab-data #dataStatusGrid colgroup, body #tab-data #dataStatusGrid thead { display: none; }
+  body #tab-data #dataStatusGrid .sync-ledger-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: var(--wb-space-3); gap: var(--wb-space-3); border-top: 1px solid var(--terminal-line); }
+  body #tab-data #dataStatusGrid .sync-ledger-row td { display: block; padding: 0; min-width: 0; border: 0; }
+  body #tab-data #dataStatusGrid .sync-ledger-row td::before { content: attr(data-column); display: block; font-size: 12px; color: var(--terminal-muted); margin-bottom: var(--wb-space-1); }
+  body #tab-data #dataStatusGrid .sync-ledger-row td:first-child { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: var(--wb-space-2); }
+  body #tab-data #dataStatusGrid .sync-ledger-row td:first-child::before { display: none; }
+  body #tab-data #dataStatusGrid .sync-row-toggle { flex-basis: 44px; min-width: 44px; min-height: 44px; }
+  body #tab-data #dataStatusGrid .sync-data-state { margin: 0; white-space: nowrap; }
+  body #tab-data #dataStatusGrid .sync-detail-row:not([hidden]), body #tab-data #dataStatusGrid .sync-detail-row > td { display: block; }
+  body #tab-data #dataStatusGrid .sync-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  body #tab-data #dataStatusGrid .sync-date-range { display: block; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body #tab-data #dataStatusGrid .sync-row-toggle { transition: none; }
+}

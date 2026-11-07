@@ -8,17 +8,21 @@ Telegram client module. They are now a single boundary so runtime entry remains
 
 from __future__ import annotations
 
+import re
+import logging
 import sys
 import types
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any
+from time import perf_counter
+from typing import Any, NoReturn
 
 import requests
-from fastapi import APIRouter, FastAPI, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, FastAPI, Header, HTTPException
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from pymongo.errors import PyMongoError
 
 from shilun.common.config import load_config
 from shilun.market import (
@@ -135,12 +139,610 @@ class DataSyncHttpRequest(BaseModel):
     incremental_overlap_days: int = 3
 
 
-class AkshareSyncHttpRequest(BaseModel):
+class DataDomainSyncHttpRequest(BaseModel):
     target_date: str | None = None
     dataset: str = Field(
         default="all",
         description="all / limit_up_pool / concept_boards / north_capital_flow",
     )
+
+
+class HoldingCreateHttpRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    entry_date: str = Field(min_length=1, description="YYYY-MM-DD")
+    entry_price: float = Field(gt=0)
+    entry_signal: str = Field(min_length=1)
+    entry_size: float = Field(gt=0, le=1)
+    quantity: int | None = Field(default=None, gt=0)
+    available_quantity: int | None = Field(default=None, ge=0)
+    cost_basis: float | None = Field(default=None, gt=0)
+    realized_loss_amount: float = Field(default=0, ge=0)
+    strategy_id: str | None = None
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    proposed_plan: dict[str, Any] = Field(default_factory=dict)
+    name: str | None = None
+    sector_name: str | None = None
+    target_price: float | None = Field(default=None, gt=0)
+    stop_loss_1: float | None = Field(default=None, gt=0)
+    stop_loss_2: float | None = Field(default=None, gt=0)
+    stop_loss_mode: str | None = None
+    stop_loss_plan: dict[str, Any] = Field(default_factory=dict)
+    stop_loss_confirmed_at: str | None = None
+    breakdown_level: float | None = Field(default=None, gt=0)
+    add_point: float | None = Field(default=None, gt=0)
+    signal_candle_open: float | None = Field(default=None, gt=0)
+    invalid_conditions: list[str] = Field(default_factory=list)
+    note: str | None = None
+
+
+class HoldingPatchHttpRequest(BaseModel):
+    name: str | None = None
+    sector_name: str | None = None
+    entry_price: float | None = Field(default=None, gt=0)
+    manual_current_price: float | None = Field(default=None, gt=0)
+    target_price: float | None = Field(default=None, gt=0)
+    stop_loss_1: float | None = Field(default=None, gt=0)
+    stop_loss_2: float | None = Field(default=None, gt=0)
+    stop_loss_mode: str | None = None
+    stop_loss_plan: dict[str, Any] | None = None
+    stop_loss_confirmed_at: str | None = None
+    breakdown_level: float | None = Field(default=None, gt=0)
+    add_point: float | None = Field(default=None, gt=0)
+    signal_candle_open: float | None = Field(default=None, gt=0)
+    invalid_conditions: list[str] | None = None
+    note: str | None = None
+    realized_size: float | None = Field(default=None, ge=0, le=1)
+    quantity: int | None = Field(default=None, gt=0)
+    available_quantity: int | None = Field(default=None, ge=0)
+    cost_basis: float | None = Field(default=None, gt=0)
+    realized_loss_amount: float | None = Field(default=None, ge=0)
+
+
+class HoldingCloseHttpRequest(BaseModel):
+    exit_date: str | None = Field(default=None, description="YYYY-MM-DD")
+    exit_price: float | None = Field(default=None, gt=0)
+    reason: str | None = None
+
+
+class TradeExecutionHttpRequest(BaseModel):
+    side: str = "sell"
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+    execution_id: str | None = None
+    executed_at: str | None = None
+    fees: float = Field(default=0, ge=0)
+    note: str | None = None
+
+
+class TradeOrderHttpRequest(BaseModel):
+    plan_id: str = Field(min_length=1)
+    ticker: str = Field(min_length=1)
+    side: str
+    quantity: int = Field(gt=0)
+    limit_price: float = Field(gt=0)
+    intent: str
+    order_id: str | None = None
+    scenario_id: str | None = None
+    placed_at: str | None = None
+    expires_at: str | None = None
+    name: str | None = None
+    sector_name: str | None = None
+    strategy_id: str | None = None
+    strategy_version: str | None = None
+    note: str | None = None
+
+
+class TradeFillHttpRequest(BaseModel):
+    quantity: int = Field(gt=0)
+    price: float = Field(gt=0)
+    execution_id: str | None = None
+    executed_at: str | None = None
+    fees: float = Field(default=0, ge=0)
+    note: str | None = None
+
+
+class TradeOrderCancelHttpRequest(BaseModel):
+    cancelled_at: str | None = None
+    reason: str | None = None
+
+
+class T1SettlementHttpRequest(BaseModel):
+    as_of_date: str = Field(min_length=10, max_length=10)
+    settled_at: str | None = None
+
+
+class AccountRiskProfileHttpRequest(BaseModel):
+    total_assets: float = Field(gt=0)
+    available_cash: float | None = Field(default=None, ge=0)
+    max_loss_per_trade: float = Field(gt=0)
+    max_cash_per_trade: float | None = Field(default=None, gt=0)
+    commission_rate: float | None = Field(default=None, ge=0)
+    min_commission: float | None = Field(default=None, ge=0)
+    stamp_duty_rate: float | None = Field(default=None, ge=0)
+    slippage_bps: float | None = Field(default=None, ge=0)
+    conservative_fee_buffer_rate: float = Field(default=0.002, ge=0)
+    auto_trade_enabled: bool = False
+
+
+class IntradayWatchlistItemHttpRequest(BaseModel):
+    ticker: str = Field(min_length=1)
+    name: str | None = None
+    sector_name: str | None = None
+    source: str | None = None
+    feishu_enabled: bool = True
+
+
+class IntradayWatchlistReplaceHttpRequest(BaseModel):
+    items: list[IntradayWatchlistItemHttpRequest] = Field(default_factory=list)
+
+
+def _model_payload(model: BaseModel, *, exclude_unset: bool = False) -> dict[str, Any]:
+    model_dump = getattr(model, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(exclude_unset=exclude_unset)
+    return model.dict(exclude_unset=exclude_unset)
+
+
+def _normalize_holding_ticker(ticker: str) -> str:
+    normalized = (ticker or "").strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="股票代码 ticker 不能为空。")
+    return normalized
+
+
+def _normalize_holding_date(value: str, field_name: str) -> str:
+    try:
+        return datetime.strptime((value or "").strip(), "%Y-%m-%d").strftime("%Y-%m-%d")
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{field_name} 必须使用 YYYY-MM-DD 格式，收到 {value!r}。",
+        ) from error
+
+
+def _open_holdings_store(*, read_only: bool = False) -> Any:
+    from shilun.common.db import MongoSnapshotStore
+
+    config = load_config()
+    if not config.mongo_uri:
+        raise HTTPException(status_code=400, detail="Mongo 未配置，持仓管理需要连接 Mongo。")
+    try:
+        return MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                  socket_timeout_ms=30000, initialize_indexes=not read_only)
+    except PyMongoError as error:
+        logging.getLogger(__name__).warning("Holdings database connection failed: %s", type(error).__name__)
+        raise HTTPException(status_code=503, detail="云端数据库暂不可用，请检查网络后重试。") from error
+
+
+def _strategy_daily_bars(
+    store: Any,
+    ticker: str,
+    *,
+    as_of: str | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    """读取截至 as_of 的前复权日线，并返回实际最新数据日。
+
+    Mongo 日线保留真实成交价，遇到送转/除权会出现价格断层，不能直接用于均线、
+    ATR 和结构位。配置 KlineShare 时优先读取 forward 前复权日 K；只有不存在
+    明显断层时才允许回退 Mongo 原始日线。
+    """
+
+    anchor = datetime.strptime(as_of, "%Y-%m-%d") if as_of else datetime.now()
+    # 日线同步只会写入已完成的 K 线。以“是否已落库”为完成口径，不能机械减一天，
+    # 否则收盘后同步了当日数据，止损仍会永久慢一个交易日。
+    end = anchor
+    start = end - timedelta(days=240)
+    raw_rows = store.raw_market.find_daily_bars(
+        start_date=start.strftime("%Y-%m-%d"),
+        end_date=end.strftime("%Y-%m-%d"),
+        tickers=[ticker],
+    )
+    rows: list[dict[str, Any]] = []
+    config = load_config()
+    if config.klineshare_api_key:
+        try:
+            from shilun.data.providers.klineshare_provider import KlineShareClient, KlineShareConfig
+
+            client = KlineShareClient(KlineShareConfig(
+                api_key=config.klineshare_api_key,
+                base_url=config.klineshare_base_url,
+                timeout=config.klineshare_timeout,
+            ))
+            frame = client.fetch_kline(
+                ticker,
+                period=86_400,
+                count=320,
+                adjust_type="forward",
+            )
+            for record in frame.to_dict("records") if frame is not None and not frame.empty else []:
+                value = record.get("datetime")
+                date_text = value.strftime("%Y-%m-%d") if hasattr(value, "strftime") else str(value)[:10]
+                if start.strftime("%Y-%m-%d") <= date_text <= end.strftime("%Y-%m-%d"):
+                    rows.append({
+                        **record,
+                        "ticker": ticker,
+                        "date": date_text,
+                        "price_adjustment": "forward",
+                        "daily_bar_source": "klineshare",
+                    })
+        except Exception:  # noqa: BLE001 - 后续断层门会阻止错误回退
+            rows = []
+    if not rows:
+        ordered_raw = sorted(raw_rows, key=lambda item: str(item.get("date") or item.get("trade_date") or ""))
+        closes = [float(item.get("close") or 0) for item in ordered_raw]
+        has_discontinuity = any(
+            previous > 0 and current > 0 and abs(current / previous - 1.0) > 0.22
+            for previous, current in zip(closes, closes[1:])
+        )
+        if has_discontinuity:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{ticker} 日线存在疑似除权断层，前复权数据不可用，已阻止错误计算 MA8/ATR。",
+            )
+        rows = [
+            {**record, "price_adjustment": "none", "daily_bar_source": "mongo"}
+            for record in ordered_raw
+        ]
+    completed_dates = [
+        str(row.get("date") or row.get("trade_date") or "")[:10]
+        for row in rows
+        if row.get("date") or row.get("trade_date")
+    ]
+    completed_through = max(completed_dates) if completed_dates else end.strftime("%Y-%m-%d")
+    return rows, completed_through
+
+
+def _build_stop_plan_for_strategy(
+    store: Any,
+    *,
+    strategy_id: str,
+    ticker: str,
+    reference_price: float,
+    as_of: str | None = None,
+    entry_date: str | None = None,
+) -> dict[str, Any]:
+    from shilun.trading.stop_plans import StopPlanError, build_strategy_stop_plan
+
+    normalized_strategy = str(strategy_id or "").strip().lower()
+    normalized_entry_date = str(entry_date or as_of or "")[:10] or None
+    daily_as_of = as_of
+    stabilization_low: float | None = None
+    if normalized_strategy == "e7_oversold_overnight":
+        if not normalized_entry_date:
+            raise HTTPException(status_code=400, detail="E7 止损必须提供建仓日期。")
+        try:
+            entry_day = datetime.strptime(normalized_entry_date, "%Y-%m-%d").date()
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail="E7 建仓日期必须使用 YYYY-MM-DD。") from error
+        daily_as_of = (entry_day - timedelta(days=1)).isoformat()
+        minute_doc = store.collection("minute_bars_daily").find_one(
+            {
+                "ticker": ticker,
+                "trade_date": normalized_entry_date.replace("-", ""),
+                "interval": "5",
+            },
+            {"_id": 0, "bars": 1},
+        ) or {}
+        tail_lows: list[float] = []
+        for bar in minute_doc.get("bars") or []:
+            stamp = str(bar.get("datetime") or "").replace(" ", "T")
+            clock = stamp.split("T", 1)[1][:5] if "T" in stamp else ""
+            try:
+                low = float(bar.get("low") or 0)
+            except (TypeError, ValueError):
+                low = 0.0
+            if clock >= "14:00" and low > 0:
+                tail_lows.append(low)
+        if not tail_lows:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{ticker} 在 {normalized_entry_date} 缺少 14:00 后 5 分钟 K，不能伪造 E7 企稳止损。",
+            )
+        stabilization_low = min(tail_lows)
+
+    rows, completed_through = _strategy_daily_bars(store, ticker, as_of=daily_as_of)
+    try:
+        plan = build_strategy_stop_plan(
+            strategy_id,
+            rows,
+            reference_price=reference_price,
+            as_of=normalized_entry_date if normalized_strategy == "e7_oversold_overnight" else completed_through,
+            stabilization_low=stabilization_low,
+        )
+    except StopPlanError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {
+        **plan,
+        "ticker": ticker,
+        "daily_bar_count": len(rows),
+        "completed_through": completed_through,
+        "price_adjustment": rows[-1].get("price_adjustment") if rows else None,
+        "daily_bar_source": rows[-1].get("daily_bar_source") if rows else None,
+        "entry_date": normalized_entry_date if normalized_strategy == "e7_oversold_overnight" else None,
+    }
+
+
+def _holding_stop_reference(store: Any, holding: dict[str, Any]) -> float:
+    """已有持仓优先使用最新可信报价；缺失时才退回成本/入场价。"""
+
+    quote = store.collection("trading_realtime_quotes").find_one(
+        {"ticker": holding.get("ticker")},
+        {"_id": 0, "current": 1},
+    )
+    value = (quote or {}).get("current") or holding.get("cost_basis") or holding.get("entry_price")
+    try:
+        reference = float(value)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail="持仓缺少当前价、成本价和入场价，无法生成止损") from error
+    if reference <= 0:
+        raise HTTPException(status_code=400, detail="止损参考价必须大于 0")
+    return reference
+
+
+def _holding_stop_strategy_context(
+    store: Any,
+    holding: dict[str, Any],
+) -> tuple[str, str, float]:
+    """Resolve the authoritative strategy and price basis for a holding stop.
+
+    E7 is an entry-scene strategy: its stop must always be calculated from the
+    actual entry/cost price.  Using a later quote can incorrectly reject the
+    historical stabilization low once the stock has already pulled back.
+    """
+
+    from shilun.strategies import (
+        E7_OVERSOLD_OVERNIGHT_STRATEGY_ID,
+        ExecutionStrategyError,
+        resolve_strategy_binding,
+        scenario_code,
+    )
+
+    entry_signal = holding.get("entry_signal")
+    requested_strategy = holding.get("strategy_id")
+    # Old E7 holdings were sometimes persisted with the frontend's MA5 default.
+    # Let the entry scene repair that binding instead of reproducing the error.
+    if scenario_code(entry_signal) == "E7":
+        requested_strategy = None
+    try:
+        strategy_id, strategy_version = resolve_strategy_binding(
+            entry_signal,
+            requested_strategy,
+            holding.get("strategy_version"),
+        )
+    except ExecutionStrategyError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    if strategy_id != E7_OVERSOLD_OVERNIGHT_STRATEGY_ID:
+        return strategy_id, strategy_version, _holding_stop_reference(store, holding)
+
+    value = holding.get("cost_basis") or holding.get("entry_price")
+    try:
+        reference = float(value)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail="E7 持仓缺少成本价/入场价，无法生成止损") from error
+    if reference <= 0:
+        raise HTTPException(status_code=400, detail="E7 成本价/入场价必须大于 0")
+    return strategy_id, strategy_version, reference
+
+
+LEGACY_HOLDING_STRATEGY_IDS = {"ma5_multi_scenario_execution", "ma5_execution_v0_3"}
+
+
+def _holding_market_snapshot(store: Any, ticker: str) -> dict[str, Any]:
+    """读取持仓最新可信行情；实时快照优先，缺失时退回最新日线收盘。"""
+
+    normalized = _normalize_holding_ticker(ticker)
+    quote = store.collection("trading_realtime_quotes").find_one(
+        {"ticker": normalized},
+        {"_id": 0},
+    ) or {}
+    try:
+        current = float(quote.get("current") or 0)
+    except (TypeError, ValueError):
+        current = 0.0
+    if current > 0:
+        return {
+            "current_price": round(current, 4),
+            "current_price_as_of": quote.get("quote_at") or quote.get("update_at") or quote.get("fetched_at"),
+            "current_price_source": quote.get("source") or "trading_realtime_quotes",
+            "current_price_kind": "realtime",
+        }
+
+    end = datetime.now().date()
+    rows = store.raw_market.find_daily_bars(
+        start_date=(end - timedelta(days=45)).isoformat(),
+        end_date=end.isoformat(),
+        tickers=[normalized],
+    )
+    ordered = sorted(rows, key=lambda item: str(item.get("date") or item.get("trade_date") or ""))
+    latest = ordered[-1] if ordered else {}
+    try:
+        close = float(latest.get("close") or 0)
+    except (TypeError, ValueError):
+        close = 0.0
+    return {
+        "current_price": round(close, 4) if close > 0 else None,
+        "current_price_as_of": str(latest.get("date") or latest.get("trade_date") or "")[:10] or None,
+        "current_price_source": "market_daily_bars" if close > 0 else None,
+        "current_price_kind": "daily_close" if close > 0 else "missing",
+    }
+
+
+def _build_holding_target_plan(
+    store: Any,
+    *,
+    ticker: str,
+    as_of: str | None = None,
+) -> dict[str, Any]:
+    """复用 MA5 战法的已完成日线目标价，避免持仓页另造一套算法。"""
+
+    from shilun.strategies import ExecutionStrategyContext, get_execution_strategy
+
+    rows, completed_through = _strategy_daily_bars(store, ticker, as_of=as_of)
+    evaluation = get_execution_strategy("ma5_v0_2").evaluate_stock(
+        rows,
+        context=ExecutionStrategyContext(analysis_date=completed_through),
+    )
+    trade_plan = dict(evaluation.get("trade_plan") or {})
+    try:
+        target_price = float(trade_plan.get("target_price") or 0)
+    except (TypeError, ValueError):
+        target_price = 0.0
+    if target_price <= 0:
+        raise HTTPException(status_code=400, detail=f"{ticker} 已完成日线不足，暂时无法自动生成目标价。")
+    return {
+        "target_price": round(target_price, 4),
+        "target_source": trade_plan.get("target_source") or "ma5_v0_2",
+        "completed_through": completed_through,
+        "trade_plan": trade_plan,
+    }
+
+
+def _refresh_holding_derived_plan(
+    store: Any,
+    ticker: str,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    """用最新行情补齐持仓目标/止损，并迁移旧的不可日检策略 ID。"""
+
+    from shilun.market.holdings import HoldingsError, get_holding, patch_holding
+    from shilun.strategies import (
+        E7_OVERSOLD_OVERNIGHT_STRATEGY_ID,
+        get_execution_strategy,
+        scenario_code,
+    )
+
+    normalized = _normalize_holding_ticker(ticker)
+    collection = store.collection("holdings")
+    holding = get_holding(collection, normalized)
+    if holding is None:
+        raise HTTPException(status_code=404, detail=f"{normalized} 持仓不存在")
+    raw_strategy_id = str(holding.get("strategy_id") or "ma5_v0_2").strip().lower()
+    if scenario_code(holding.get("entry_signal")) == "E7":
+        strategy_id = E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+    else:
+        strategy_id = "ma5_v0_2" if raw_strategy_id in LEGACY_HOLDING_STRATEGY_IDS else raw_strategy_id
+    try:
+        strategy = get_execution_strategy(strategy_id)
+    except Exception:
+        strategy = get_execution_strategy("ma5_v0_2")
+        strategy_id = strategy.strategy_id
+    snapshot = _holding_market_snapshot(store, normalized)
+    reference_price = float(
+        (
+            holding.get("cost_basis") or holding.get("entry_price")
+            if strategy_id == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+            else snapshot.get("current_price") or holding.get("cost_basis") or holding.get("entry_price")
+        )
+        or 0
+    )
+    if reference_price <= 0:
+        raise HTTPException(status_code=400, detail=f"{normalized} 缺少有效行情与成本价，无法生成策略价位。")
+    as_of = str(snapshot.get("current_price_as_of") or holding.get("entry_date") or "")[:10] or None
+    if strategy_id == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID:
+        target_plan = {
+            "target_price": None,
+            "target_source": "E7 次一交易日强制退出",
+            "completed_through": as_of,
+            "trade_plan": {
+                "target_type": "time_exit",
+                "exit_window": "09:30–10:00",
+                "exit_deadline": "次一交易日 10:00",
+            },
+        }
+    else:
+        target_plan = _build_holding_target_plan(store, ticker=normalized, as_of=as_of)
+    stop_plan = _build_stop_plan_for_strategy(
+        store,
+        strategy_id=strategy_id,
+        ticker=normalized,
+        reference_price=reference_price,
+        as_of=as_of,
+        entry_date=holding.get("entry_date"),
+    )
+    confirmed_at = datetime.now().isoformat(timespec="seconds")
+    confirmed_stop_plan = {**stop_plan, "status": "confirmed", "confirmed_at": confirmed_at}
+    updates: dict[str, Any] = {}
+
+    def same_price(left: Any, right: Any) -> bool:
+        try:
+            return abs(float(left) - float(right)) < 1e-6
+        except (TypeError, ValueError):
+            return left is None and right is None
+
+    target_needs_update = (
+        strategy_id == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+        and holding.get("target_price") is not None
+    ) or (
+        strategy_id != E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+        and (
+            not holding.get("target_price")
+            or (overwrite and not same_price(holding.get("target_price"), target_plan["target_price"]))
+        )
+    )
+    if target_needs_update:
+        updates["target_price"] = target_plan["target_price"]
+    existing_stop_plan = dict(holding.get("stop_loss_plan") or {})
+    stop_needs_update = not holding.get("stop_loss_1") or (
+        overwrite and (
+            not same_price(holding.get("stop_loss_1"), stop_plan["recommended_stop"])
+            or not same_price(holding.get("stop_loss_2"), stop_plan.get("secondary_stop"))
+            or holding.get("stop_loss_mode") != "strategy"
+            or existing_stop_plan.get("completed_through") != stop_plan.get("completed_through")
+        )
+    )
+    if stop_needs_update:
+        updates.update({
+            "stop_loss_1": stop_plan["recommended_stop"],
+            "stop_loss_2": stop_plan.get("secondary_stop"),
+            "stop_loss_mode": "strategy",
+            "stop_loss_plan": confirmed_stop_plan,
+            "stop_loss_confirmed_at": confirmed_at,
+        })
+    if overwrite and holding.get("manual_current_price") is not None:
+        updates.update({"manual_current_price": None, "manual_current_price_at": None})
+    current_plan = {
+        **dict(holding.get("current_plan") or {}),
+        "target_price": updates.get("target_price", holding.get("target_price")),
+        "target_source": target_plan.get("target_source"),
+        "stop_loss_1": updates.get("stop_loss_1", holding.get("stop_loss_1")),
+        "stop_loss_2": updates.get("stop_loss_2", holding.get("stop_loss_2")),
+        "stop_loss_mode": updates.get("stop_loss_mode", holding.get("stop_loss_mode")),
+        "market_reference_price": round(reference_price, 4),
+        "market_reference_at": snapshot.get("current_price_as_of"),
+        "auto_plan_completed_through": target_plan.get("completed_through"),
+        **dict(target_plan.get("trade_plan") or {}),
+    }
+    updates["current_plan"] = current_plan
+    if raw_strategy_id != strategy_id:
+        collection.update_one(
+            {"ticker": normalized},
+            {"$set": {"strategy_id": strategy_id, "strategy_version": strategy.version}},
+        )
+    try:
+        refreshed = patch_holding(
+            collection,
+            normalized,
+            updates,
+            position_event_collection=store.collection("holding_position_events"),
+            source="automatic_market_plan",
+        )
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    return {
+        "status": "ok",
+        "holding": {**refreshed, **snapshot},
+        "market": snapshot,
+        "target_plan": target_plan,
+        "stop_plan": confirmed_stop_plan,
+        "strategy_migrated_from": raw_strategy_id if raw_strategy_id != strategy_id else None,
+    }
+
+
+def _raise_holdings_http(error: Exception) -> NoReturn:
+    status_code = 404 if "不存在" in str(error) else 400
+    raise HTTPException(status_code=status_code, detail=str(error)) from error
 
 
 def _mask_secret(value: str | None) -> str | None:
@@ -181,6 +783,33 @@ def push_channel_status() -> dict[str, Any]:
         "telegram_webhook_base_url": config.telegram_webhook_base_url,
         "telegram_daily_push_enabled": bool(config.telegram_bot_token and config.telegram_push_chat_ids),
     }
+
+
+@ui_router.get("/api/v1/trading/intraday-watchlist")
+def get_intraday_watchlist() -> dict[str, Any]:
+    from shilun.trading.intraday_alerts import WATCHLIST_COLLECTION, list_watchlist
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        items = list_watchlist(store.collection(WATCHLIST_COLLECTION))
+        return {"status": "ok", "count": len(items), "items": items}
+    finally:
+        store.close()
+
+
+@ui_router.put("/api/v1/trading/intraday-watchlist")
+def put_intraday_watchlist(payload: IntradayWatchlistReplaceHttpRequest) -> dict[str, Any]:
+    from shilun.trading.intraday_alerts import WATCHLIST_COLLECTION, replace_watchlist
+
+    store = _open_holdings_store()
+    try:
+        items = replace_watchlist(
+            store.collection(WATCHLIST_COLLECTION),
+            [_model_payload(item) for item in payload.items],
+        )
+        return {"status": "ok", "count": len(items), "items": items}
+    finally:
+        store.close()
 
 
 @ui_router.get("/api/v1/tushare/health")
@@ -334,20 +963,7 @@ def tushare_health() -> dict[str, Any]:
 
 @ui_router.get("/api/v1/data/status")
 def data_status(date: str | None = None, ticker: str | None = None) -> dict[str, Any]:
-    """全面检查所有数据源，标注每项缺失阻断的功能。
-
-    数据源分类与阻断规则（核心数据缺一不可，增强数据按维度降级）：
-
-    | 数据集 | 类别 | 缺失影响 |
-    |---|---|---|
-    | market_daily_bars(个股) | 核心 | PART1/2/3 全部阻断 |
-    | market_daily_bars(指数) | 核心 | PART1 阻断（指数趋势/支撑压力） |
-    | stock_basic | 核心 | PART1 主线分降级、PART2 个股 name/industry 丢失 |
-    | moneyflow | 增强 | PART2 资金流向分降级 |
-    | limit_up_pool (akshare) | 增强 | PART1 涨停情绪精度降低，仍可估算 |
-    | concept_boards (akshare) | 增强 | PART2 概念主线维度缺失 |
-    | north_capital_flow (akshare) | 增强 | PART1 北向维度缺失 |
-    """
+    """Check dated active datasets and their downstream archives."""
     from shilun.common.db import MongoSnapshotStore
     from shilun.market.part1 import BENCHMARK_INDEX_OPTIONS, benchmark_index_meta
 
@@ -361,14 +977,15 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
             "message": "Mongo 未配置，请先设置 SHILUN_MONGO_URI。",
         }
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   socket_timeout_ms=30_000, initialize_indexes=False)
     except Exception as error:
         return {
             "mongo_configured": True,
             "mongo_connected": False,
             "target_date": target_date,
             "overall_status": "blocked",
-            "message": f"Mongo 已配置但当前无法连接：{error}",
+            "message": "云端数据库连接未就绪，请检查数据库通道后刷新状态。",
         }
     try:
         bars_col = store.collection("market_daily_bars")
@@ -423,26 +1040,26 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
             {"trade_date": target_date.replace("-", "")}
         )
 
-        # ── 增强：akshare 三类 ────────────────────────────────────────
+        # ── 涨停池与复盘归档 ────────────────────────────────────────
         target_yyyymmdd = target_date.replace("-", "")
         limit_up_target_count = store.collection("limit_up_pool").count_documents(
             {"trade_date": target_yyyymmdd}
         )
-        concept_total = store.collection("concept_boards").count_documents({})
-        concept_latest_doc = list(
-            store.collection("concept_boards")
-            .find({}, {"_id": 0, "snapshot_date": 1})
-            .sort("snapshot_date", -1).limit(1)
-        )
-        concept_latest_date = concept_latest_doc[0].get("snapshot_date") if concept_latest_doc else None
-
-        north_total = store.collection("north_capital_flow").count_documents({})
-        north_latest_doc = list(
-            store.collection("north_capital_flow")
-            .find({}, {"_id": 0, "trade_date": 1})
-            .sort("trade_date", -1).limit(1)
-        )
-        north_latest_date = north_latest_doc[0].get("trade_date") if north_latest_doc else None
+        pool_state = (store.find_sync_state(dataset="eastmoney_limit_up_pool", scope=target_yyyymmdd)
+                      or store.find_sync_state(dataset="akshare_limit_up_pool", scope=target_yyyymmdd) or {})
+        from shilun.review.service import REVIEW_VERSION
+        from shilun.market.taxonomy import VERSION as TAXONOMY_VERSION, SNAPSHOTS as TAXONOMY_SNAPSHOTS
+        perspective = store.collection(TAXONOMY_SNAPSHOTS).find_one(
+            {'_id': f'{TAXONOMY_VERSION}:{target_date}', 'status': 'ready'}, {'_id': 0, 'date': 1, 'catalog_count': 1, 'stock_mapping_counts': 1})
+        review = store.collection("daily_review_snapshots").find_one(
+            {"analysis_date": target_date, "engine_version": REVIEW_VERSION},
+            {"_id": 0, "generated_at": 1, "data_quality.status": 1})
+        pipeline = (store.find_sync_state(dataset="daily_data_pipeline", scope=target_date)
+                    or store.find_sync_state(dataset="daily_data_pipeline", scope="latest") or {})
+        from shilun.jobs.pipeline_state import TaskLedger
+        pipeline = {**pipeline, 'tasks': TaskLedger(store).snapshot(target_date)}
+        minute_count = store.collection("minute_bars_daily").count_documents(
+            {"trade_date": target_yyyymmdd, "interval": {"$in": ["5", 5]}})
 
         # ── 增强：突破事件表（Job 8） ─────────────────────────────────
         breakout_events_col = store.collection("breakout_events")
@@ -502,51 +1119,41 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
                 "value": moneyflow_target_count,
                 "ok": moneyflow_target_count > 100,
                 "detail": f"{target_date} 资金流 {moneyflow_target_count} 条",
-                "impact_on_miss": "PART2 资金流维度按 0 处理，仍可计算其他维度",
+                "impact_on_miss": "资金流观察不完整，应补齐所选交易日数据",
             },
             {
                 "key": "limit_up_pool",
-                "label": "涨停池（akshare）",
+                "label": "涨停池（东方财富）",
                 "tier": "enhanced",
-                "source": "akshare stock_zt_pool_em",
+                "source": "eastmoney dated limit pool",
                 "value": limit_up_target_count,
-                "ok": limit_up_target_count > 0,
-                "detail": f"{target_date} 涨停 {limit_up_target_count} 只" + (" · 未同步" if limit_up_target_count == 0 else ""),
-                "impact_on_miss": "PART1 涨停情绪精度降低（仍用 pct_chg>=9.5% 估算）",
+                "ok": limit_up_target_count > 0 or pool_state.get("status") == "empty_confirmed",
+                "detail": f"{target_date} 涨停 {limit_up_target_count} 只" + (" · 已核验空池" if pool_state.get("status") == "empty_confirmed" else " · 未同步" if limit_up_target_count == 0 else ""),
+                "impact_on_miss": "连板与封板明细缺少原始证据；按日线和涨跌停价核验",
             },
-            {
-                "key": "concept_boards",
-                "label": "概念板块快照（akshare）",
-                "tier": "enhanced",
-                "source": "akshare stock_board_concept_name_em",
-                "value": concept_total,
-                "ok": concept_total > 50 and concept_latest_date == target_yyyymmdd,
-                "detail": f"概念板块 {concept_total} 条，最新快照 {concept_latest_date or '暂无'}",
-                "impact_on_miss": "PART2 概念主线维度缺失",
-            },
-            {
-                "key": "north_capital_flow",
-                "label": "北向资金（akshare）",
-                "tier": "enhanced",
-                "source": "akshare stock_hsgt_hist_em",
-                "value": north_total,
-                "ok": north_total > 100,
-                "detail": f"北向资金 {north_total} 条历史，最新 {north_latest_date or '暂无'}",
-                "impact_on_miss": "PART1 北向资金维度缺失",
-            },
+            {"key": "minute_bars", "label": "分钟行情", "tier": "enhanced", "source": "KlineShare / Tushare / 东方财富",
+             "value": minute_count, "ok": minute_count > 0, "detail": f"{target_date} 已归档 {minute_count} 个证券窗口",
+             "impact_on_miss": "分时观察与盘中回放缺少分钟证据"},
+            {"key": "topic_perspectives", "label": "统一分类目录", "tier": "enhanced", "source": "东方财富分类 · Tushare兼容接口 dc_index / dc_member",
+             "value": (perspective or {}).get("catalog_count", 0), "ok": bool(perspective), "detail": f"{target_date} " + ("已有当前版本归档" if perspective else "尚未生成当前版本归档"),
+             "impact_on_miss": "题材与细分行业复盘缺少成分证据"},
+            {"key": "daily_review", "label": "复盘归档", "tier": "enhanced", "source": "同步后生成",
+             "value": int(bool(review)), "ok": bool(review) and (review.get("data_quality") or {}).get("status") != "blocked",
+             "detail": f"{target_date} 生成于 {review.get('generated_at')}" if review else f"{target_date} 尚未生成复盘",
+             "impact_on_miss": "复盘页无所选日归档；完成行情同步后生成复盘"},
             {
                 "key": "breakout_events",
-                "label": "突破事件追踪（Job 3/4 输出）",
+                "label": "MA5事件后续验证",
                 "tier": "enhanced",
                 "source": "shilun.market.breakout_events",
                 "value": breakout_total,
-                # 有事件 + 最新一条不早于 15 天，才算健康
+                # Existing events are useful evidence, not an execution watermark.
                 "ok": bool(breakout_total > 0 and breakout_latest_date),
                 "detail": (
                     f"共 {breakout_total} 条（settled {breakout_settled} · 追踪中 {breakout_tracking}）"
                     f"，最新突破日 {breakout_latest_date or '暂无'}"
                 ),
-                "impact_on_miss": "PART3 候选池 breakout_quality 徽章缺失，评分退化为 features 层 fallback",
+                "impact_on_miss": "候选质量评分、部分MA5持仓特征和B结构样本降级；已有日线特征仍可作为备用证据。",
                 "extras": {
                     "settled": breakout_settled,
                     "tracking": breakout_tracking,
@@ -555,11 +1162,21 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
             },
         ]
 
-        core_missing = [d for d in datasets if d["tier"] == "core" and not d["ok"]]
-        enhanced_missing = [d for d in datasets if d["tier"] == "enhanced" and not d["ok"]]
+        from shilun.market.data_status import cffex_dataset, enrich_datasets
+        datasets.append(cffex_dataset(store, target_date))
+        scheduler = enrich_datasets(
+            store, datasets, target_date, benchmark_ticker=selected_benchmark_ticker,
+            benchmark_count=selected_benchmark["history_count"], stock_basic_count=stock_basic_count)
+
+        core_missing = [d for d in datasets if d["tier"] == "core" and not d["ok"] and d["status"] not in {"scheduled", "running"}]
+        enhanced_missing = [d for d in datasets if d["tier"] == "enhanced" and (not d["ok"] or d["status"] == "unknown") and d["status"] not in {"scheduled", "running"}]
+        pending = [d for d in datasets if d["status"] in {"scheduled", "running"}]
         if core_missing:
             overall_status = "blocked"
             top_message = f"核心数据缺失：{', '.join(d['label'] for d in core_missing)}。PART1/2/3 部分功能不可用。"
+        elif pending:
+            overall_status = "running" if any(d["status"] == "running" for d in pending) else "scheduled"
+            top_message = "部分数据待定时任务执行或正在同步；现有归档与所选日就绪状态分开列示。"
         elif enhanced_missing:
             overall_status = "degraded"
             top_message = f"增强数据缺失（功能可降级运行）：{', '.join(d['label'] for d in enhanced_missing)}"
@@ -575,6 +1192,8 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
             "overall_status": overall_status,
             "message": top_message,
             "datasets": datasets,
+            "scheduler": scheduler,
+            "pipeline": pipeline,
             "selected_benchmark": selected_benchmark,
             "benchmark_statuses": benchmark_statuses,
             # 向后兼容旧前端
@@ -585,27 +1204,116 @@ def data_status(date: str | None = None, ticker: str | None = None) -> dict[str,
             "ticker": selected_benchmark_ticker,
             "benchmark_ready": selected_benchmark["has_target_data"],
         }
+    except PyMongoError as error:
+        logging.getLogger(__name__).warning("Data status database failure: %s", type(error).__name__)
+        return {"mongo_configured": True, "mongo_connected": False,
+                "target_date": target_date, "overall_status": "blocked",
+                "message": "数据状态读取时数据库连接中断，暂时无法核对已保存记录；请在连接恢复后刷新。"}
     finally:
         store.close()
 
 
-def _load_market_gate(store, target_date: str, bm_ticker: str) -> dict[str, Any] | None:
-    """从 PART1 缓存拿 market_gate；没有缓存时返回 None（PART3 会按 no-gate 默认处理）。
+from shilun.market.sector_service import (
+    _compute_sector_trends_full,
+    _compute_sector_trends_with_candidate_minutes,
+    _load_breakout_events_lookup,
+    _load_market_gate,
+    _load_minute_bars_from_mongo,
+    _load_sector_cache,
+    _minute_target_coverage,
+    _moneyflow_available_for_date,
+    _save_sector_cache,
+    _sector_cache_key,
+    _sector_candidate_minute_targets,
+    _sector_payload_fund_dates,
+)
 
-    不做 fallback 计算，避免 PART2/PART3 隐式触发 PART1 全量重跑。
-    调用方应先手动跑一次 /api/v1/market/permission 建缓存。
-    """
-    try:
-        cache_col = store.collection("market_part1_cache")
-        cached = cache_col.find_one(
-            {"analysis_date": target_date, "benchmark_ticker": bm_ticker},
-            {"_id": 0, "payload": 1, "engine_version": 1},
-        )
-        if cached and cached.get("payload") and cached.get("engine_version") == PART1_ENGINE_VERSION:
-            return cached["payload"].get("market_gate")
-    except Exception:  # noqa: BLE001
+
+def _daily_record_date(record: dict[str, Any]) -> str | None:
+    """Normalize a Mongo daily-bar date without assuming one storage format."""
+    value = record.get("date") or record.get("trade_date")
+    if value is None:
         return None
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d")
+    text = str(value).strip()
+    if len(text) >= 10 and text[4] == "-" and text[7] == "-":
+        return text[:10]
+    digits = re.sub(r"\D", "", text)
+    if len(digits) >= 8:
+        return f"{digits[:4]}-{digits[4:6]}-{digits[6:8]}"
     return None
+
+
+def _latest_daily_bar_date(
+    records: list[dict[str, Any]],
+    requested_date: str,
+    *,
+    strictly_before: bool = False,
+) -> str | None:
+    """Return the newest completed daily-bar date usable for a request.
+
+    Intraday decisions pass ``strictly_before=True`` to prevent look-ahead: the
+    session's minute data may use the session date, but its daily baseline must
+    come from an already completed prior trading day.
+    """
+    dates = {
+        value
+        for record in records
+        if (value := _daily_record_date(record))
+        and (value < requested_date if strictly_before else value <= requested_date)
+    }
+    return max(dates) if dates else None
+
+
+def _request_is_open_daily_session(requested_date: str, *, now: datetime | None = None) -> bool:
+    """Whether today's daily bar must still be treated as incomplete."""
+    current = now or datetime.now()
+    return (
+        requested_date == current.strftime("%Y-%m-%d")
+        and (current.hour, current.minute) < (15, 15)
+    )
+
+
+def _decorate_daily_baseline_payload(
+    payload: dict[str, Any],
+    *,
+    requested_date: str,
+    baseline_date: str,
+    from_cache: bool,
+    cached_at: str | None = None,
+) -> dict[str, Any]:
+    result = {**payload}
+    result["_from_cache"] = from_cache
+    if cached_at:
+        result["_cached_at"] = cached_at
+    result["requested_analysis_date"] = requested_date
+    result["daily_baseline_date"] = baseline_date
+    result["baseline_mode"] = (
+        "requested_completed_daily" if requested_date == baseline_date else "latest_completed_daily"
+    )
+    result["baseline_note"] = (
+        f"使用 {baseline_date} 已完成日线作为盘前基线。"
+        if requested_date != baseline_date
+        else f"使用 {baseline_date} 已完成日线计算。"
+    )
+    return result
+
+
+def _cffex_history_dates(store, target_date: str, *, limit: int = 7) -> list[str]:
+    from shilun.data.cffex_positions import history_dates
+    return history_dates(store, target_date, limit=limit)
+
+
+def _cffex_history_payload(payloads: dict[str, dict[str, Any]], dates: list[str]) -> list[dict[str, Any]]:
+    from shilun.data.cffex_positions import history_payload
+    return history_payload(payloads, dates)
+
+
+def _load_cffex_positions_snapshot(store, target_date: str, *, refresh: bool) -> dict[str, Any]:
+    """Compatibility entry point shared with the independent scheduled sync."""
+    from shilun.data.cffex_positions import load_snapshot
+    return load_snapshot(store, target_date, refresh=refresh)
 
 
 @ui_router.get("/api/v1/market/permission")
@@ -614,36 +1322,71 @@ def market_permission(
     benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
     lookback_days: int = 280,  # 扩到 280 让 MA250 可算
     force: bool = False,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     """PART1 大盘权限。默认读缓存，传 force=true 强制重算。"""
     import pandas as pd
 
     from shilun.common.db import MongoSnapshotStore
 
-    target_date = normalize_analysis_date(date)
+    requested_date = normalize_analysis_date(date)
     bm_ticker = benchmark_ticker.upper()
-    request = MarketPart1Request(
-        analysis_date=target_date,
+    initial_request = MarketPart1Request(
+        analysis_date=requested_date,
         benchmark_ticker=bm_ticker,
         lookback_days=lookback_days,
     )
     config = load_config()
+    if read_only and force:
+        raise HTTPException(400, '只读查询不能强制重算大盘权限。')
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置，PART1 大盘权限需要读取 Mongo 日线数据。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        # The review workbench reads the remote ECS MongoDB; a forced refresh
+        # may fill several missing CFFEX sessions and must not use the generic
+        # three-second local-database budget.
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db, socket_timeout_ms=60_000,
+                                   **({'initialize_indexes': False} if read_only else {}))
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
     try:
         cache_col = store.collection("market_part1_cache")
+        # 先确认数据库里真正可用的已完成交易日。请求今天但今天尚未收盘或
+        # 日线尚未同步时，自动使用最近已完成日线，不能要求一根未来日 K。
+        initial_index_records = store.raw_market.find_daily_bars(
+            start_date=initial_request.start_date,
+            end_date=requested_date,
+            tickers=[initial_request.benchmark_ticker],
+        )
+        target_date = _latest_daily_bar_date(
+            initial_index_records,
+            requested_date,
+            strictly_before=_request_is_open_daily_session(requested_date),
+        )
+        if not target_date:
+            raise ValueError(
+                f"No benchmark/index bars found for {bm_ticker} before {requested_date}. "
+                "请先同步最近一个已完成交易日的指数日线。"
+            )
+        request = MarketPart1Request(
+            analysis_date=target_date,
+            benchmark_ticker=bm_ticker,
+            lookback_days=lookback_days,
+        )
         cache_key = {"analysis_date": target_date, "benchmark_ticker": bm_ticker}
         if not force:
             cached = cache_col.find_one(cache_key, {"_id": 0, "payload": 1, "cached_at": 1, "engine_version": 1})
             if cached and cached.get("payload") and cached.get("engine_version") == PART1_ENGINE_VERSION:
-                payload = cached["payload"]
-                payload["_from_cache"] = True
-                payload["_cached_at"] = cached.get("cached_at")
-                return payload
+                return _decorate_daily_baseline_payload(
+                    cached["payload"],
+                    requested_date=requested_date,
+                    baseline_date=target_date,
+                    from_cache=True,
+                    cached_at=cached.get("cached_at"),
+                )
+
+        if read_only:
+            raise HTTPException(404, '所选交易日的大盘权限基线尚未归档；只读查询不会重算或写入缓存。')
 
         index_records = store.raw_market.find_daily_bars(
             start_date=request.start_date,
@@ -654,42 +1397,52 @@ def market_permission(
             start_date=request.start_date,
             end_date=target_date,
         )
-        stock_basic = pd.DataFrame(store.raw_market.find_stock_basic())
+        from shilun.market.taxonomy import classify_stocks
+        stock_basic = pd.DataFrame(classify_stocks(store, target_date, store.raw_market.find_stock_basic()))
+        peer_tickers = [str(item["ticker"]).upper() for item in BENCHMARK_INDEX_OPTIONS]
+        peer_index_records = store.raw_market.find_daily_bars(
+            start_date=request.start_date,
+            end_date=target_date,
+            tickers=peer_tickers,
+        )
         payload = evaluate_market_permission(
             analysis_date=target_date,
             benchmark_ticker=request.benchmark_ticker,
             index_bars=pd.DataFrame(index_records),
             market_bars=pd.DataFrame(market_records),
             stock_basic=stock_basic,
+            peer_index_bars=pd.DataFrame(peer_index_records),
         )
-        # 叠加用户上传的波浪/外部文档的人工标注位
-        wave_docs = list(
-            store.collection("wave_docs").find(
-                {"analysis_date": target_date, "benchmark_ticker": bm_ticker},
+        # V2 assembles the daily market answer from already-audited modules. Sector
+        # data remains cache-only here, while CFFEX external pages refresh only on
+        # an explicit force recompute so ordinary page loads stay deterministic.
+        sector_cached = _load_sector_cache(store, target_date, bm_ticker, 60)
+        sector_payload = (sector_cached or {}).get("payload") or {}
+        # “强制重算”必须让 V2 与当日已经同步完成的资金事实一起前进。过去这里
+        # 只重算指数、情绪和期指，板块仍静默复用旧缓存，导致 7/15 页面继续显示
+        # 7/10 资金日。只有目标日 moneyflow 已真实落库时才重算，绝不伪造当日资金。
+        if force and _moneyflow_available_for_date(store, target_date):
+            cached_fund_dates = _sector_payload_fund_dates(sector_payload)
+            if not sector_payload or target_date not in cached_fund_dates:
+                from shilun.jobs.sector_precompute_job import start_task
+                payload["sector_refresh_task"] = start_task(store, target_date, bm_ticker)
+
+        try:
+            limit_up_rows = list(store.collection("limit_up_pool").find(
+                {"trade_date": {"$in": [target_date, target_date.replace("-", "")]}},
                 {"_id": 0},
-            ).sort("uploaded_at", -1).limit(5)
+            ))
+        except Exception:  # noqa: BLE001 - sentiment falls back to daily-bar proxies
+            limit_up_rows = []
+        institutional_futures = _load_cffex_positions_snapshot(store, target_date, refresh=force)
+        from shilun.market.market_v2 import build_market_v2
+
+        payload["market_v2"] = build_market_v2(
+            payload,
+            sector_payload=sector_payload,
+            limit_up_rows=limit_up_rows,
+            institutional_futures=institutional_futures,
         )
-        if wave_docs:
-            manual_levels: list[dict[str, Any]] = []
-            for doc in wave_docs:
-                for lv in doc.get("levels") or []:
-                    manual_levels.append({
-                        **lv,
-                        "from_doc": doc.get("source_doc"),
-                        "uploaded_at": doc.get("uploaded_at"),
-                    })
-            payload["manual_levels"] = manual_levels
-            payload["wave_doc_count"] = len(wave_docs)
-            payload["wave_doc_summaries"] = [
-                {
-                    "source_doc": d.get("source_doc"),
-                    "ai_summary": d.get("ai_summary"),
-                    "ai_provider": d.get("ai_provider"),
-                    "level_count": d.get("level_count"),
-                    "uploaded_at": d.get("uploaded_at"),
-                }
-                for d in wave_docs
-            ]
         cache_col.update_one(
             cache_key,
             {
@@ -702,8 +1455,14 @@ def market_permission(
             },
             upsert=True,
         )
-        payload["_from_cache"] = False
-        return payload
+        return _decorate_daily_baseline_payload(
+            payload,
+            requested_date=requested_date,
+            baseline_date=target_date,
+            from_cache=False,
+        )
+    except HTTPException:
+        raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:  # pragma: no cover
@@ -712,132 +1471,26 @@ def market_permission(
         store.close()
 
 
-def _compute_sector_trends_full(
-    store,
-    target_date: str,
-    bm_ticker: str,
-    lookback_days: int,
-    trend_lookback_days: int,
-    top_n: int,
-    include_daily_leaders: bool = False,
-    include_all_sectors: bool = False,
-) -> dict[str, Any]:
-    """完整跑一次 evaluate_sector_trends。这是慢路径，只在预计算里调用。"""
-    import pandas as pd
-
-    request = SectorTrendRequest(
-        analysis_date=target_date,
-        benchmark_ticker=bm_ticker,
-        lookback_days=lookback_days,
-        trend_lookback_days=trend_lookback_days,
-        top_n=top_n,
-    )
-
-    benchmark_records = store.raw_market.find_daily_bars(
-        start_date=request.start_date, end_date=target_date, tickers=[bm_ticker],
-    )
-    market_records = store.raw_market.find_daily_bars(
-        start_date=request.start_date, end_date=target_date,
-    )
-    stock_basic = pd.DataFrame(store.raw_market.find_stock_basic())
-    daily_basic = pd.DataFrame(store.raw_market.find_daily_basic(trade_date=target_date))
-    moneyflow_start = (
-        datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=max(18, trend_lookback_days + 5))
-    ).strftime("%Y-%m-%d")
-    moneyflow = pd.DataFrame(
-        store.raw_market.find_moneyflow(start_date=moneyflow_start, end_date=target_date)
-    )
-    gate = _load_market_gate(store, target_date, bm_ticker)
-    # Job 6：把 breakout_events 集合里 target_date 之前 30 天内所有事件按 ticker
-    # 一次拉进内存，`build_candidates` 里对每只候选票直接查表注入。避免每只票单发一次
-    # Mongo query，也避免评分函数持有 store 句柄。
-    breakout_events_lookup = _load_breakout_events_lookup(store, target_date)
-    return evaluate_sector_trends(
-        analysis_date=target_date,
-        benchmark_ticker=bm_ticker,
-        benchmark_bars=pd.DataFrame(benchmark_records),
-        market_bars=pd.DataFrame(market_records),
-        stock_basic=stock_basic,
-        daily_basic=daily_basic,
-        moneyflow=moneyflow,
-        top_n=request.top_n,
-        min_stock_count=request.min_stock_count,
-        exclude_st=request.exclude_st,
-        include_daily_leaders=include_daily_leaders,
-        include_all_sectors=include_all_sectors,
-        market_gate=gate,
-        trend_lookback_days=trend_lookback_days,
-        breakout_events_lookup=breakout_events_lookup,
-    )
 
 
-def _load_breakout_events_lookup(store, target_date: str, lookback_days: int = 30) -> dict[str, dict[str, Any]]:
-    """从 breakout_events 集合批量拉最近事件，供 build_candidates 注入评分。
-
-    集合不存在或空表时静默返回 {}，不影响主流程。
-    """
-    try:
-        from shilun.market.breakout_events import build_latest_events_lookup, COLLECTION_NAME
-        return build_latest_events_lookup(
-            store.collection(COLLECTION_NAME),
-            tickers=None,
-            on_or_before=target_date,
-            lookback_days=lookback_days,
-        )
-    except Exception:  # noqa: BLE001
-        return {}
 
 
-def _sector_cache_key(target_date: str, bm_ticker: str, trend_lookback_days: int) -> dict[str, Any]:
-    from shilun.market import SECTOR_ENGINE_VERSION
-
-    return {
-        "analysis_date": target_date,
-        "benchmark_ticker": bm_ticker,
-        "trend_lookback_days": trend_lookback_days,
-        "engine_version": SECTOR_ENGINE_VERSION,
-    }
 
 
-def _load_sector_cache(store, target_date: str, bm_ticker: str, trend_lookback_days: int) -> dict[str, Any] | None:
-    """尝试从 sector_trends_cache 读缓存。"""
-    try:
-        cache_col = store.collection("sector_trends_cache")
-        cached = cache_col.find_one(
-            _sector_cache_key(target_date, bm_ticker, trend_lookback_days),
-            {"_id": 0, "payload": 1, "computed_at": 1, "engine_version": 1, "compute_time_seconds": 1},
-        )
-        if cached and cached.get("payload"):
-            return cached
-    except Exception:  # noqa: BLE001
-        return None
-    return None
 
 
-def _save_sector_cache(
-    store,
-    target_date: str,
-    bm_ticker: str,
-    trend_lookback_days: int,
-    payload: dict[str, Any],
-    compute_time_seconds: float,
-) -> None:
-    from shilun.market import SECTOR_ENGINE_VERSION
-    cache_col = store.collection("sector_trends_cache")
-    key = _sector_cache_key(target_date, bm_ticker, trend_lookback_days)
-    cache_col.update_one(
-        key,
-        {
-            "$set": {
-                **key,
-                "engine_version": SECTOR_ENGINE_VERSION,
-                "payload": payload,
-                "compute_time_seconds": round(compute_time_seconds, 2),
-                "computed_at": datetime.now().isoformat(timespec="seconds"),
-            }
-        },
-        upsert=True,
-    )
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @ui_router.get("/api/v1/market/sectors")
@@ -861,13 +1514,22 @@ def market_sectors(
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置，板块动向需要读取 Mongo 日线数据。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        # 细分成分缓存比旧行业代理更大；查询不重复初始化全库索引。
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db, socket_timeout_ms=30000, initialize_indexes=False)
     except Exception as error:
-        raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
+        raise HTTPException(status_code=503, detail="云端数据库暂时无法连接，请检查数据库通道后重试。") from error
 
     try:
         if not force:
-            cached = _load_sector_cache(store, target_date, bm_ticker, trend_lookback_days)
+            from pymongo import timeout
+            from pymongo.errors import PyMongoError
+
+            try:
+                # 包含重试的总预算低于页面的 45 秒等待时间。
+                with timeout(30):
+                    cached = _load_sector_cache(store, target_date, bm_ticker, trend_lookback_days, strict=True)
+            except PyMongoError as error:
+                raise HTTPException(status_code=503, detail="板块缓存读取超时或中断，请稍后重试；无需重新计算。") from error
             if cached:
                 payload = cached["payload"]
                 payload["_from_cache"] = True
@@ -880,12 +1542,60 @@ def market_sectors(
             status_code=400,
             detail=(
                 f"板块动向数据未预计算（{target_date} / {bm_ticker} / lookback={trend_lookback_days}）。"
-                f"请先调用 POST /api/v1/data/precompute-sectors?date={target_date} 触发离线计算。"
-                f"预计需 60-120 秒。"
+                "请点击“生成 / 查询任务”生成该日期归档；后台完成后即可重新查询。"
             ),
         )
     finally:
         store.close()
+
+
+@ui_router.post("/api/v1/data/precompute-sectors/start")
+def start_sector_precompute(date: str, benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
+                            top_n: int = 8, force: bool = False) -> dict:
+    from shilun.jobs.sector_precompute_job import _store, start_task
+    from pymongo import timeout
+    from pymongo.errors import PyMongoError
+    target = normalize_analysis_date(date)
+    benchmark = benchmark_ticker.upper()
+    if benchmark not in {item['ticker'] for item in BENCHMARK_INDEX_OPTIONS}:
+        raise HTTPException(status_code=422, detail='请选择支持的基准指数。')
+    store = None
+    try:
+        with timeout(20):
+            store = _store()
+            return start_task(store, target, benchmark, **({'top_n': top_n} if top_n != 8 else {}),
+                              **({'force': True} if force else {}))
+    except PyMongoError as error:
+        raise HTTPException(status_code=503, detail='暂时无法确认板块任务提交状态；请稍后重试，同日正在运行的任务会继续复用。') from error
+    except OSError as error:
+        raise HTTPException(status_code=503, detail='板块后台任务未能启动，请稍后重试。') from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    finally:
+        if store is not None:
+            store.close()
+
+
+@ui_router.get("/api/v1/data/precompute-sectors/status/{job_id}")
+def sector_precompute_status(job_id: str) -> dict:
+    from shilun.jobs.sector_precompute_job import _store, COLLECTION, task_status
+    from pymongo import timeout
+    from pymongo.errors import PyMongoError
+    if not re.fullmatch(r'[0-9a-f]{24}', job_id):
+        raise HTTPException(status_code=422, detail='任务编号无效。')
+    store = None
+    try:
+        with timeout(20):
+            store = _store()
+            row = store.collection(COLLECTION).find_one({'_id': job_id})
+        if not row:
+            raise HTTPException(status_code=404, detail='任务不存在，请重新发起计算。')
+        return task_status(row)
+    except PyMongoError as error:
+        raise HTTPException(status_code=503, detail='板块任务进度暂时无法读取，后台任务可能仍在运行；请稍后继续查询。') from error
+    finally:
+        if store is not None:
+            store.close()
 
 
 @ui_router.post("/api/v1/data/precompute-sectors")
@@ -895,59 +1605,13 @@ def precompute_sectors(
     lookback_days: int = 40,
     trend_lookback_days: int = 60,
     top_n: int = 8,
-    include_daily_leaders: bool = True,
-    include_all_sectors: bool = False,
+    include_daily_leaders: bool = False,
+    include_all_sectors: bool = True,
 ) -> dict[str, Any]:
-    """离线预计算板块动向 + 落 sector_trends_cache。
-
-    这个 API 是**慢路径**（60-120 秒），跑完把结果写入缓存。
-    之后 GET /api/v1/market/sectors 只读缓存，秒回。
-    """
-    import time
-    from shilun.common.db import MongoSnapshotStore
-
-    target_date = normalize_analysis_date(date)
-    bm_ticker = benchmark_ticker.upper()
-    config = load_config()
-    if not config.mongo_uri:
-        raise HTTPException(status_code=400, detail="Mongo 未配置。")
-    try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=f"Mongo 连接失败：{error}") from error
-
-    try:
-        t0 = time.time()
-        result = _compute_sector_trends_full(
-            store=store,
-            target_date=target_date,
-            bm_ticker=bm_ticker,
-            lookback_days=lookback_days,
-            trend_lookback_days=trend_lookback_days,
-            top_n=top_n,
-            include_daily_leaders=include_daily_leaders,
-            include_all_sectors=include_all_sectors,
-        )
-        elapsed = time.time() - t0
-        _save_sector_cache(store, target_date, bm_ticker, trend_lookback_days, result, elapsed)
-        return {
-            "status": "ok",
-            "analysis_date": target_date,
-            "benchmark_ticker": bm_ticker,
-            "trend_lookback_days": trend_lookback_days,
-            "compute_time_seconds": round(elapsed, 2),
-            "top_sectors": [
-                {"name": s["sector_name"], "score": s["scores"].get("sector_score")}
-                for s in (result.get("top_sectors") or [])
-            ],
-            "message": f"预计算完成，耗时 {elapsed:.1f}s。可访问 GET /api/v1/market/sectors 秒回。",
-        }
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except Exception as error:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"预计算失败：{error}") from error
-    finally:
-        store.close()
+    """Compatibility submission endpoint; execution belongs to the ECS queue."""
+    if lookback_days != 40 or trend_lookback_days != 60 or include_daily_leaders or not include_all_sectors:
+        raise HTTPException(status_code=422, detail="云端预计算使用40日准备/60日趋势窗口及完整板块归档；独立龙头榜请使用原专用入口。")
+    return start_sector_precompute(date=normalize_analysis_date(date), benchmark_ticker=benchmark_ticker, top_n=top_n)
 
 
 @ui_router.post("/api/v1/data/precompute-breakout-events")
@@ -1047,9 +1711,11 @@ def market_candidates(
     lookback_days: int = 40,
     trend_lookback_days: int = 60,
     top_n: int = 8,
+    strategy_id: str = "ma5_v0_2",
 ) -> dict[str, Any]:
-    """候选池 — 从 sector_trends_cache 直接读，未命中报 400。"""
+    """按策略读取候选池；MA5使用全市场硬条件与当日量能规则归档。"""
     from shilun.common.db import MongoSnapshotStore
+    from shilun.market.strategy_candidates import find_latest_strategy_candidates, REVIEW_TACTIC_IDS, review_candidate_payload
 
     target_date = normalize_analysis_date(date)
     bm_ticker = benchmark_ticker.upper()
@@ -1057,33 +1723,1265 @@ def market_candidates(
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置，候选池需要读取 Mongo 日线数据。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db, socket_timeout_ms=60_000, initialize_indexes=False)
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
     try:
+        selected_strategy = str(strategy_id or "ma5_v0_2").strip().lower()
+        if selected_strategy in REVIEW_TACTIC_IDS:
+            return review_candidate_payload(store, target_date, selected_strategy)
+        if selected_strategy != "ma5_v0_2":
+            selection_date, candidates = find_latest_strategy_candidates(
+                store,
+                target_date=target_date,
+                strategy_id=selected_strategy,
+                exclude_st=True,
+                limit=max(1, min(200, int(top_n or 8))),
+            )
+            from shilun.market.taxonomy import classify_stocks
+            candidates = [{**r, 'sector_name': r['industry'], 'sector_code': r['industry_code']}
+                          for r in classify_stocks(store, selection_date or target_date, candidates)]
+            gate = _load_market_gate(store, selection_date or target_date, bm_ticker)
+            return {
+                "analysis_date": selection_date or target_date,
+                "selection_as_of": selection_date or None,
+                "benchmark_ticker": bm_ticker,
+                "strategy_id": selected_strategy,
+                "market_gate": gate,
+                "candidates": candidates,
+                "_from_cache": True,
+                "_cache_source": "market_snapshot_records.strategy_signals",
+            }
         cached = _load_sector_cache(store, target_date, bm_ticker, trend_lookback_days)
         if not cached:
             raise HTTPException(
                 status_code=400,
                 detail=(
                     f"候选池数据未预计算（{target_date} / {bm_ticker} / lookback={trend_lookback_days}）。"
-                    f"请先调用 POST /api/v1/data/precompute-sectors?date={target_date} 触发离线计算。"
+                    "请点击“补齐数据并计算”，完成后自动读取候选。"
                 ),
             )
         payload = cached["payload"]
+        from shilun.market.ma5_liquidity import MA5_SELECTION_RULE_VERSION
+        if payload.get("selection_rule_version") != MA5_SELECTION_RULE_VERSION:
+            raise HTTPException(status_code=400, detail="MA5候选规则已更新，请补齐数据并计算最新规则名单。")
         gate = _load_market_gate(store, target_date, bm_ticker)
         return {
             "analysis_date": target_date,
             "benchmark_ticker": bm_ticker,
+            "strategy_id": "ma5_v0_2",
+            "selection_scope": payload["selection_scope"],
+            "selection_minute_coverage": payload.get("selection_minute_coverage"),
+            "selection_rule_version": payload["selection_rule_version"],
             "market_gate": gate,
             "candidates": payload.get("candidates", []),
             "_from_cache": True,
             "_cached_at": cached.get("computed_at"),
         }
+    except HTTPException:
+        raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:  # pragma: no cover
         raise HTTPException(status_code=500, detail=f"Market candidates failed: {error}") from error
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/holdings")
+def create_holding(payload: HoldingCreateHttpRequest) -> dict[str, Any]:
+    """新增一笔持仓；同一股票存在活动持仓时拒绝覆盖。"""
+    from shilun.market.holdings import HoldingRecord, HoldingsError, get_holding, upsert_holding
+    from shilun.strategies import (
+        E7_OVERSOLD_OVERNIGHT_STRATEGY_ID,
+        ExecutionStrategyError,
+        get_execution_strategy,
+        resolve_strategy_binding,
+    )
+
+    data = _model_payload(payload)
+    data["ticker"] = _normalize_holding_ticker(data["ticker"])
+    data["entry_date"] = _normalize_holding_date(data["entry_date"], "entry_date")
+    data["entry_signal"] = (data.get("entry_signal") or "").strip()
+    if not data["entry_signal"]:
+        raise HTTPException(status_code=400, detail="入场信号 entry_signal 不能为空。")
+
+    proposed_plan = dict(data.pop("proposed_plan", {}) or {})
+    plan_keys = (
+        "target_price", "stop_loss_1", "stop_loss_2", "breakdown_level",
+        "add_point", "signal_candle_open",
+    )
+    for key in plan_keys:
+        if data.get(key) is not None:
+            proposed_plan[key] = data[key]
+    proposed_plan.setdefault("entry_price", data["entry_price"])
+    store = _open_holdings_store()
+    try:
+        market_snapshot = _holding_market_snapshot(store, data["ticker"])
+        latest_market_date = str(market_snapshot.get("current_price_as_of") or "")[:10] or None
+        # 仓位比例是账户事实的派生值，不接受前端手填口径。真实股数存在时，
+        # 始终按 股数 × 成本价 ÷ 总资产 重算并落库，保留小数精度。
+        if data.get("quantity"):
+            risk_profile = store.collection("account_risk_profiles").find_one(
+                {"profile_id": "default"}, {"_id": 0, "total_assets": 1},
+            ) or {}
+            total_assets = float(risk_profile.get("total_assets") or 0)
+            position_cost = int(data["quantity"]) * float(data.get("cost_basis") or data["entry_price"])
+            if total_assets <= 0:
+                raise HTTPException(status_code=400, detail="账户总资产未配置，无法按股数 × 成本价自动计算持仓比例。")
+            computed_entry_size = position_cost / total_assets
+            if computed_entry_size <= 0 or computed_entry_size > 1:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"按股数 × 成本价 ÷ 总资产计算的持仓比例为 {computed_entry_size:.2%}，必须在 0%-100% 之间。",
+                )
+            data["entry_size"] = round(computed_entry_size, 6)
+        try:
+            strategy_id, strategy_version = resolve_strategy_binding(
+                data.get("entry_signal"),
+                data.get("strategy_id"),
+            )
+            strategy = get_execution_strategy(strategy_id)
+        except ExecutionStrategyError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+        data["strategy_id"] = strategy_id
+        data["strategy_version"] = strategy_version
+        if strategy.strategy_id == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID:
+            data["target_price"] = None
+            proposed_plan.pop("target_price", None)
+
+        if strategy.strategy_id == "ma5_v0_2" and not proposed_plan.get("target_price"):
+            target_plan = _build_holding_target_plan(
+                store,
+                ticker=data["ticker"],
+                as_of=latest_market_date,
+            )
+            proposed_plan["target_price"] = target_plan["target_price"]
+            proposed_plan["target_source"] = target_plan["target_source"]
+            data["target_price"] = target_plan["target_price"]
+
+        if strategy.strategy_id in {"ma5_v0_2", "manual", E7_OVERSOLD_OVERNIGHT_STRATEGY_ID} and not proposed_plan.get("stop_loss_1"):
+            stop_reference = (
+                float(data.get("cost_basis") or data["entry_price"])
+                if strategy.strategy_id == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+                else _holding_stop_reference(store, data)
+            )
+            stop_plan = _build_stop_plan_for_strategy(
+                store,
+                strategy_id=strategy.strategy_id,
+                ticker=data["ticker"],
+                reference_price=stop_reference,
+                as_of=latest_market_date,
+                entry_date=data.get("entry_date"),
+            )
+            confirmed_at = datetime.now().isoformat(timespec="seconds")
+            stop_plan = {**stop_plan, "status": "confirmed", "confirmed_at": confirmed_at}
+            proposed_plan["stop_loss_1"] = stop_plan["recommended_stop"]
+            if stop_plan.get("secondary_stop") is not None:
+                proposed_plan.setdefault("stop_loss_2", stop_plan["secondary_stop"])
+            data.update({
+                "stop_loss_1": stop_plan["recommended_stop"],
+                "stop_loss_2": stop_plan.get("secondary_stop"),
+                "stop_loss_mode": "strategy",
+                "stop_loss_plan": stop_plan,
+                "stop_loss_confirmed_at": confirmed_at,
+            })
+            proposed_plan.update({
+                "stop_loss_mode": "strategy",
+                "stop_loss_plan": stop_plan,
+                "stop_loss_confirmed_at": confirmed_at,
+            })
+        elif proposed_plan.get("stop_loss_1"):
+            data["stop_loss_mode"] = data.get("stop_loss_mode") or "manual"
+            data["stop_loss_confirmed_at"] = data.get("stop_loss_confirmed_at") or datetime.now().isoformat(timespec="seconds")
+            if data["stop_loss_mode"] == "strategy" and data.get("stop_loss_plan"):
+                data["stop_loss_plan"] = {
+                    **data["stop_loss_plan"],
+                    "status": "confirmed",
+                    "confirmed_at": data["stop_loss_confirmed_at"],
+                }
+            proposed_plan.update({
+                "stop_loss_mode": data["stop_loss_mode"],
+                "stop_loss_plan": data.get("stop_loss_plan") or {},
+                "stop_loss_confirmed_at": data["stop_loss_confirmed_at"],
+            })
+
+        bound_plan = strategy.bind_execution_plan(
+            proposed_plan,
+            actual_entry_price=float(data["entry_price"]),
+        )
+        data["strategy_id"] = strategy.strategy_id
+        data["strategy_version"] = strategy.version
+        data["initial_plan"] = dict(bound_plan)
+        data["current_plan"] = dict(bound_plan)
+        data["plan_revisions"] = []
+        for key in plan_keys:
+            if data.get(key) is None and bound_plan.get(key) is not None:
+                data[key] = bound_plan[key]
+
+        collection = store.collection("holdings")
+        action = upsert_holding(
+            collection,
+            HoldingRecord(**data),
+            position_event_collection=store.collection("holding_position_events"),
+        )
+        holding = get_holding(collection, data["ticker"])
+        return {
+            "status": "ok",
+            "action": action,
+            "holding": {**(holding or {}), **market_snapshot},
+        }
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/strategies")
+def get_strategy_catalog() -> dict[str, Any]:
+    """返回可绑定到单票分析、持仓和回测的统一策略目录。"""
+    from shilun.strategies import list_execution_strategies
+
+    strategies = list_execution_strategies()
+    return {"strategies": strategies, "count": len(strategies)}
+
+
+@ui_router.get("/api/v1/strategies/{strategy_id}/stop-plan")
+def preview_strategy_stop_plan(
+    strategy_id: str,
+    ticker: str,
+    reference_price: float,
+    as_of: str | None = None,
+) -> dict[str, Any]:
+    """只读预览策略建议止损；不修改持仓，也不把建议当成已确认底线。"""
+
+    normalized = _normalize_holding_ticker(ticker)
+    if reference_price <= 0:
+        raise HTTPException(status_code=400, detail="reference_price 必须大于 0")
+    normalized_as_of = _normalize_holding_date(as_of, "as_of") if as_of else None
+    from shilun.strategies import E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+
+    normalized_strategy = str(strategy_id or "").strip().lower()
+    store = _open_holdings_store(read_only=True)
+    try:
+        plan = _build_stop_plan_for_strategy(
+            store,
+            strategy_id=strategy_id,
+            ticker=normalized,
+            reference_price=reference_price,
+            as_of=normalized_as_of,
+            entry_date=normalized_as_of,
+        )
+        target_plan = (
+            {
+                "target_price": None,
+                "target_source": "E7 次一交易日强制退出",
+                "completed_through": normalized_as_of,
+                "trade_plan": {
+                    "target_type": "time_exit",
+                    "exit_window": "09:30–10:00",
+                    "exit_deadline": "次一交易日 10:00",
+                },
+            }
+            if normalized_strategy == E7_OVERSOLD_OVERNIGHT_STRATEGY_ID
+            else _build_holding_target_plan(store, ticker=normalized, as_of=normalized_as_of)
+        )
+        return {"status": "ok", "stop_plan": plan, "target_plan": target_plan}
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/holdings")
+def get_holdings(status: str | None = None) -> dict[str, Any]:
+    """查询持仓列表；默认只返回 active/reduced，可用 status=all 查询全部。"""
+    from shilun.market.holdings import HOLDING_STATUSES, list_holdings
+
+    statuses: list[str] | None = None
+    if status:
+        requested = [item.strip().lower() for item in status.split(",") if item.strip()]
+        if requested == ["all"]:
+            statuses = sorted(HOLDING_STATUSES)
+        else:
+            invalid = sorted(set(requested) - HOLDING_STATUSES)
+            if invalid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"status 仅支持 {sorted(HOLDING_STATUSES)} 或 all，收到 {invalid}。",
+                )
+            statuses = requested
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        holdings = [
+            {**holding, **_holding_market_snapshot(store, holding["ticker"])}
+            for holding in list_holdings(store.collection("holdings"), statuses=statuses)
+        ]
+        return {"status": "ok", "count": len(holdings), "holdings": holdings}
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/holdings/{ticker}")
+def get_holding_detail(ticker: str) -> dict[str, Any]:
+    from shilun.market.holdings import get_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        holding = get_holding(store.collection("holdings"), normalized)
+        if holding is None:
+            raise HTTPException(status_code=404, detail=f"{normalized} 持仓不存在")
+        return {"status": "ok", "holding": {**holding, **_holding_market_snapshot(store, normalized)}}
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/holdings/{ticker}/refresh-derived")
+def refresh_holding_derived(ticker: str, overwrite: bool = False) -> dict[str, Any]:
+    """同步最新行情并补齐目标/止损；overwrite 用于修复旧版人工补录记录。"""
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store()
+    try:
+        return _refresh_holding_derived_plan(store, normalized, overwrite=overwrite)
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/holdings/{ticker}/stop-plan")
+def preview_holding_stop_plan(ticker: str) -> dict[str, Any]:
+    """按持仓绑定策略生成最新建议；GET 严格只读。"""
+
+    from shilun.market.holdings import get_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        holding = get_holding(store.collection("holdings"), normalized)
+        if holding is None:
+            raise HTTPException(status_code=404, detail=f"{normalized} 持仓不存在")
+        strategy_id, _, reference = _holding_stop_strategy_context(store, holding)
+        plan = _build_stop_plan_for_strategy(
+            store,
+            strategy_id=strategy_id,
+            ticker=normalized,
+            reference_price=reference,
+            entry_date=holding.get("entry_date"),
+        )
+        return {
+            "status": "ok",
+            "holding_stop": {
+                "effective_stop": holding.get("stop_loss_1"),
+                "mode": holding.get("stop_loss_mode") or "legacy",
+                "confirmed_at": holding.get("stop_loss_confirmed_at"),
+            },
+            "stop_plan": plan,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/holdings/{ticker}/stop-plan/apply")
+def apply_holding_stop_plan(ticker: str) -> dict[str, Any]:
+    """重新计算并显式确认策略止损，保留 plan revision 审计。"""
+
+    from shilun.market.holdings import HoldingsError, get_holding, patch_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store()
+    try:
+        collection = store.collection("holdings")
+        holding = get_holding(collection, normalized)
+        if holding is None:
+            raise HTTPException(status_code=404, detail=f"{normalized} 持仓不存在")
+        strategy_id, strategy_version, reference = _holding_stop_strategy_context(store, holding)
+        plan = _build_stop_plan_for_strategy(
+            store,
+            strategy_id=strategy_id,
+            ticker=normalized,
+            reference_price=reference,
+            entry_date=holding.get("entry_date"),
+        )
+        confirmed_at = datetime.now().isoformat(timespec="seconds")
+        existing_stop = holding.get("stop_loss_1")
+        try:
+            existing_stop = float(existing_stop) if existing_stop is not None else None
+        except (TypeError, ValueError):
+            existing_stop = None
+        suggested_stop = float(plan["recommended_stop"])
+        existing_plan = holding.get("stop_loss_plan") or {}
+        correction_replaces_unadjusted = (
+            plan.get("price_adjustment") == "forward"
+            and existing_plan.get("price_adjustment") != "forward"
+        )
+        strategy_correction = (
+            holding.get("stop_loss_mode") != "manual"
+            and (
+                holding.get("strategy_id") != strategy_id
+                or existing_plan.get("strategy_id") != strategy_id
+            )
+        )
+        effective_stop = (
+            suggested_stop
+            if correction_replaces_unadjusted or strategy_correction
+            else max(suggested_stop, existing_stop or 0.0)
+        )
+        preserved_tighter_stop = (
+            not correction_replaces_unadjusted
+            and not strategy_correction
+            and existing_stop is not None
+            and existing_stop > suggested_stop
+        )
+        confirmed_plan = {
+            **plan,
+            "status": (
+                "unadjusted_stop_corrected"
+                if correction_replaces_unadjusted
+                else "strategy_binding_corrected"
+                if strategy_correction
+                else "confirmed" if not preserved_tighter_stop
+                else "tighter_existing_preserved"
+            ),
+            "confirmed_at": confirmed_at,
+            "applied_stop": round(effective_stop, 4),
+            "apply_reason": (
+                "旧止损由未复权价格序列生成，已用前复权日线纠正。"
+                if correction_replaces_unadjusted
+                else "旧止损不属于当前入场场景策略，已按正确策略重新生成。"
+                if strategy_correction
+                else "现有有效止损更高，禁止策略更新向下放宽风险底线。"
+                if preserved_tighter_stop
+                else "策略建议已确认为新的有效止损。"
+            ),
+        }
+        updates: dict[str, Any] = {
+            "stop_loss_1": effective_stop,
+            "stop_loss_mode": (
+                holding.get("stop_loss_mode")
+                if preserved_tighter_stop and holding.get("stop_loss_mode") in {"strategy", "manual"}
+                else "manual" if preserved_tighter_stop else "strategy"
+            ),
+            "stop_loss_plan": confirmed_plan,
+            "stop_loss_confirmed_at": confirmed_at,
+        }
+        if confirmed_plan.get("secondary_stop") is not None:
+            updates["stop_loss_2"] = confirmed_plan["secondary_stop"]
+        if (
+            holding.get("strategy_id") != strategy_id
+            or holding.get("strategy_version") != strategy_version
+        ):
+            collection.update_one(
+                {"ticker": normalized},
+                {"$set": {"strategy_id": strategy_id, "strategy_version": strategy_version}},
+            )
+        updated = patch_holding(collection, normalized, updates)
+        return {
+            "status": "ok",
+            "action": (
+                "unadjusted_stop_corrected"
+                if correction_replaces_unadjusted
+                else "strategy_binding_corrected"
+                if strategy_correction
+                else "tighter_existing_preserved" if preserved_tighter_stop
+                else "strategy_stop_confirmed"
+            ),
+            "effective_stop": effective_stop,
+            "holding": updated,
+            "stop_plan": confirmed_plan,
+        }
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.patch("/api/v1/holdings/{ticker}")
+def update_holding(ticker: str, payload: HoldingPatchHttpRequest) -> dict[str, Any]:
+    from shilun.market.holdings import HoldingsError, patch_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    updates = _model_payload(payload, exclude_unset=True)
+    store = _open_holdings_store()
+    try:
+        holding = patch_holding(
+            store.collection("holdings"),
+            normalized,
+            updates,
+            position_event_collection=store.collection("holding_position_events"),
+            source="user_patch",
+        )
+        recalculation: dict[str, Any] | None = None
+        if set(updates) & {"quantity", "available_quantity", "cost_basis", "entry_price"}:
+            try:
+                from shilun.trading.service import TradingDecisionService
+
+                recalculation = TradingDecisionService(store).refresh(normalized)
+            except Exception as error:  # noqa: BLE001 - 持仓事实已提交，缺行情时等待下一周期
+                recalculation = {"status": "deferred", "reason": str(error)}
+        return {
+            "status": "ok",
+            "action": "updated",
+            "holding": holding,
+            "decision_recalculation": recalculation,
+        }
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/holdings/{ticker}/close")
+def close_holding_endpoint(
+    ticker: str,
+    payload: HoldingCloseHttpRequest | None = None,
+) -> dict[str, Any]:
+    from shilun.market.holdings import HoldingsError, close_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    close_data = _model_payload(payload, exclude_unset=True) if payload is not None else {}
+    if close_data.get("exit_date"):
+        close_data["exit_date"] = _normalize_holding_date(close_data["exit_date"], "exit_date")
+
+    store = _open_holdings_store()
+    try:
+        holding = close_holding(
+            store.collection("holdings"),
+            normalized,
+            position_event_collection=store.collection("holding_position_events"),
+            **close_data,
+        )
+        return {"status": "ok", "action": "closed", "holding": holding}
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.delete("/api/v1/holdings/{ticker}")
+def delete_holding_endpoint(ticker: str, force: bool = False) -> dict[str, Any]:
+    """默认执行逻辑关闭；force=true 仅用于清理误录入数据。"""
+    from shilun.market.holdings import HoldingsError, close_holding, delete_holding
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store()
+    try:
+        collection = store.collection("holdings")
+        if force:
+            if not delete_holding(collection, normalized):
+                raise HTTPException(status_code=404, detail=f"{normalized} 持仓不存在")
+            return {"status": "ok", "action": "deleted", "ticker": normalized}
+        holding = close_holding(
+            collection,
+            normalized,
+            reason="closed_by_delete_endpoint",
+            position_event_collection=store.collection("holding_position_events"),
+        )
+        return {"status": "ok", "action": "closed", "holding": holding}
+    except HoldingsError as error:
+        _raise_holdings_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/holdings/daily-check")
+def daily_check_holdings_endpoint(
+    date: str | None = None,
+    benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
+    trend_lookback_days: int = 60,
+) -> dict[str, Any]:
+    """对全部 active/reduced 持仓执行一次日终状态判定。"""
+    from shilun.market.holding_events import daily_check_holdings, load_holding_check_context
+
+    target_date = normalize_analysis_date(date)
+    bm_ticker = benchmark_ticker.upper()
+    store = _open_holdings_store()
+    try:
+        market_gate, sector_states = load_holding_check_context(
+            store,
+            target_date,
+            benchmark_ticker=bm_ticker,
+            trend_lookback_days=trend_lookback_days,
+        )
+        result = daily_check_holdings(
+            store,
+            target_date,
+            market_gate=market_gate,
+            sector_states=sector_states,
+        )
+        return {
+            "status": "ok",
+            "benchmark_ticker": bm_ticker,
+            "market_permission": str((market_gate or {}).get("permission") or "unknown"),
+            "sector_context_count": len(sector_states),
+            **result,
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"持仓每日检测失败：{error}") from error
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/holdings/{ticker}/events")
+def get_holding_events_endpoint(
+    ticker: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 60,
+) -> dict[str, Any]:
+    from shilun.market.holding_events import list_holding_events
+
+    normalized = _normalize_holding_ticker(ticker)
+    if not 1 <= limit <= 365:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 365 之间。")
+    normalized_start = _normalize_holding_date(start_date, "start_date") if start_date else None
+    normalized_end = _normalize_holding_date(end_date, "end_date") if end_date else None
+    if normalized_start and normalized_end and normalized_start > normalized_end:
+        raise HTTPException(status_code=400, detail="start_date 不能晚于 end_date。")
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        events = list_holding_events(
+            store.collection("holding_events"),
+            normalized,
+            start_date=normalized_start,
+            end_date=normalized_end,
+            limit=limit,
+        )
+        return {"status": "ok", "ticker": normalized, "count": len(events), "events": events}
+    finally:
+        store.close()
+
+
+def _raise_trading_http(error: Exception) -> NoReturn:
+    detail = str(error)
+    status_code = 404 if "没有 active/reduced 持仓" in detail else 400
+    raise HTTPException(status_code=status_code, detail=detail) from error
+
+
+@ui_router.get("/api/v1/trading/dashboard")
+def get_trading_dashboard() -> dict[str, Any]:
+    """只读汇总全部活动持仓；不会因为页面刷新而新增决策事件。"""
+
+    from shilun.trading.service import TradingDecisionService
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        return TradingDecisionService(store).dashboard()
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/workbench")
+def get_trading_workbench(limit: int = 30) -> dict[str, Any]:
+    """Job 12G 统一执行工作台；读取不写决策事件。"""
+
+    from shilun.trading.workbench import ExecutionWorkbenchService
+
+    if limit < 1 or limit > 100:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 100 之间")
+    store = _open_holdings_store(read_only=True)
+    try:
+        return ExecutionWorkbenchService(store).build(limit=limit)
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/replay-gate")
+def get_trading_replay_gate(min_sessions: int = 20) -> dict[str, Any]:
+    """Job 12H 只读门禁；历史事实不足时明确关闭上线权限。"""
+
+    from shilun.jobs.trading_replay_gate_job import TradingReplayGateJob
+
+    if min_sessions < 1 or min_sessions > 200:
+        raise HTTPException(status_code=400, detail="min_sessions 必须在 1 到 200 之间")
+    store = _open_holdings_store(read_only=True)
+    try:
+        return TradingReplayGateJob(store).run(
+            min_sessions_per_scenario=min_sessions,
+            persist=False,
+        )
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/holdings/{ticker}/cockpit")
+def get_trading_cockpit(ticker: str) -> dict[str, Any]:
+    """返回 Action → Reason → Evidence → Data 的完整只读载荷。"""
+
+    from shilun.trading.service import TradingDecisionError, TradingDecisionService
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        return TradingDecisionService(store).cockpit(normalized)
+    except TradingDecisionError as error:
+        _raise_trading_http(error)
+    finally:
+        store.close()
+
+
+def _recalculate_order_holding(store: Any, ticker: str) -> dict[str, Any] | None:
+    from shilun.market.holdings import get_holding
+
+    holding = get_holding(store.collection("holdings"), ticker)
+    if holding is None or holding.get("status") not in {"active", "reduced"}:
+        return None
+    try:
+        from shilun.trading.service import TradingDecisionService
+
+        return TradingDecisionService(store).refresh(ticker)
+    except Exception as error:  # noqa: BLE001 - 账户事实已落库，缺行情时由下一采集周期补算
+        return {"status": "deferred", "reason": str(error)}
+
+
+@ui_router.get("/api/v1/trading/orders")
+def get_trading_orders(
+    ticker: str | None = None,
+    status: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import (
+        ORDER_COLLECTION_NAME,
+        OrderLifecycleError,
+        list_trade_orders,
+    )
+
+    normalized = _normalize_holding_ticker(ticker) if ticker else None
+    statuses = tuple(item.strip() for item in status.split(",") if item.strip()) if status else None
+    store = _open_holdings_store(read_only=True)
+    try:
+        try:
+            orders = list_trade_orders(
+                store.collection(ORDER_COLLECTION_NAME),
+                ticker=normalized,
+                statuses=statuses,
+                limit=limit,
+            )
+        except OrderLifecycleError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"status": "ok", "count": len(orders), "orders": orders}
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/executions")
+def get_trading_executions(
+    ticker: str | None = None,
+    limit: int = 200,
+) -> dict[str, Any]:
+    """返回真实成交流水；持仓是这组事实的派生视图。"""
+
+    from shilun.trading.order_lifecycle import EXECUTION_COLLECTION_NAME
+
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 500 之间")
+    normalized = _normalize_holding_ticker(ticker) if ticker else None
+    store = _open_holdings_store(read_only=True)
+    try:
+        cursor = store.collection(EXECUTION_COLLECTION_NAME).find(
+            {"ticker": normalized} if normalized else {}, {"_id": 0},
+        ).sort("executed_at", -1).limit(limit)
+        executions = [dict(item) for item in cursor]
+        missing_names = sorted({str(item.get("ticker") or "").upper() for item in executions
+                                if not item.get("name") and item.get("ticker")})
+        names: dict[str, str] = {}
+        for collection_name in (("stock_basic", "holdings") if missing_names else ()):
+            for item in store.collection(collection_name).find(
+                {"$or": [{"ts_code": {"$in": missing_names}}, {"ticker": {"$in": missing_names}}]},
+                {"_id": 0, "ts_code": 1, "ticker": 1, "name": 1},
+            ):
+                item_ticker = str(item.get("ticker") or item.get("ts_code") or "").upper()
+                item_name = str(item.get("name") or "").strip()
+                if item_ticker and item_name and item_name.upper() != item_ticker:
+                    names[item_ticker] = item_name
+        for execution in executions:
+            execution_ticker = str(execution.get("ticker") or "").upper()
+            if not execution.get("name") and execution_ticker in names:
+                execution["name"] = names[execution_ticker]
+        return {
+            "status": "ok",
+            "ticker": normalized,
+            "count": len(executions),
+            "executions": executions,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/orders")
+def create_trading_order(payload: TradeOrderHttpRequest) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import (
+        ACCOUNT_COLLECTION_NAME,
+        ORDER_COLLECTION_NAME,
+        ORDER_EVENT_COLLECTION_NAME,
+        POSITION_EVENT_COLLECTION_NAME,
+        RESERVATION_COLLECTION_NAME,
+        OrderLifecycleError,
+        TradeOrderInput,
+        create_trade_order,
+    )
+
+    data = _model_payload(payload)
+    data["ticker"] = _normalize_holding_ticker(data["ticker"])
+    store = _open_holdings_store()
+    try:
+        try:
+            order = create_trade_order(
+                orders_collection=store.collection(ORDER_COLLECTION_NAME),
+                holdings_collection=store.collection("holdings"),
+                account_collection=store.collection(ACCOUNT_COLLECTION_NAME),
+                reservations_collection=store.collection(RESERVATION_COLLECTION_NAME),
+                position_event_collection=store.collection(POSITION_EVENT_COLLECTION_NAME),
+                order_event_collection=store.collection(ORDER_EVENT_COLLECTION_NAME),
+                inputs=TradeOrderInput(**data),
+            )
+        except OrderLifecycleError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        recalculation = (
+            _recalculate_order_holding(store, order["ticker"])
+            if order["side"] == "sell" else None
+        )
+        return {
+            "status": "ok",
+            "action": "order_recorded",
+            "order": order,
+            "decision_recalculation": recalculation,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/orders/{order_id}")
+def get_trading_order(order_id: str) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import ORDER_COLLECTION_NAME, get_trade_order
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        order = get_trade_order(store.collection(ORDER_COLLECTION_NAME), order_id)
+        if order is None:
+            raise HTTPException(status_code=404, detail=f"委托 {order_id} 不存在")
+        return {"status": "ok", "order": order}
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/orders/{order_id}/fills")
+def create_trading_order_fill(order_id: str, payload: TradeFillHttpRequest) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import (
+        ACCOUNT_COLLECTION_NAME,
+        EXECUTION_COLLECTION_NAME,
+        ORDER_COLLECTION_NAME,
+        ORDER_EVENT_COLLECTION_NAME,
+        POSITION_EVENT_COLLECTION_NAME,
+        RESERVATION_COLLECTION_NAME,
+        OrderLifecycleError,
+        TradeFillInput,
+        record_order_fill,
+    )
+
+    store = _open_holdings_store()
+    try:
+        try:
+            result = record_order_fill(
+                orders_collection=store.collection(ORDER_COLLECTION_NAME),
+                executions_collection=store.collection(EXECUTION_COLLECTION_NAME),
+                holdings_collection=store.collection("holdings"),
+                account_collection=store.collection(ACCOUNT_COLLECTION_NAME),
+                reservations_collection=store.collection(RESERVATION_COLLECTION_NAME),
+                position_event_collection=store.collection(POSITION_EVENT_COLLECTION_NAME),
+                order_event_collection=store.collection(ORDER_EVENT_COLLECTION_NAME),
+                order_id=order_id,
+                inputs=TradeFillInput(**_model_payload(payload)),
+            )
+        except OrderLifecycleError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        holding_enrichment: dict[str, Any] | None = None
+        if result["order"].get("side") == "buy":
+            try:
+                holding_enrichment = _refresh_holding_derived_plan(
+                    store,
+                    result["order"]["ticker"],
+                    overwrite=False,
+                )
+                result["holding"] = holding_enrichment["holding"]
+            except Exception as error:  # noqa: BLE001 - 成交事实已落库，派生行情可稍后重试
+                holding_enrichment = {"status": "deferred", "reason": str(error)}
+        recalculation = _recalculate_order_holding(store, result["order"]["ticker"])
+        return {
+            "status": "ok",
+            "action": "fill_recorded",
+            **result,
+            "holding_enrichment": holding_enrichment,
+            "decision_recalculation": recalculation,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/orders/{order_id}/cancel")
+def cancel_trading_order(
+    order_id: str,
+    payload: TradeOrderCancelHttpRequest | None = None,
+) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import (
+        ORDER_COLLECTION_NAME,
+        ORDER_EVENT_COLLECTION_NAME,
+        POSITION_EVENT_COLLECTION_NAME,
+        RESERVATION_COLLECTION_NAME,
+        OrderLifecycleError,
+        cancel_trade_order,
+    )
+
+    data = _model_payload(payload, exclude_unset=True) if payload is not None else {}
+    store = _open_holdings_store()
+    try:
+        try:
+            order = cancel_trade_order(
+                orders_collection=store.collection(ORDER_COLLECTION_NAME),
+                holdings_collection=store.collection("holdings"),
+                reservations_collection=store.collection(RESERVATION_COLLECTION_NAME),
+                position_event_collection=store.collection(POSITION_EVENT_COLLECTION_NAME),
+                order_event_collection=store.collection(ORDER_EVENT_COLLECTION_NAME),
+                order_id=order_id,
+                **data,
+            )
+        except OrderLifecycleError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        recalculation = _recalculate_order_holding(store, order["ticker"])
+        return {
+            "status": "ok",
+            "action": "order_cancelled",
+            "order": order,
+            "decision_recalculation": recalculation,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/positions/t1-settlement")
+def settle_trading_t1_positions(payload: T1SettlementHttpRequest) -> dict[str, Any]:
+    from shilun.trading.order_lifecycle import (
+        POSITION_EVENT_COLLECTION_NAME,
+        OrderLifecycleError,
+        settle_t1_positions,
+    )
+
+    store = _open_holdings_store()
+    try:
+        try:
+            holdings = settle_t1_positions(
+                store.collection("holdings"),
+                position_event_collection=store.collection(POSITION_EVENT_COLLECTION_NAME),
+                **_model_payload(payload),
+            )
+        except OrderLifecycleError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        recalculations = {
+            item["ticker"]: _recalculate_order_holding(store, item["ticker"])
+            for item in holdings
+        }
+        return {
+            "status": "ok",
+            "action": "t1_positions_settled",
+            "count": len(holdings),
+            "holdings": holdings,
+            "decision_recalculations": recalculations,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/holdings/{ticker}/executions")
+def get_trade_executions(ticker: str, limit: int = 100) -> dict[str, Any]:
+    from shilun.trading.executions import COLLECTION_NAME, list_executions
+
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 500 之间")
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        executions = list_executions(store.collection(COLLECTION_NAME), normalized, limit=limit)
+        return {"status": "ok", "ticker": normalized, "count": len(executions), "executions": executions}
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/holdings/{ticker}/executions")
+def create_trade_execution(ticker: str, payload: TradeExecutionHttpRequest) -> dict[str, Any]:
+    """回写已经发生的成交；不连接券商，不执行订单。"""
+
+    from shilun.trading.executions import COLLECTION_NAME, ExecutionError, record_sell_execution
+
+    normalized = _normalize_holding_ticker(ticker)
+    data = _model_payload(payload)
+    if str(data.pop("side", "sell")).lower() != "sell":
+        raise HTTPException(status_code=400, detail="P0 仅支持持仓卖出成交回写")
+    store = _open_holdings_store()
+    try:
+        try:
+            execution, holding = record_sell_execution(
+                holdings_collection=store.collection("holdings"),
+                executions_collection=store.collection(COLLECTION_NAME),
+                account_collection=store.collection("account_risk_profiles"),
+                position_event_collection=store.collection("holding_position_events"),
+                ticker=normalized,
+                **data,
+            )
+        except ExecutionError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        recalculation: dict[str, Any] | None = None
+        if holding.get("status") in {"active", "reduced"}:
+            try:
+                from shilun.trading.service import TradingDecisionService
+
+                recalculation = TradingDecisionService(store).refresh(normalized)
+            except Exception as error:  # noqa: BLE001
+                recalculation = {"status": "deferred", "reason": str(error)}
+        return {
+            "status": "ok",
+            "action": "execution_recorded",
+            "execution": execution,
+            "holding": holding,
+            "decision_recalculation": recalculation,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/holdings/{ticker}/scenarios")
+def get_trading_scenarios(ticker: str) -> dict[str, Any]:
+    from shilun.trading.service import TradingDecisionError, TradingDecisionService
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        return TradingDecisionService(store).scenarios(normalized)
+    except TradingDecisionError as error:
+        _raise_trading_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/holdings/{ticker}/replay")
+def get_trading_replay(ticker: str, trade_date: str) -> dict[str, Any]:
+    """逐根回放已落库 5 分钟 K；只读且不写 Timeline。"""
+
+    from shilun.trading.service import TradingDecisionError, TradingDecisionService
+
+    normalized = _normalize_holding_ticker(ticker)
+    normalized_date = trade_date.replace("-", "")
+    if len(normalized_date) != 8 or not normalized_date.isdigit():
+        raise HTTPException(status_code=400, detail="trade_date 必须使用 YYYYMMDD 或 YYYY-MM-DD")
+    store = _open_holdings_store(read_only=True)
+    try:
+        return TradingDecisionService(store).replay(normalized, trade_date=normalized_date)
+    except TradingDecisionError as error:
+        _raise_trading_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/holdings/{ticker}/decision-timeline")
+def get_trading_decision_timeline(ticker: str, limit: int = 100) -> dict[str, Any]:
+    from shilun.trading.service import TradingDecisionService
+
+    if not 1 <= limit <= 500:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 500 之间。")
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store(read_only=True)
+    try:
+        events = TradingDecisionService(store).timeline(normalized, limit=limit)
+        return {"status": "ok", "ticker": normalized, "count": len(events), "events": events}
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/holdings/{ticker}/refresh")
+def refresh_trading_holding(ticker: str) -> dict[str, Any]:
+    """显式执行一次 Playbook；仅在决策语义变化时写入 Timeline。"""
+
+    from shilun.trading.service import TradingDecisionError, TradingDecisionService
+
+    normalized = _normalize_holding_ticker(ticker)
+    store = _open_holdings_store()
+    try:
+        return TradingDecisionService(store).refresh(normalized)
+    except TradingDecisionError as error:
+        _raise_trading_http(error)
+    finally:
+        store.close()
+
+
+@ui_router.post("/api/v1/trading/refresh")
+def refresh_trading_dashboard(
+    date: str | None = None,
+    benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
+    refresh_candidates: bool = False,
+) -> dict[str, Any]:
+    """显式重算全部持仓；可选同步刷新当日候选机会并记录语义变化。"""
+
+    from shilun.trading.execution_production import FullScenarioProductionService
+    from shilun.trading.service import TradingDecisionService
+
+    store = _open_holdings_store()
+    try:
+        holdings_result = TradingDecisionService(store).refresh_all()
+    finally:
+        store.close()
+    candidate_result: dict[str, Any] | None = None
+    if refresh_candidates:
+        intraday = market_intraday(
+            date=date,
+            benchmark_ticker=benchmark_ticker,
+            include_candidates=True,
+            candidate_limit=20,
+            source="auto",
+            record_decisions=True,
+        )
+        candidate_result = {
+            "session_date": intraday.get("session_date"),
+            "source": intraday.get("realtime_source"),
+            "candidate_count": len(intraday.get("candidates_realtime") or []),
+            "recorded_decision_count": intraday.get("recorded_decision_count") or 0,
+            "errors": [
+                *(intraday.get("realtime_errors") or []),
+                *(intraday.get("minute_errors") or []),
+            ],
+        }
+    scenario_store = _open_holdings_store()
+    try:
+        scenario_result = FullScenarioProductionService(scenario_store).refresh_all()
+    finally:
+        scenario_store.close()
+    return {
+        **holdings_result,
+        "holdings_refresh": holdings_result,
+        "candidate_refresh": candidate_result,
+        "scenario_refresh": scenario_result,
+    }
+
+
+@ui_router.get("/api/v1/trading/risk-profile")
+def get_trading_risk_profile() -> dict[str, Any]:
+    from shilun.trading.risk import COLLECTION_NAME, get_account_risk_profile
+
+    store = _open_holdings_store(read_only=True)
+    try:
+        profile = get_account_risk_profile(store.collection(COLLECTION_NAME))
+        return {
+            "status": "ok",
+            "configured": profile.source == "user_configured",
+            "profile": profile.to_document(),
+        }
+    finally:
+        store.close()
+
+
+@ui_router.put("/api/v1/trading/risk-profile")
+def update_trading_risk_profile(payload: AccountRiskProfileHttpRequest) -> dict[str, Any]:
+    from shilun.trading.risk import (
+        COLLECTION_NAME,
+        AccountRiskProfile,
+        RiskConfigurationError,
+        upsert_account_risk_profile,
+    )
+
+    store = _open_holdings_store()
+    try:
+        try:
+            profile = AccountRiskProfile(**_model_payload(payload))
+            stored = upsert_account_risk_profile(store.collection(COLLECTION_NAME), profile)
+        except RiskConfigurationError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+        return {"status": "ok", "configured": True, "profile": stored}
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/data-latency")
+def get_trading_data_latency(
+    ticker: str | None = None,
+    limit: int = 500,
+) -> dict[str, Any]:
+    """读取真实 API 时效样本；本接口本身不会调用 KlineShare。"""
+
+    from shilun.trading.latency import (
+        COLLECTION_NAME,
+        list_quote_latency_samples,
+        summarize_quote_latency,
+    )
+
+    if not 1 <= limit <= 5000:
+        raise HTTPException(status_code=400, detail="limit 必须在 1 到 5000 之间。")
+    normalized = _normalize_holding_ticker(ticker) if ticker else None
+    store = _open_holdings_store(read_only=True)
+    try:
+        samples = list_quote_latency_samples(
+            store.collection(COLLECTION_NAME),
+            ticker=normalized,
+            limit=limit,
+        )
+        return {
+            "status": "ok",
+            "threshold_seconds": 45,
+            "summary": summarize_quote_latency(samples),
+            "samples": samples,
+        }
+    finally:
+        store.close()
+
+
+@ui_router.get("/api/v1/trading/readiness")
+def get_trading_readiness() -> dict[str, Any]:
+    """Job 8 预检：只读判断是否能开始真实盘中采样，以及哪些条件仍阻塞验收。"""
+
+    from shilun.market.holdings import list_holdings
+    from shilun.trading.latency import COLLECTION_NAME, list_quote_latency_samples, summarize_quote_latency
+    from shilun.trading.readiness import REQUIRED_INDICES, build_trading_readiness
+
+    config = load_config()
+    store = _open_holdings_store(read_only=True)
+    try:
+        holdings = list_holdings(store.collection("holdings"))
+        tickers = {
+            *(str(item.get("ticker") or "").upper() for item in holdings),
+            *REQUIRED_INDICES,
+        }
+        quote_tickers = {
+            str(item.get("ticker") or "").upper()
+            for item in store.collection("trading_realtime_quotes").find(
+                {"ticker": {"$in": sorted(tickers)}},
+                {"_id": 0, "ticker": 1},
+            )
+        }
+        minute_tickers = {
+            str(item.get("ticker") or "").upper()
+            for item in store.collection("minute_bars_daily").find(
+                {"ticker": {"$in": sorted(tickers)}, "interval": "5"},
+                {"_id": 0, "ticker": 1},
+            )
+        }
+        latency_summary = summarize_quote_latency(
+            list_quote_latency_samples(store.collection(COLLECTION_NAME), limit=5000)
+        )
+        sync_states = list(
+            store.collection("sync_state").find(
+                {"dataset": "trading_intraday_facts"},
+                {"_id": 0},
+            ).sort("updated_at", -1).limit(1)
+        )
+        return build_trading_readiness(
+            holdings=holdings,
+            quote_tickers=quote_tickers,
+            minute_tickers=minute_tickers,
+            latency_summary=latency_summary,
+            api_key_configured=bool(config.klineshare_api_key),
+            now=datetime.now().astimezone(),
+            last_sync_state=sync_states[0] if sync_states else None,
+        )
     finally:
         store.close()
 
@@ -1094,6 +2992,7 @@ def market_daily_leaders(
     benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
     lookback_days: int = 75,
     top_n: int = 5,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     import pandas as pd
 
@@ -1109,10 +3008,25 @@ def market_daily_leaders(
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置，每日龙头榜需要读取 Mongo 日线数据。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   **({'initialize_indexes': False} if read_only else {}))
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
     try:
+        cached = _load_sector_cache(store, target_date, request.benchmark_ticker, request.trend_lookback_days)
+        cached_payload = (cached or {}).get("payload") or {}
+        if cached_payload.get("daily_leaders") or read_only and 'daily_leaders' in cached_payload:
+            return {
+                "engine_version": cached_payload.get("engine_version"),
+                "analysis_date": cached_payload.get("analysis_date", target_date),
+                "benchmark_ticker": cached_payload.get("benchmark_ticker", request.benchmark_ticker),
+                "daily_leaders": cached_payload.get("daily_leaders") or [],
+                "leader_summary": cached_payload.get("leader_summary") or {},
+                "_from_cache": True,
+                "_cached_at": cached.get("computed_at"),
+            }
+        if read_only:
+            raise HTTPException(404, '所选日龙头榜尚未归档；只读查询不会重新计算或补写缓存。')
         benchmark_records = store.raw_market.find_daily_bars(
             start_date=request.start_date,
             end_date=target_date,
@@ -1122,7 +3036,8 @@ def market_daily_leaders(
             start_date=request.start_date,
             end_date=target_date,
         )
-        stock_basic = pd.DataFrame(store.raw_market.find_stock_basic())
+        from shilun.market.taxonomy import classify_stocks
+        stock_basic = pd.DataFrame(classify_stocks(store, target_date, store.raw_market.find_stock_basic()))
         daily_basic = pd.DataFrame(store.raw_market.find_daily_basic(trade_date=target_date))
         moneyflow_start = (
             datetime.strptime(target_date, "%Y-%m-%d") - timedelta(days=18)
@@ -1133,7 +3048,7 @@ def market_daily_leaders(
                 end_date=target_date,
             )
         )
-        return evaluate_daily_leaders(
+        leader_result = evaluate_daily_leaders(
             analysis_date=target_date,
             benchmark_ticker=request.benchmark_ticker,
             benchmark_bars=pd.DataFrame(benchmark_records),
@@ -1145,6 +3060,23 @@ def market_daily_leaders(
             exclude_st=request.exclude_st,
             top_n=top_n,
         )
+        # 龙头榜是相同分析日/基准下的确定性结果。首次慢算后补写进现有
+        # sector_trends_cache 的 payload，下一次页面查询秒回；只更新龙头字段，
+        # 不覆盖板块主结果及其 computed_at。
+        if cached_payload:
+            store.collection("sector_trends_cache").update_one(
+                _sector_cache_key(target_date, request.benchmark_ticker, request.trend_lookback_days),
+                {
+                    "$set": {
+                        "payload.daily_leaders": leader_result.get("daily_leaders") or [],
+                        "payload.leader_summary": leader_result.get("leader_summary") or {},
+                        "leader_computed_at": datetime.now().isoformat(timespec="seconds"),
+                    }
+                },
+            )
+        return {**leader_result, "_from_cache": False}
+    except HTTPException:
+        raise
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:  # pragma: no cover
@@ -1157,15 +3089,16 @@ def market_daily_leaders(
 def data_sync(payload: DataSyncHttpRequest) -> dict[str, Any]:
     from shilun.common.db import MongoSnapshotStore
     from shilun.jobs.tushare_sync_job import TushareSyncJob, TushareSyncRequest
+    from pymongo.errors import PyMongoError
 
     target_date = normalize_analysis_date(payload.target_date)
     config = load_config()
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置，请先设置 SHILUN_MONGO_URI。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db, socket_timeout_ms=60_000)
     except Exception as error:
-        raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
+        raise HTTPException(status_code=503, detail="数据库连接失败，请检查数据库服务与连接通道后重试。") from error
     try:
         if payload.mode == "latest":
             result = TushareSyncJob(mongo_store=store).run(
@@ -1236,76 +3169,238 @@ def data_sync(payload: DataSyncHttpRequest) -> dict[str, Any]:
             "daily_basic_count": result.daily_basic_count,
             "moneyflow_count": result.moneyflow_count,
             "benchmark_bar_count": result.benchmark_bar_count,
+            "price_limit_count": result.price_limit_count,
+            "status": "partial_error" if result.failed_trade_dates else "ok",
             "failed_trade_dates": result.failed_trade_dates,
             "synced_trade_dates": result.synced_trade_dates,
             "skipped_trade_dates": result.skipped_trade_dates,
         }
+    except HTTPException:
+        raise
+    except PyMongoError as error:
+        raise HTTPException(status_code=503, detail="同步时数据库读取或写入超时。已完成的数据会保留，请检查数据库连接后重新同步增量。") from error
+    except Exception as error:
+        raise HTTPException(status_code=502, detail=f"Tushare同步未完成（{type(error).__name__}），请检查行情服务与同步日志后重试。") from error
     finally:
         store.close()
 
 
-@ui_router.post("/api/v1/data/sync-akshare")
-def data_sync_akshare(payload: AkshareSyncHttpRequest) -> dict[str, Any]:
-    """同步 akshare 增强数据。dataset 可选：all/limit_up_pool/concept_boards/north_capital_flow。"""
-    from shilun.common.db import MongoSnapshotStore
-    from shilun.data.providers.akshare_provider import AkshareFetchError
-    from shilun.jobs.akshare_sync_job import AkshareSyncJob
+@ui_router.post("/api/v1/data/sync-akshare", deprecated=True)
+def data_sync_akshare(payload: DataDomainSyncHttpRequest) -> dict[str, Any]:
+    raise HTTPException(status_code=410, detail="旧增强数据同步已下线。涨停池请使用 /api/v1/data/sync-limit-pool；题材成分随复盘更新。")
 
-    target_date = normalize_analysis_date(payload.target_date)
+
+@ui_router.post("/api/v1/data/sync-limit-pool")
+def data_sync_limit_pool(payload: DataDomainSyncHttpRequest) -> dict[str, Any]:
+    from shilun.common.db import MongoSnapshotStore
+    from shilun.data.providers.eastmoney_provider import EastmoneyFetchError
+    from shilun.jobs.limit_pool_sync_job import LimitPoolSyncJob
     config = load_config()
     if not config.mongo_uri:
-        raise HTTPException(status_code=400, detail="Mongo 未配置，请先设置 SHILUN_MONGO_URI。")
+        raise HTTPException(status_code=400, detail="Mongo 未配置")
+    target = normalize_analysis_date(payload.target_date)
+    store = None
+    sync_started = False
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   socket_timeout_ms=30_000, initialize_indexes=False)
+        store.db.command("ping")
+        sync_started = True
+        count = LimitPoolSyncJob(store).sync_limit_up_pool(target.replace("-", ""))
+        return {"target_date": target, "count": count, "source": "eastmoney",
+                "status": "success" if count else "empty_confirmed"}
+    except PyMongoError as error:
+        logging.getLogger(__name__).warning("Limit pool database failure: date=%s stage=%s type=%s",
+                                            target, "sync" if sync_started else "connect", type(error).__name__)
+        detail = ("涨停池同步时数据库连接中断，部分记录可能已保存。连接恢复后可重新同步同一天，记录按股票和日期更新，不会重复新增。"
+                  if sync_started else
+                  "数据库连接未就绪，本次尚未抓取或写入涨停池。请检查云端数据库通道，恢复后可重试。")
+        raise HTTPException(status_code=503, detail=detail) from error
+    except EastmoneyFetchError as error:
+        raise HTTPException(status_code=502, detail="该日期涨停池暂不可用，请检查日期或稍后重试；未写入涨停池，也未将缺数记为零。") from error
     except Exception as error:
-        raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
+        logging.getLogger(__name__).warning("Limit pool sync failed: date=%s type=%s", target, type(error).__name__)
+        raise HTTPException(status_code=500, detail="涨停池同步未完成，请刷新数据状态并检查同步日志。") from error
+    finally:
+        if store is not None:
+            store.close()
 
+
+@ui_router.post("/api/v1/data/sync-minutes")
+def data_sync_minutes(payload: DataDomainSyncHttpRequest) -> dict[str, Any]:
+    from dataclasses import asdict
+    from shilun.api.review import _open_store
+    from shilun.jobs.minute_bars_sync_job import MinuteBarsSyncJob
+    store = _open_store()
     try:
-        job = AkshareSyncJob(mongo_store=store)
-        trade_date_yyyymmdd = target_date.replace("-", "")
-        try:
-            if payload.dataset == "all":
-                result = job.sync_all(trade_date_yyyymmdd)
-                return {
-                    "target_date": result.target_date,
-                    "limit_up_count": result.limit_up_count,
-                    "concept_board_count": result.concept_board_count,
-                    "north_capital_count": result.north_capital_count,
-                    "message": result.message,
-                }
-            elif payload.dataset == "limit_up_pool":
-                count = job.sync_limit_up_pool(trade_date_yyyymmdd)
-                return {"dataset": "limit_up_pool", "target_date": target_date, "count": count, "message": f"涨停池同步完成，{count} 只。"}
-            elif payload.dataset == "concept_boards":
-                count = job.sync_concept_boards()
-                return {"dataset": "concept_boards", "count": count, "message": f"概念板块同步完成，{count} 个板块。"}
-            elif payload.dataset == "north_capital_flow":
-                count = job.sync_north_capital_flow()
-                return {"dataset": "north_capital_flow", "count": count, "message": f"北向资金同步完成，{count} 条历史记录。"}
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail="dataset 只支持 all / limit_up_pool / concept_boards / north_capital_flow。",
-                )
-        except AkshareFetchError as error:
-            underlying = str(error.underlying)
-            # 友好化错误：东财对 push2 接口高频限流
-            if "RemoteDisconnected" in underlying or "Connection aborted" in underlying:
-                detail = (
-                    f"AkShare 接口 {error.source} 连接被服务端断开。"
-                    f"通常是东方财富对当前 IP 的高频限流（push2 域），"
-                    f"请等待 5-10 分钟后重试，或在网络环境（VPN/代理）切换后重试。"
-                )
-            elif "ProxyError" in underlying or "Unable to connect to proxy" in underlying:
-                detail = (
-                    f"AkShare 接口 {error.source} 走代理失败：{underlying}。"
-                    f"已尝试绕过系统代理；如仍失败请检查 macOS 系统代理设置（系统设置 → 网络 → 代理）。"
-                )
-            else:
-                detail = f"AkShare 接口 {error.source} 失败：{underlying}"
-            raise HTTPException(status_code=502, detail=detail) from error
+        result = MinuteBarsSyncJob(store).run(normalize_analysis_date(payload.target_date))
+        return {**asdict(result), "status": "partial" if result.failed_tickers else "success"}
     finally:
         store.close()
+
+
+@ui_router.post("/api/v1/data/sync-topics")
+def data_sync_topics(payload: DataDomainSyncHttpRequest) -> dict[str, Any]:
+    from shilun.api.review import _open_store
+    from shilun.review.topic_perspectives import sync_perspectives
+    store = _open_store()
+    try:
+        result = sync_perspectives(store, normalize_analysis_date(payload.target_date))
+        return {"date": result.get("date"), "version": result.get("version"), "status": result.get("status", "complete")}
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="题材成分同步未完成，请检查数据网关后重试。") from error
+    finally:
+        store.close()
+
+
+def _fetch_realtime_via_klineshare(bm_ticker: str, candidate_tickers: list[str] | None):
+    """用 KlineShare 批量获取基准和个股，返回统一的盘中行情结构。"""
+    import pandas as pd
+
+    from shilun.data.providers.klineshare_provider import (
+        KlineShareClient,
+        KlineShareConfig,
+        KlineShareError,
+    )
+
+    config = load_config()
+    if not config.klineshare_api_key:
+        return None, None, ["klineshare: SHILUN_KLINESHARE_API_KEY 未配置"]
+    client = KlineShareClient(KlineShareConfig(
+        api_key=config.klineshare_api_key,
+        base_url=config.klineshare_base_url,
+        timeout=config.klineshare_timeout,
+    ))
+    requested = list(dict.fromkeys([bm_ticker, *(candidate_tickers or [])]))
+    frames = []
+    errors: list[str] = []
+    # 基础版单次实时请求最多 20 个标的。显式分批，避免选品池扩大后整批失败。
+    for start in range(0, len(requested), 20):
+        batch = requested[start:start + 20]
+        try:
+            batch_frame = client.fetch_realtime(
+                batch,
+                include_depth=config.klineshare_include_depth,
+            )
+        except KlineShareError as error:
+            errors.append(f"klineshare realtime ({','.join(batch)}): {error}")
+            continue
+        if batch_frame is not None and not batch_frame.empty:
+            frames.append(batch_frame)
+    frame = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    if frame is None or frame.empty:
+        return None, None, errors or ["klineshare realtime: empty response"]
+    benchmark_rows = frame[frame["ticker"].str.upper() == bm_ticker.upper()]
+    benchmark = None
+    if not benchmark_rows.empty:
+        row = benchmark_rows.iloc[0].to_dict()
+        benchmark = {
+            "ticker": row.get("ticker"),
+            "name": row.get("name"),
+            "current": _round_num(row.get("current")),
+            "pct_chg": _round_num(row.get("pct_chg"), 4),
+            "open": _round_num(row.get("open")),
+            "high": _round_num(row.get("high")),
+            "low": _round_num(row.get("low")),
+            "prev_close": _round_num(row.get("prev_close")),
+            "amount": _round_num(row.get("amount")),
+            "trade_status": row.get("trade_status"),
+            "update_at": row.get("update_at"),
+            "quote_at": row.get("quote_at"),
+            "fetched_at": row.get("fetched_at"),
+            "timestamp_kind": row.get("timestamp_kind"),
+        }
+    stocks = frame[frame["ticker"].str.upper() != bm_ticker.upper()].copy()
+    return benchmark, stocks, errors
+
+
+def _sync_intraday_minutes_via_klineshare(
+    store: Any,
+    tickers: list[str],
+    session_date: str,
+) -> tuple[dict[str, list[dict[str, Any]]], list[str], set[str]]:
+    """获取已闭合 5 分钟 K、落 Mongo，并回读统一分钟线契约。"""
+    from zoneinfo import ZoneInfo
+
+    from shilun.data.providers.klineshare_provider import (
+        KlineShareClient,
+        KlineShareConfig,
+        KlineShareError,
+    )
+    from shilun.jobs.trading_intraday_sync_job import closed_kline_frame
+    from shilun.market.minute_bars_store import (
+        COLLECTION_NAME as MINUTE_COLL,
+        bulk_load_lookup,
+        upsert_minute_bars,
+    )
+
+    normalized = list(dict.fromkeys(str(ticker or "").upper() for ticker in tickers if ticker))
+    collection = store.collection(MINUTE_COLL)
+    trade_date = session_date.replace("-", "")
+    config = load_config()
+    errors: list[str] = []
+    refreshed: set[str] = set()
+    now = datetime.now(tz=ZoneInfo("Asia/Shanghai"))
+
+    # 历史会话只读 Mongo，不能拿今天的实时 K 覆盖历史日期。
+    if config.klineshare_api_key and session_date == now.strftime("%Y-%m-%d"):
+        client = KlineShareClient(KlineShareConfig(
+            api_key=config.klineshare_api_key,
+            base_url=config.klineshare_base_url,
+            timeout=config.klineshare_timeout,
+        ))
+        for ticker in normalized:
+            try:
+                frame = client.fetch_kline(
+                    ticker,
+                    period=300,
+                    count=100,
+                    adjust_type="none",
+                )
+                frame = closed_kline_frame(frame, now=now, period_seconds=300)
+                if frame.empty:
+                    errors.append(f"{ticker}: KlineShare 暂无已闭合 5 分钟 K")
+                    continue
+                upsert_minute_bars(
+                    collection,
+                    ticker=ticker,
+                    trade_date=trade_date,
+                    interval="5",
+                    bars=frame.to_dict("records"),
+                    source="klineshare",
+                )
+                refreshed.add(ticker)
+            except KlineShareError as error:
+                errors.append(f"{ticker}: {error}")
+
+    return (
+        bulk_load_lookup(collection, normalized, trade_date, interval="5"),
+        errors,
+        refreshed,
+    )
+
+
+def _persist_klineshare_realtime_snapshot(
+    store: Any,
+    benchmark: dict[str, Any] | None,
+    stocks: Any,
+) -> None:
+    """让盘中行情读到的真实报价也成为驾驶舱可复用的 Mongo 事实。"""
+    from shilun.jobs.trading_intraday_sync_job import REALTIME_COLLECTION, _clean_document
+
+    records: list[dict[str, Any]] = []
+    if benchmark:
+        records.append(dict(benchmark))
+    if stocks is not None and not stocks.empty:
+        records.extend(stocks.to_dict("records"))
+    collection = store.collection(REALTIME_COLLECTION)
+    for record in records:
+        document = _clean_document(record)
+        ticker = str(document.get("ticker") or "").upper()
+        if ticker:
+            document["ticker"] = ticker
+            document.setdefault("source", "klineshare")
+            collection.update_one({"ticker": ticker}, {"$set": document}, upsert=True)
 
 
 def _fetch_realtime_via_tushare(bm_ticker: str, candidate_tickers: list[str] | None):
@@ -1332,6 +3427,9 @@ def _fetch_realtime_via_tushare(bm_ticker: str, candidate_tickers: list[str] | N
                 "prev_close": _round_num(r.get("prev_close")),
                 "amount": _round_num(r.get("amount")),
                 "update_at": r.get("update_at"),
+                "quote_at": r.get("quote_at"),
+                "fetched_at": r.get("fetched_at"),
+                "timestamp_kind": r.get("timestamp_kind"),
             }
     except TushareRealtimeError as e:
         errors.append(f"tushare index_realtime: {e.underlying}")
@@ -1345,15 +3443,20 @@ def _fetch_realtime_via_tushare(bm_ticker: str, candidate_tickers: list[str] | N
     return benchmark, stock_df, errors
 
 
-def _fetch_realtime_via_akshare(bm_ticker: str, candidate_tickers: list[str] | None):
-    """用 akshare（东财 push2）拿实时行情。作为 tushare 失败时的回退。"""
-    from shilun.data.providers.akshare_provider import AkshareClient, AkshareConfig, AkshareFetchError
+def _fetch_realtime_via_eastmoney(bm_ticker: str, candidate_tickers: list[str] | None):
+    """用 东方财富直连拿实时行情。作为 tushare 失败时的回退。"""
+    from shilun.data.providers.eastmoney_provider import EastmoneyClient, EastmoneyConfig, EastmoneyFetchError
+    from shilun.data.providers.klineshare_provider import (
+        KlineShareClient,
+        KlineShareConfig,
+        KlineShareError,
+    )
 
     errors: list[str] = []
     benchmark = None
     stock_df = None
 
-    client = AkshareClient(AkshareConfig())
+    client = EastmoneyClient(EastmoneyConfig())
     try:
         idx_df = client.fetch_index_realtime()
         if idx_df is not None and not idx_df.empty:
@@ -1372,16 +3475,105 @@ def _fetch_realtime_via_akshare(bm_ticker: str, candidate_tickers: list[str] | N
                     "amount": _round_num(r.get("amount")),
                     "update_at": r.get("update_at"),
                 }
-    except AkshareFetchError as e:
-        errors.append(f"akshare index_realtime: {e.underlying}")
+    except EastmoneyFetchError as e:
+        errors.append(f"eastmoney index_realtime: {e.underlying}")
 
     if candidate_tickers:
         try:
             stock_df = client.fetch_stock_realtime_batch(tickers=candidate_tickers)
-        except AkshareFetchError as e:
-            errors.append(f"akshare stock_realtime: {e.underlying}")
+        except EastmoneyFetchError as e:
+            errors.append(f"eastmoney stock_realtime: {e.underlying}")
 
     return benchmark, stock_df, errors
+
+
+@ui_router.get("/api/v1/stocks/search")
+def search_stocks(q: str, limit: int = 10, read_only: bool = False) -> dict[str, Any]:
+    """按证券代码或名称模糊检索本地股票主数据，供选品池快速添加。"""
+    from shilun.common.db import MongoSnapshotStore
+
+    keyword = str(q or "").strip()
+    if not keyword:
+        return {"query": "", "items": []}
+    safe_limit = max(1, min(int(limit or 10), 20))
+    config = load_config()
+    if not config.mongo_uri:
+        raise HTTPException(status_code=400, detail="Mongo 未配置，无法检索股票主数据。")
+    try:
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   **({'initialize_indexes': False} if read_only else {}))
+    except Exception as error:
+        raise HTTPException(status_code=400, detail=f"Mongo 连接失败：{error}") from error
+    try:
+        pattern = re.escape(keyword)
+        rows = list(
+            store.collection("stock_basic").find(
+                {
+                    "$or": [
+                        {"ts_code": {"$regex": pattern, "$options": "i"}},
+                        {"symbol": {"$regex": pattern, "$options": "i"}},
+                        {"name": {"$regex": pattern, "$options": "i"}},
+                    ]
+                },
+                {"_id": 0, "ts_code": 1, "symbol": 1, "name": 1, "industry": 1, "market": 1},
+            ).limit(max(30, safe_limit * 4))
+        )
+        upper = keyword.upper()
+
+        def rank(row: dict[str, Any]) -> tuple[int, str]:
+            ticker = str(row.get("ts_code") or "").upper()
+            symbol = str(row.get("symbol") or "").upper()
+            name = str(row.get("name") or "")
+            if upper in {ticker, symbol} or keyword == name:
+                score = 0
+            elif ticker.startswith(upper) or symbol.startswith(upper) or name.startswith(keyword):
+                score = 1
+            else:
+                score = 2
+            return score, ticker
+
+        from shilun.market.taxonomy import classify_stocks
+        from shilun.review.service import DailyReviewService
+        taxonomy_date = DailyReviewService(store).latest_date(None)
+        items = classify_stocks(store, taxonomy_date, sorted(rows, key=rank)[:safe_limit])
+        return {
+            "query": keyword,
+            "items": [
+                {
+                    "ticker": item.get("ts_code") or item.get("symbol"),
+                    "name": item.get("name") or item.get("ts_code"),
+                    "industry": item.get("industry") or "",
+                    "industry_code": item.get("industry_code"),
+                    "taxonomy_date": item.get("taxonomy_date"),
+                    "market": item.get("market") or "",
+                }
+                for item in items
+            ],
+        }
+    finally:
+        store.close()
+
+
+def _read_archived_quotes(store: Any, tickers: list[str], target_date: str) -> dict[str, dict[str, Any]]:
+    """Read provider-dated quotes without fetching or backdating a later quote."""
+    from zoneinfo import ZoneInfo
+    rows = store.collection('trading_realtime_quotes').find(
+        {'ticker': {'$in': sorted(set(tickers))}}, {'_id': 0})
+    result, timestamps = {}, {}
+    for row in rows:
+        ticker = str(row.get('ticker') or '').upper()
+        stamp = row.get('quote_at') or row.get('update_at')
+        try:
+            parsed = stamp if isinstance(stamp, datetime) else datetime.fromisoformat(str(stamp).replace('Z', '+00:00'))
+            zone = ZoneInfo('Asia/Shanghai')
+            parsed = parsed.replace(tzinfo=zone) if parsed.tzinfo is None else parsed.astimezone(zone)
+        except (TypeError, ValueError):
+            continue
+        if ticker not in tickers or parsed.date().isoformat() != target_date:
+            continue
+        if ticker not in timestamps or parsed > timestamps[ticker]:
+            result[ticker], timestamps[ticker] = row, parsed
+    return result
 
 
 @ui_router.get("/api/v1/market/intraday")
@@ -1391,47 +3583,70 @@ def market_intraday(
     include_candidates: bool = True,
     candidate_limit: int = 20,
     selected_tickers: str | None = None,
+    selected_only: bool = False,
     source: str = "auto",
+    record_decisions: bool = False,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     """盘中实时监控。
 
     source 参数控制实时行情数据源：
-    - "auto"（默认）：优先 tushare（新浪源），失败再回退到 akshare（东财）
+    - "auto"（默认）：配置 Key 时优先 KlineShare，再回退 tushare / eastmoney
+    - "klineshare"：只用 KlineShare
     - "tushare"：只用 tushare（推荐，本地网络下最稳定）
-    - "akshare"：只用 akshare
+    - "eastmoney"：只用东方财富
 
-    大盘关键位：从 PART1 缓存里读取 levels + pattern_forecast。
+    大盘关键位：自动读取或建立上一已完成交易日的 PART1 基线。
     候选票：从 candidate_pool_states 取 top N 只，实时拉取并对比。
     """
     from shilun.common.db import MongoSnapshotStore
 
-    target_date = normalize_analysis_date(date)
+    # date 表示盘中会话日（历史回放时可显式传入），不是 PART1 日线日。
+    # 日线基线永远来自会话日前一个已完成交易日，避免盘中使用未来数据。
+    session_date = normalize_analysis_date(date)
     bm_ticker = benchmark_ticker.upper()
     config = load_config()
+    if read_only and record_decisions:
+        raise HTTPException(400, '只读查询不能记录盘中决策或创建推送。')
     if not config.mongo_uri:
-        raise HTTPException(status_code=400, detail="Mongo 未配置，盘中监控需要读取 PART1 缓存。")
+        raise HTTPException(status_code=400, detail="Mongo 未配置，盘中监控需要读取日线基线与分钟数据。")
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   **({'initialize_indexes': False} if read_only else {}))
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Mongo 已配置但当前无法连接：{error}") from error
 
     try:
-        # 1. 拿最近一次 PART1 缓存（gate + levels + pattern_forecast）
-        cache_col = store.collection("market_part1_cache")
-        cached = cache_col.find_one(
-            {"analysis_date": target_date, "benchmark_ticker": bm_ticker},
-            {"_id": 0, "payload": 1, "cached_at": 1},
+        # 1. 解析上一已完成交易日，并自动读取或建立它的 PART1 基线。
+        baseline_probe_start = (
+            datetime.strptime(session_date, "%Y-%m-%d") - timedelta(days=45)
+        ).strftime("%Y-%m-%d")
+        baseline_records = store.raw_market.find_daily_bars(
+            start_date=baseline_probe_start,
+            end_date=session_date,
+            tickers=[bm_ticker],
         )
-        if not cached:
+        baseline_date = _latest_daily_bar_date(
+            baseline_records,
+            session_date,
+            strictly_before=True,
+        )
+        if not baseline_date:
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"未找到 {target_date} 的 PART1 缓存。"
-                    f"请先访问 /api/v1/market/permission?date={target_date} 计算并建立缓存。"
+                    f"未找到 {session_date} 之前的已完成基准指数日线。"
+                    "盘中监控需要上一交易日作为盘前基线，请先同步最近已完成交易日。"
                 ),
             )
-        payload = cached["payload"]
-        part1_cached_at = cached.get("cached_at")
+        payload = market_permission(
+            date=baseline_date,
+            benchmark_ticker=bm_ticker,
+            lookback_days=280,
+            force=False,
+            **({'read_only': True} if read_only else {}),
+        )
+        part1_cached_at = payload.get("_cached_at")
 
         gate = payload.get("market_gate") or {}
         levels = payload.get("levels") or {}
@@ -1442,15 +3657,22 @@ def market_intraday(
         candidate_tickers: list[str] = []
         candidates_meta: list[dict[str, Any]] = []
         if include_candidates:
+            parsed_selected_tickers = _parse_selected_tickers(selected_tickers)
             candidates_meta = _extract_candidates_from_cache(
                 store,
-                target_date,
+                baseline_date,
                 bm_ticker,
                 gate,
                 candidate_limit,
-                selected_tickers=_parse_selected_tickers(selected_tickers),
+                selected_tickers=parsed_selected_tickers,
             )
-            candidates_meta = _enrich_intraday_candidate_plans(store, target_date, candidates_meta)
+            if selected_only:
+                selected_set = {item.upper() for item in parsed_selected_tickers}
+                candidates_meta = [
+                    item for item in candidates_meta
+                    if str(item.get("ticker") or "").upper() in selected_set
+                ]
+            candidates_meta = _enrich_intraday_candidate_plans(store, baseline_date, candidates_meta)
             candidate_tickers = [c["ticker"] for c in candidates_meta if c.get("ticker")]
 
         # 3. 按 source 参数选择实时数据源
@@ -1459,17 +3681,42 @@ def market_intraday(
         stock_df = None
         source_used = None
 
-        if source in ("auto", "tushare"):
+        if read_only:
+            import pandas as pd
+            archived = _read_archived_quotes(store, [bm_ticker, *candidate_tickers], session_date)
+            benchmark_realtime = archived.get(bm_ticker)
+            stock_rows = [archived[ticker] for ticker in candidate_tickers if ticker in archived]
+            stock_df = pd.DataFrame(stock_rows) if stock_rows else None
+            source_used = 'mongo_archive' if archived else None
+            realtime_errors.append('只读归档模式：保留提供方报价时间，不请求外部行情、不补分钟数据、不写决策。')
+
+        if source not in {"auto", "klineshare", "tushare", "eastmoney"}:
+            raise HTTPException(status_code=400, detail="source 只支持 auto / klineshare / tushare / eastmoney")
+
+        if not read_only and source in ("auto", "klineshare"):
+            if source == "klineshare" and not config.klineshare_api_key:
+                raise HTTPException(status_code=400, detail="SHILUN_KLINESHARE_API_KEY 未配置")
+            if config.klineshare_api_key:
+                benchmark_realtime, stock_df, errs = _fetch_realtime_via_klineshare(
+                    bm_ticker,
+                    candidate_tickers,
+                )
+                if benchmark_realtime is not None:
+                    source_used = "klineshare"
+                    _persist_klineshare_realtime_snapshot(store, benchmark_realtime, stock_df)
+                realtime_errors.extend(errs)
+
+        if not read_only and benchmark_realtime is None and source in ("auto", "tushare"):
             benchmark_realtime, stock_df, errs = _fetch_realtime_via_tushare(bm_ticker, candidate_tickers)
             if benchmark_realtime is not None:
                 source_used = "tushare"
             else:
                 realtime_errors.extend(errs)
 
-        if benchmark_realtime is None and source in ("auto", "akshare"):
-            benchmark_realtime, stock_df, errs = _fetch_realtime_via_akshare(bm_ticker, candidate_tickers)
+        if not read_only and benchmark_realtime is None and source in ("auto", "eastmoney"):
+            benchmark_realtime, stock_df, errs = _fetch_realtime_via_eastmoney(bm_ticker, candidate_tickers)
             if benchmark_realtime is not None:
-                source_used = "akshare"
+                source_used = "eastmoney"
             realtime_errors.extend(errs)
 
         # 4. 触发的关键位分析
@@ -1488,14 +3735,109 @@ def market_intraday(
             if candidates_meta
             else []
         )
+        minute_errors: list[str] = []
+        minute_refreshed: set[str] = set()
+        # KlineShare 实时源同时回补并落库真实 5 分钟 K；其他源只读已有 Mongo。
+        # 前端 30 秒轮询只负责触发刷新，不能被误当成一条完整趋势线。
+        recorded_decision_count = 0
+        if candidate_realtime:
+            from shilun.market.minute_bars_store import COLLECTION_NAME as MINUTE_COLL, bulk_load_lookup
+
+            minute_tickers = [item.get("ticker") for item in candidate_realtime if item.get("ticker")]
+            if source_used == "klineshare":
+                minute_lookup, minute_errors, minute_refreshed = _sync_intraday_minutes_via_klineshare(
+                    store,
+                    minute_tickers,
+                    session_date,
+                )
+            else:
+                minute_lookup = bulk_load_lookup(
+                    store.collection(MINUTE_COLL),
+                    minute_tickers,
+                    session_date.replace("-", ""),
+                    interval="5",
+                )
+            for item in candidate_realtime:
+                ticker = str(item.get("ticker") or "").upper()
+                item["minute_bars"] = minute_lookup.get(ticker, [])
+                item["minute_bar_interval"] = "5"
+                item["minute_bar_source"] = "klineshare" if ticker in minute_refreshed else "mongo"
+                item["minute_bar_status"] = "available" if item["minute_bars"] else "missing"
+
+        if candidate_realtime:
+            from zoneinfo import ZoneInfo
+
+            from shilun.trading.intraday_alerts import (
+                EVENT_COLLECTION,
+                OUTBOX_COLLECTION,
+                WATCHLIST_COLLECTION,
+                list_candidate_timeline,
+                list_watchlist,
+                record_candidate_decisions,
+            )
+
+            computed_at = datetime.now(tz=ZoneInfo("Asia/Shanghai")).isoformat(timespec="seconds")
+            watchlist = list_watchlist(store.collection(WATCHLIST_COLLECTION))
+            push_tickers = {
+                str(item.get("ticker") or "").upper()
+                for item in watchlist
+                if item.get("feishu_enabled", True)
+            }
+            if record_decisions:
+                recorded_events = record_candidate_decisions(
+                    store.collection(EVENT_COLLECTION),
+                    store.collection(OUTBOX_COLLECTION),
+                    candidate_realtime,
+                    session_date=session_date,
+                    computed_at=computed_at,
+                    market_gate=gate,
+                    push_tickers=push_tickers,
+                )
+                recorded_decision_count = len(recorded_events)
+            for item in candidate_realtime:
+                item["decision_timeline"] = list_candidate_timeline(
+                    store.collection(EVENT_COLLECTION),
+                    str(item.get("ticker") or ""),
+                    session_date=session_date,
+                    limit=5,
+                )
+
+        depth_available = bool(source_used == "klineshare" and config.klineshare_include_depth)
+        realtime_capabilities = {
+            "quote": source_used is not None,
+            "minute_kline": source_used == "klineshare",
+            "depth": depth_available,
+            "depth_status": (
+                "available"
+                if depth_available
+                else "plan_not_enabled"
+                if source_used == "klineshare"
+                else "source_not_supported"
+            ),
+            "depth_note": (
+                "当前 KlineShare Key 未启用 realtime_depth；实时价与 5 分钟 K 可正常使用。"
+                if source_used == "klineshare" and not depth_available
+                else None
+            ),
+        }
 
         return {
-            "analysis_date": target_date,
+            **({'read_only': True, 'source_mode': 'cached_only'} if read_only else {}),
+            "analysis_date": session_date,
+            "session_date": session_date,
+            "daily_baseline_date": baseline_date,
+            "part1_analysis_date": baseline_date,
+            "baseline_mode": "previous_completed_daily",
+            "baseline_note": (
+                f"盘中决策使用 {baseline_date} 已完成日线基线，"
+                f"叠加 {session_date} 实时报价与分钟 K。"
+            ),
             "benchmark_ticker": bm_ticker,
             "server_time": datetime.now().isoformat(timespec="seconds"),
             "part1_cached_at": part1_cached_at,
             "realtime_source": source_used,
             "realtime_source_requested": source,
+            "realtime_capabilities": realtime_capabilities,
             "market_gate": gate,
             "benchmark_realtime": benchmark_realtime,
             "planned_levels": {
@@ -1505,13 +3847,14 @@ def market_intraday(
                 "support_2_source": levels.get("support_2_source"),
                 "pressure_1": levels.get("pressure_1"),
                 "pressure_1_source": levels.get("pressure_1_source"),
-                "manual_levels": payload.get("manual_levels") or [],
             },
             "pattern_forecast": pattern_forecast,
             "trend_summary": trend_summary,
             "triggered_levels": triggered_levels,
             "candidates_realtime": candidate_realtime,
+            "recorded_decision_count": recorded_decision_count,
             "realtime_errors": realtime_errors,
+            "minute_errors": minute_errors,
         }
     finally:
         store.close()
@@ -1524,18 +3867,31 @@ def stock_panel(
     benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER,
     period: str = "5",
     intraday_only: bool = False,
+    strategy_id: str | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
-    """单票面板数据（图 4 风格）：日线+分钟 K + 信号点 + 支撑压力 + 穿透 + 评级。
+    """策略中立的单票事实面板，可选叠加一个显式策略。
 
-    分钟数据源：akshare 新浪源（免费无 token）。
-    信号识别：shilun.market.signal_detector.detect_signals_daily。
+    分钟数据源：东方财富直连（免费无 token）。
+    默认事件：通用 K 线/量价事件；只有传入 strategy_id 才生成买卖计划。
     """
     import pandas as pd
 
     from shilun.common.db import MongoSnapshotStore
-    from shilun.data.providers.akshare_provider import AkshareClient, AkshareConfig, AkshareFetchError
+    from shilun.data.providers.minute_provider import MinuteClient, MinuteFetchError
+    from shilun.data.providers.klineshare_provider import KlineShareClient, KlineShareConfig, KlineShareError
     from shilun.data.providers.tushare_realtime import TushareRealtimeClient, TushareRealtimeError
-    from shilun.market.signal_detector import detect_signals_daily, summarize_signals, SIGNAL_META
+    from shilun.market.stock_events import (
+        GENERIC_EVENT_META,
+        detect_generic_events_daily,
+        summarize_generic_events,
+    )
+    from shilun.strategies import (
+        ExecutionStrategyContext,
+        ExecutionStrategyError,
+        get_execution_strategy,
+        list_execution_strategies,
+    )
 
     ticker_norm = ticker.upper().strip()
     if not ticker_norm:
@@ -1543,41 +3899,79 @@ def stock_panel(
 
     target_date = normalize_analysis_date(date)
     bm_ticker = benchmark_ticker.upper()
+    selected_strategy_id = str(strategy_id or "").strip().lower()
 
     config = load_config()
     if not config.mongo_uri:
         raise HTTPException(status_code=400, detail="Mongo 未配置")
 
     try:
-        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
+        store = MongoSnapshotStore(config.mongo_uri, config.mongo_db,
+                                   **({'initialize_indexes': False} if read_only else {}))
     except Exception as error:
         raise HTTPException(status_code=400, detail=f"Mongo 连接失败：{error}") from error
 
     try:
         errors: list[str] = []
 
-        # 1. 分钟 K 线（新浪源）
-        ak_client = AkshareClient(AkshareConfig())
+        # 1. 分钟 K 线：配置 Key 时优先 KlineShare，失败回退 东方财富直连。
         minute_bars = None
-        try:
-            df = ak_client.fetch_minute_bars(ticker_norm, period=period)
-            if df is not None and not df.empty:
-                # 只保留最近 3 个交易日的分钟数据（避免负载过大）
-                cutoff = df["datetime"].max() - pd.Timedelta(days=5)
-                df = df[df["datetime"] > cutoff].reset_index(drop=True)
-                minute_bars = df.to_dict("records")
-                # datetime 转 iso 字符串
-                for row in minute_bars:
-                    row["datetime"] = pd.Timestamp(row["datetime"]).isoformat()
-                    for k in ("open", "high", "low", "close"):
-                        row[k] = _round_num(row.get(k), 2)
-                    row["volume"] = int(_round_num(row.get("volume"), 0) or 0)
-                    row["amount"] = _round_num(row.get("amount"), 0)
-        except AkshareFetchError as e:
-            errors.append(f"minute_bars: {e.underlying}")
+        minute_source = None
+        klineshare_client = None
+        minute_frame = None
+        if read_only:
+            from shilun.market.minute_bars_store import COLLECTION_NAME, get_minute_bars
+            archived_minutes = get_minute_bars(store.collection(COLLECTION_NAME), ticker_norm,
+                                               target_date.replace('-', ''), interval=period) or []
+            archived_minutes = [row for row in archived_minutes if str(row.get('datetime', ''))[:10] == target_date]
+            if archived_minutes:
+                minute_frame = pd.DataFrame(archived_minutes)
+                minute_frame['datetime'] = pd.to_datetime(minute_frame['datetime'], errors='coerce')
+                minute_frame = minute_frame.dropna(subset=['datetime'])
+                minute_source = 'mongo_archive'
+            errors.append('只读归档模式：不请求外部报价或分钟数据；未归档内容保持缺失，不挪用其他日期。')
+        if not read_only and config.klineshare_api_key:
+            klineshare_client = KlineShareClient(KlineShareConfig(
+                api_key=config.klineshare_api_key,
+                base_url=config.klineshare_base_url,
+                timeout=config.klineshare_timeout,
+            ))
+            try:
+                minute_frame = klineshare_client.fetch_kline(
+                    ticker_norm,
+                    period=int(period) * 60,
+                    count=500,
+                    adjust_type="none",
+                )
+                if minute_frame is not None and not minute_frame.empty:
+                    minute_source = "klineshare"
+            except KlineShareError as error:
+                errors.append(f"klineshare_minute_bars: {error}")
+        if not read_only and (minute_frame is None or minute_frame.empty):
+            try:
+                minute_frame = MinuteClient().fetch_minute_bars(
+                    ticker_norm,
+                    period=period, trade_date=target_date,
+                )
+                if minute_frame is not None and not minute_frame.empty:
+                    minute_source = minute_frame.attrs.get("source", "eastmoney")
+            except MinuteFetchError as error:
+                errors.append(str(error))
+        if minute_frame is not None and not minute_frame.empty:
+            # 只保留最近 3 个交易日的分钟数据（避免负载过大）
+            cutoff = minute_frame["datetime"].max() - pd.Timedelta(days=5)
+            minute_frame = minute_frame[minute_frame["datetime"] > cutoff].reset_index(drop=True)
+            minute_bars = minute_frame.to_dict("records")
+            for row in minute_bars:
+                row["datetime"] = pd.Timestamp(row["datetime"]).isoformat()
+                for key in ("open", "high", "low", "close"):
+                    row[key] = _round_num(row.get(key), 2)
+                row["volume"] = int(_round_num(row.get("volume"), 0) or 0)
+                row["amount"] = _round_num(row.get("amount"), 0)
 
         # 2. 日线 + 信号识别
         daily_bars = None
+        records: list[dict[str, Any]] = []
         signals: list[dict[str, Any]] = []
         signal_summary: dict[str, Any] = {}
         levels: dict[str, Any] = {}
@@ -1595,8 +3989,8 @@ def stock_panel(
                 dfd = pd.DataFrame(records)
                 dfd["date"] = pd.to_datetime(dfd["date"])
                 dfd = dfd.sort_values("date").reset_index(drop=True)
-                signals = detect_signals_daily(dfd, ticker=ticker_norm)
-                signal_summary = summarize_signals(signals)
+                signals = detect_generic_events_daily(dfd, ticker=ticker_norm)
+                signal_summary = summarize_generic_events(signals)
 
                 # ── 主动买入结构 ────────────────────────────────
                 # 拉最近 20 天资金流，计算最新和累计的主动/被动
@@ -1716,8 +4110,6 @@ def stock_panel(
                     "ma5": _round_num(ma5, 2),
                     "ma10": _round_num(ma10, 2),
                     "ma20": _round_num(ma20, 2),
-                    # 权威买点：直接从 trade_plan 暴露，前端优先读它，不再靠 support 兜底
-                    "entry_price": trade_plan.get("entry_price"),
                     "based_on_bars": len(dfd),
                 }
 
@@ -1725,6 +4117,8 @@ def stock_panel(
                 # 查这只票的 buy_point_pattern，避免在这里重复算完整 features。
                 # 缓存里没有（例如票不在候选池） → pattern="none"，前端徽章不显示。
                 try:
+                    if selected_strategy_id != "ma5_v0_2":
+                        raise LookupError("未选择 MA5 策略")
                     cached_sectors = _load_sector_cache(store, target_date, bm_ticker, trend_lookback_days=60)
                     if cached_sectors and cached_sectors.get("payload"):
                         for c in (cached_sectors["payload"].get("candidates") or []):
@@ -1741,32 +4135,63 @@ def stock_panel(
                 except Exception:  # noqa: BLE001
                     pass
 
-        # 3. 实时报价（Tushare 新浪源，最稳定）
+        # 3. 实时报价：KlineShare 批量获取个股 + 基准，失败后回退新浪。
         realtime = None
-        try:
-            ts_client = TushareRealtimeClient()
-            rt_df = ts_client.fetch_stock_realtime_batch([ticker_norm])
-            if rt_df is not None and not rt_df.empty:
-                r = rt_df.iloc[0].to_dict()
-                realtime = {
-                    "current": _round_num(r.get("current")),
-                    "pct_chg": _round_num(r.get("pct_chg"), 4),
-                    "open": _round_num(r.get("open")),
-                    "high": _round_num(r.get("high")),
-                    "low": _round_num(r.get("low")),
-                    "prev_close": _round_num(r.get("prev_close")),
-                    "volume": r.get("volume"),
-                    "amount": _round_num(r.get("amount")),
-                    "name": r.get("name"),
-                    "update_at": r.get("update_at"),
-                }
-        except TushareRealtimeError as e:
-            errors.append(f"realtime: {e.underlying}")
+        realtime_source = None
+        bm_rt_df = None
+        rt_df = None
+        if read_only:
+            archived_quotes = _read_archived_quotes(store, [ticker_norm, bm_ticker], target_date)
+            if ticker_norm in archived_quotes:
+                rt_df = pd.DataFrame([archived_quotes[ticker_norm]])
+                realtime_source = 'mongo_archive'
+            if bm_ticker in archived_quotes:
+                bm_rt_df = pd.DataFrame([archived_quotes[bm_ticker]])
+        if klineshare_client is not None:
+            try:
+                combined = klineshare_client.fetch_realtime([ticker_norm, bm_ticker])
+                rt_df = combined[combined["ticker"].str.upper() == ticker_norm]
+                bm_rt_df = combined[combined["ticker"].str.upper() == bm_ticker]
+                if rt_df is not None and not rt_df.empty:
+                    realtime_source = "klineshare"
+            except KlineShareError as error:
+                errors.append(f"klineshare_realtime: {error}")
+        ts_client = None if read_only else TushareRealtimeClient()
+        if not read_only and (rt_df is None or rt_df.empty):
+            try:
+                rt_df = ts_client.fetch_stock_realtime_batch([ticker_norm])
+                if rt_df is not None and not rt_df.empty:
+                    realtime_source = "tushare_sina"
+            except TushareRealtimeError as error:
+                errors.append(f"realtime: {error.underlying}")
+        if rt_df is not None and not rt_df.empty:
+            row = rt_df.iloc[0].to_dict()
+            realtime = {
+                "current": _round_num(row.get("current")),
+                "pct_chg": _round_num(row.get("pct_chg"), 4),
+                "open": _round_num(row.get("open")),
+                "high": _round_num(row.get("high")),
+                "low": _round_num(row.get("low")),
+                "prev_close": _round_num(row.get("prev_close")),
+                "volume": row.get("volume"),
+                "amount": _round_num(row.get("amount")),
+                "name": row.get("name"),
+                "trade_status": row.get("trade_status"),
+                "update_at": row.get("update_at"),
+                "quote_at": row.get("quote_at"),
+                "fetched_at": row.get("fetched_at"),
+                "timestamp_kind": row.get("timestamp_kind"),
+            }
 
         # 4. 大盘穿透（该票 vs 大盘方向共振）
         market_sync = None
+        if not read_only and (bm_rt_df is None or bm_rt_df.empty):
+            try:
+                bm_rt_df = ts_client.fetch_index_realtime([bm_ticker])
+            except TushareRealtimeError as error:
+                errors.append(f"market_sync: {error.underlying}")
+                bm_rt_df = None
         try:
-            bm_rt_df = ts_client.fetch_index_realtime([bm_ticker])
             if bm_rt_df is not None and not bm_rt_df.empty:
                 bm_r = bm_rt_df.iloc[0].to_dict()
                 bm_pct = float(bm_r.get("pct_chg") or 0)
@@ -1794,7 +4219,7 @@ def stock_panel(
                     "sync_direction": sync_direction,
                     "strength_diff": _round_num(stock_pct - bm_pct, 4),
                 }
-        except (TushareRealtimeError, Exception) as e:
+        except Exception as e:  # noqa: BLE001
             errors.append(f"market_sync: {e}")
 
         # 5. 智能评级（0-100，聚合信号+趋势+RSI+涨跌幅动量）
@@ -1803,13 +4228,19 @@ def stock_panel(
         # 6. 股票基础信息
         basic = None
         try:
-            basic_list = store.raw_market.find_stock_basic()
+            from shilun.market.taxonomy import classify_stocks
+            basic_list = classify_stocks(store, target_date, store.raw_market.find_stock_basic())
             for b in basic_list:
                 if str(b.get("ts_code", "")).upper() == ticker_norm:
                     basic = {
                         "ticker": ticker_norm,
                         "name": b.get("name") or (realtime or {}).get("name", ""),
                         "industry": b.get("industry") or "",
+                        "industry_code": b.get("industry_code"),
+                        "taxonomy_date": b.get("taxonomy_date"),
+                        "taxonomy_version": b.get("taxonomy_version"),
+                        "classification_status": b.get("classification_status"),
+                        "concepts": b.get("concepts", []),
                         "market": b.get("market") or "",
                         "list_date": b.get("list_date") or "",
                     }
@@ -1817,29 +4248,70 @@ def stock_panel(
         except Exception as e:
             errors.append(f"basic: {e}")
 
+        strategy_analysis = None
+        if selected_strategy_id:
+            try:
+                strategy = get_execution_strategy(selected_strategy_id)
+                try:
+                    market_gate = _load_market_gate(store, target_date, bm_ticker) or {}
+                except Exception:  # noqa: BLE001
+                    market_gate = {}
+                strategy_analysis = strategy.evaluate_stock(
+                    daily_bars or records,
+                    context=ExecutionStrategyContext(
+                        analysis_date=target_date,
+                        benchmark_ticker=bm_ticker,
+                        market_gate=market_gate,
+                        sector_name=str((basic or {}).get("industry") or ""),
+                    ),
+                )
+            except ExecutionStrategyError as error:
+                raise HTTPException(status_code=400, detail=str(error)) from error
+
+        # Tushare moneyflow 是按成交方向和订单规模聚合的代理口径，不是逐笔 Level-2
+        # 主动/被动成交还原。保留旧字段别名，避免已有调用方中断，但页面使用 moneyflow。
+        moneyflow = {
+            **active_buy_context,
+            "source": "Tushare moneyflow",
+            "classification": "按大/特大/中/小单买卖方向聚合",
+            "active_passive_available": False,
+            "methodology_note": "当前数据不能逐笔还原主动买入、主动卖出或被动承接，只能作为资金方向代理。",
+        }
+        strategy_trade_plan = (strategy_analysis or {}).get("trade_plan") or {}
+        strategy_signal = (strategy_analysis or {}).get("signal") or {}
+
         return {
+            **({'read_only': True, 'source_mode': 'cached_only'} if read_only else {}),
             "ticker": ticker_norm,
             "analysis_date": target_date,
             "benchmark_ticker": bm_ticker,
             "basic": basic,
             "realtime": realtime,
+            "realtime_source": realtime_source,
             "market_sync": market_sync,
-            "levels": levels,
-            "trade_plan": trade_plan,
+            "levels": levels if selected_strategy_id == "ma5_v0_2" else {},
+            "trade_plan": strategy_trade_plan,
             # Job C（§4.7 五买点体系）：从 sector_trends_cache 查到的 buy_point_pattern。
             # 没有对应缓存时 pattern="none"，前端徽章不显示。
-            "buy_point_pattern": buy_point_pattern_info.get("pattern"),
-            "buy_point_pattern_label": buy_point_pattern_info.get("label"),
-            "buy_point_pattern_context": buy_point_pattern_info.get("context"),
-            "buy_point_pattern_note": buy_point_pattern_info.get("note"),
-            "buy_point_pattern_strength": buy_point_pattern_info.get("strength"),
-            "rating": rating,
+            "buy_point_pattern": strategy_signal.get("pattern") or buy_point_pattern_info.get("pattern") if selected_strategy_id else None,
+            "buy_point_pattern_label": strategy_signal.get("pattern_label") or buy_point_pattern_info.get("label") if selected_strategy_id else None,
+            "buy_point_pattern_context": buy_point_pattern_info.get("context") if selected_strategy_id else None,
+            "buy_point_pattern_note": buy_point_pattern_info.get("note") if selected_strategy_id else None,
+            "buy_point_pattern_strength": buy_point_pattern_info.get("strength") if selected_strategy_id else None,
+            "rating": rating if selected_strategy_id == "ma5_v0_2" else {},
             "daily_bars": daily_bars,
             "minute_bars": minute_bars,
+            "minute_source": minute_source,
             "signals": signals,
             "signal_summary": signal_summary,
-            "signal_meta": SIGNAL_META,
+            "signal_meta": GENERIC_EVENT_META,
             "active_buy": active_buy_context,
+            "moneyflow": moneyflow,
+            "generic_events": signals,
+            "strategy_analysis": strategy_analysis,
+            "selected_strategy_id": selected_strategy_id or None,
+            "available_strategies": list_execution_strategies(),
+            "analysis_scope": "strategy_plus_facts" if selected_strategy_id else "strategy_neutral_facts",
             "errors": errors,
             "server_time": datetime.now().isoformat(timespec="seconds"),
         }
@@ -2054,19 +4526,9 @@ def _extract_candidates_from_cache(
     实现策略：为避免耦合过重，这里直接从 PART1 已经计算过的候选池（如果 sectors
     API 曾被调用过就会落库）；否则返回空列表，前端会显示"暂无候选"提示。
     """
-    docs: list[dict[str, Any]] = []
-    try:
-        col = store.collection("candidate_pool_states")
-        docs.extend(
-            col.find(
-                {"analysis_date": target_date},
-                {"_id": 0},
-            )
-            .sort("rank", 1)
-            .limit(limit)
-        )
-    except Exception:
-        docs = []
+    from shilun.trading.market_facts import _latest_selection_pool_rows
+    docs = sorted(_latest_selection_pool_rows(store, target_date),
+                  key=lambda item: int(item.get("pool_rank") or item.get("rank") or 10_000))[:limit]
 
     selected = selected_tickers or []
     if selected:
@@ -2083,6 +4545,8 @@ def _extract_candidates_from_cache(
                 )
             except Exception:
                 stock_basic_docs = []
+            from shilun.market.taxonomy import classify_stocks
+            stock_basic_docs = classify_stocks(store, target_date, stock_basic_docs)
             by_ticker = {str(item.get("ts_code") or "").upper(): item for item in stock_basic_docs}
             for offset, ticker in enumerate(missing, start=1):
                 meta = by_ticker.get(ticker.upper(), {})
@@ -2095,7 +4559,9 @@ def _extract_candidates_from_cache(
                     "selected_pool": True,
                 })
 
-    return docs[: max(1, int(limit)) + len(selected)]
+    from shilun.market.taxonomy import classify_stocks
+    return [{**r, 'sector_name': r['industry'], 'sector_code': r['industry_code']}
+            for r in classify_stocks(store, target_date, docs[: max(1, int(limit)) + len(selected)])]
 
 
 def _mean_last(values: list[float], count: int) -> float | None:
@@ -2557,9 +5023,19 @@ def _merge_candidates_with_realtime(candidates: list[dict[str, Any]], stock_df, 
                 "high": _round_num(r.get("high")),
                 "low": _round_num(r.get("low")),
                 "prev_close": _round_num(r.get("prev_close")),
+                "volume": _round_num(r.get("volume")),
                 "volume_ratio": _round_num(r.get("volume_ratio"), 2),
                 "amount": _round_num(r.get("amount")),
+                "trade_status": r.get("trade_status"),
+                "source": r.get("source"),
+                "depth_bids": r.get("depth_bids") if isinstance(r.get("depth_bids"), list) else [],
+                "depth_asks": r.get("depth_asks") if isinstance(r.get("depth_asks"), list) else [],
+                "inner_volume": _round_num(r.get("inner_volume")),
+                "outer_volume": _round_num(r.get("outer_volume")),
                 "update_at": r.get("update_at"),
+                "quote_at": r.get("quote_at"),
+                "fetched_at": r.get("fetched_at"),
+                "timestamp_kind": r.get("timestamp_kind"),
             }
             # 开盘验证：开盘价 > 昨收 = 高开，可能是好信号
             try:
@@ -2599,103 +5075,6 @@ def _merge_candidates_with_realtime(candidates: list[dict[str, Any]], stock_df, 
         }
         result.append(merged)
     return result
-
-
-@ui_router.post("/api/v1/market/upload-wave-doc")
-async def upload_wave_doc(
-    file: UploadFile = File(...),
-    target_date: str | None = Form(None),
-    benchmark_ticker: str = Form(DEFAULT_BENCHMARK_TICKER),
-    use_ai: bool = Form(False),
-    ai_provider: str = Form("anthropic"),
-) -> dict[str, Any]:
-    """上传外部波浪/技术分析文档（黑兔等），解析关键价位并落库到 wave_docs 集合。"""
-    from shilun.common.db import MongoSnapshotStore
-    from shilun.market.wave_doc_parser import parse_wave_document
-
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="未指定文件名。")
-    try:
-        file_bytes = await file.read()
-    except Exception as error:
-        raise HTTPException(status_code=400, detail=f"读取上传文件失败：{error}") from error
-    if not file_bytes:
-        raise HTTPException(status_code=400, detail="文件为空。")
-    if len(file_bytes) > 20 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="文件超过 20MB 限制。")
-
-    try:
-        result = parse_wave_document(
-            filename=file.filename,
-            file_bytes=file_bytes,
-            use_ai=use_ai,
-            ai_provider=ai_provider,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
-    except Exception as error:
-        raise HTTPException(status_code=500, detail=f"解析文档失败：{error}") from error
-
-    target = normalize_analysis_date(target_date)
-    bm = benchmark_ticker.upper()
-    payload = result.to_dict()
-    payload.update({
-        "analysis_date": target,
-        "benchmark_ticker": bm,
-        "uploaded_at": datetime.now().isoformat(timespec="seconds"),
-    })
-
-    config = load_config()
-    if config.mongo_uri:
-        try:
-            store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
-            store.collection("wave_docs").insert_one({**payload})  # 允许同一日期多份文档
-            store.close()
-        except Exception as error:  # noqa: BLE001
-            payload["_storage_error"] = str(error)
-    return payload
-
-
-@ui_router.get("/api/v1/market/wave-docs")
-def list_wave_docs(date: str | None = None, benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER) -> dict[str, Any]:
-    """列出指定日期已上传的波浪文档。"""
-    from shilun.common.db import MongoSnapshotStore
-
-    target = normalize_analysis_date(date)
-    bm = benchmark_ticker.upper()
-    config = load_config()
-    if not config.mongo_uri:
-        return {"target_date": target, "benchmark_ticker": bm, "docs": []}
-    store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
-    try:
-        cursor = store.collection("wave_docs").find(
-            {"analysis_date": target, "benchmark_ticker": bm},
-            {"_id": 0},
-        ).sort("uploaded_at", -1).limit(10)
-        docs = list(cursor)
-        return {"target_date": target, "benchmark_ticker": bm, "docs": docs, "count": len(docs)}
-    finally:
-        store.close()
-
-
-@ui_router.delete("/api/v1/market/wave-docs")
-def delete_wave_docs(date: str | None = None, benchmark_ticker: str = DEFAULT_BENCHMARK_TICKER) -> dict[str, Any]:
-    """删除指定日期所有上传文档（避免脏数据）。"""
-    from shilun.common.db import MongoSnapshotStore
-
-    target = normalize_analysis_date(date)
-    bm = benchmark_ticker.upper()
-    config = load_config()
-    if not config.mongo_uri:
-        raise HTTPException(status_code=400, detail="Mongo 未配置。")
-    store = MongoSnapshotStore(config.mongo_uri, config.mongo_db)
-    try:
-        result = store.collection("wave_docs").delete_many(
-            {"analysis_date": target, "benchmark_ticker": bm}
-        )
-        return {"target_date": target, "benchmark_ticker": bm, "deleted_count": result.deleted_count}
-    finally:
-        store.close()
 
 
 @ui_router.post("/api/v1/daily-push")
@@ -2786,7 +5165,8 @@ def default_analysis_date(now: datetime | None = None) -> str:
             .sort("cal_date", -1)
             .limit(1)
         )
-        return _display_date(latest[0]["cal_date"]) if latest else weekday_fallback
+        normalized = _daily_record_date({"date": latest[0]["cal_date"]}) if latest else None
+        return normalized or weekday_fallback
     except Exception:
         return weekday_fallback
     finally:
@@ -2970,8 +5350,28 @@ def telegram_webhook(
 
 
 def create_app() -> FastAPI:
+    from shilun.api.ops import router as ops_router
+    from shilun.api.review import router as review_router
+    from shilun.api.trade_decision import router as trade_decision_router
+    from shilun.api.trade_journal import router as trade_journal_router
+    from shilun.api.security import install_basic_auth
+
     app = FastAPI(title="Shilun Standalone", version="0.1.0")
+    @app.exception_handler(PyMongoError)
+    async def database_unavailable(request, error):
+        logging.getLogger(__name__).warning("Database request failed: %s %s (%s)",
+                                           request.method, request.url.path, type(error).__name__)
+        detail = ("云端数据库读取超时或连接中断，请检查网络后重试。"
+                  if request.method in {"GET", "HEAD"} else
+                  "数据库连接异常，请先核对记录是否已保存，再决定是否重试。")
+        return JSONResponse(status_code=503, content={"detail": detail})
+
+    install_basic_auth(app, load_config())
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+    app.include_router(ops_router)
+    app.include_router(review_router)
+    app.include_router(trade_decision_router)
+    app.include_router(trade_journal_router)
     app.include_router(ui_router)
     app.include_router(analyze_router)
     app.include_router(telegram_router)
@@ -3051,6 +5451,13 @@ app = create_app()
 __all__ = [
     "DataSyncHttpRequest",
     "DailyPushHttpRequest",
+    "HoldingCloseHttpRequest",
+    "HoldingCreateHttpRequest",
+    "HoldingPatchHttpRequest",
+    "T1SettlementHttpRequest",
+    "TradeFillHttpRequest",
+    "TradeOrderCancelHttpRequest",
+    "TradeOrderHttpRequest",
     "TelegramBotClient",
     "TelegramChat",
     "TelegramMessage",
@@ -3060,16 +5467,31 @@ __all__ = [
     "analyze_router",
     "app",
     "build_telegram_text",
+    "close_holding_endpoint",
     "create_app",
+    "create_holding",
+    "create_trading_order",
+    "create_trading_order_fill",
     "control_center",
     "data_status",
     "data_sync",
+    "daily_check_holdings_endpoint",
+    "delete_holding_endpoint",
     "market_permission",
     "market_sectors",
+    "get_holding_detail",
+    "get_holding_events_endpoint",
+    "get_holdings",
+    "get_trading_order",
+    "get_trading_orders",
+    "get_trading_workbench",
     "parse_telegram_command",
     "push_channel_status",
+    "cancel_trading_order",
+    "settle_trading_t1_positions",
     "telegram_router",
     "tushare_health",
+    "update_holding",
     "ui_router",
 ]
 

@@ -101,9 +101,11 @@ class FakeSyncStore:
         self.daily_bar_rows = 0
         self.daily_basic_rows = 0
         self.moneyflow_rows = 0
+        self.daily_bar_payloads: list[pd.DataFrame] = []
         self.existing_daily_bars: list[dict] = []
         self.existing_moneyflow: list[dict] = []
         self.sync_states: dict[tuple[str, str], dict] = {}
+        self.price_limits: dict[tuple[str, str], dict] = {}
 
     def upsert_stock_basic(self, rows) -> int:
         self.stock_basic_rows += len(rows)
@@ -114,6 +116,7 @@ class FakeSyncStore:
         return len(rows)
 
     def upsert_daily_bars(self, rows) -> int:
+        self.daily_bar_payloads.append(rows.copy())
         self.daily_bar_rows += len(rows)
         return len(rows)
 
@@ -123,6 +126,11 @@ class FakeSyncStore:
 
     def upsert_moneyflow(self, rows) -> int:
         self.moneyflow_rows += len(rows)
+        return len(rows)
+
+    def upsert_price_limits(self, rows) -> int:
+        for row in rows.to_dict("records"):
+            self.price_limits[(str(row["trade_date"]), str(row["ticker"]))] = dict(row)
         return len(rows)
 
     def find_moneyflow(self, *, start_date: str, end_date: str, ts_code: str | None = None) -> list[dict]:
@@ -169,6 +177,68 @@ class FakeSyncStore:
 
 
 class TushareSyncJobTests(unittest.TestCase):
+    def test_price_limit_sync_is_reentrant_by_trade_date_and_ticker(self) -> None:
+        client = FakeSyncClient()
+        client.fetch_all_stock_limits = lambda trade_date: pd.DataFrame([
+            {"trade_date": trade_date, "ticker": "000001.SZ", "up_limit": 11, "down_limit": 9},
+            {"trade_date": trade_date, "ticker": "600000.SH", "up_limit": 8.8, "down_limit": 7.2},
+        ])
+        store = FakeSyncStore()
+        job = TushareSyncJob(client=client, mongo_store=store)
+
+        first = job._sync_price_limits_for_trade_date("20260331")
+        second = job._sync_price_limits_for_trade_date("20260331")
+
+        self.assertEqual((first, second), (2, 2))
+        self.assertEqual(len(store.price_limits), 2)
+        self.assertEqual(
+            store.sync_states[("daily_price_limits", "20260331")]["status"],
+            "success",
+        )
+
+    def test_price_limits_only_avoids_daily_and_moneyflow_calls(self) -> None:
+        client = FakeSyncClient()
+        client.fetch_all_stock_limits = lambda trade_date: pd.DataFrame([
+            {"trade_date": trade_date, "ticker": "000001.SZ", "up_limit": 11, "down_limit": 9},
+        ])
+        store = FakeSyncStore()
+
+        result = TushareSyncJob(client=client, mongo_store=store).run(
+            TushareSyncRequest(target_date="2026-03-31", price_limits_only=True)
+        )
+
+        self.assertEqual(result.price_limit_count, 1)
+        self.assertEqual(client.calls, ["trade_calendar"])
+        self.assertEqual(result.daily_bar_count, 0)
+
+    def test_price_limit_sync_uses_same_day_reference_without_history_scan(self) -> None:
+        client = FakeSyncClient()
+        client.fetch_all_stock_limits = lambda trade_date: pd.DataFrame([{
+            "trade_date": trade_date,
+            "ticker": "000001.SZ",
+            "pre_close": None,
+            "up_limit": 11,
+            "down_limit": 9,
+        }])
+        store = FakeSyncStore()
+        client.fetch_daily_for_trade_date = lambda date, **kwargs: pd.DataFrame([
+            {"ticker":"000001.SZ", "date":"2026-03-31", "pre_close":10.0, "close":11.0}])
+        store.find_daily_bars = lambda **kwargs: self.fail("Must not scan old raw closes")
+
+        TushareSyncJob(client=client, mongo_store=store)._sync_price_limits_for_trade_date("20260331")
+
+        self.assertEqual(store.price_limits[("20260331", "000001.SZ")]["pre_close"], 10.0)
+
+    def test_missing_reference_does_not_discard_valid_price_limits(self) -> None:
+        client, store = FakeSyncClient(), FakeSyncStore()
+        client.fetch_all_stock_limits = lambda date: pd.DataFrame([{"trade_date":date,"ticker":"000001.SZ","up_limit":11,"down_limit":9,"pre_close":None}])
+        def failure(*args, **kwargs):
+            raise TimeoutError('provider unavailable')
+        client.fetch_daily_for_trade_date = failure
+        job = TushareSyncJob(client=client,mongo_store=store)
+        assert job._sync_price_limits_for_trade_date('20260331') == 1
+        assert store.price_limits[('20260331','000001.SZ')]['pre_close'] is None
+
     def test_sync_job_writes_raw_data_to_mongo_store_without_strategy_execution(self) -> None:
         client = FakeSyncClient()
         store = FakeSyncStore()
@@ -186,22 +256,55 @@ class TushareSyncJobTests(unittest.TestCase):
         self.assertEqual(1, result.stock_basic_count)
         self.assertEqual(2, result.trade_calendar_count)
         self.assertEqual(2, result.daily_bar_count)
-        self.assertEqual(1, result.daily_basic_count)
+        self.assertEqual(2, result.daily_basic_count)
         self.assertEqual(2, result.moneyflow_count)
         self.assertEqual(1, result.benchmark_bar_count)
+        daily_sources = set(pd.concat(store.daily_bar_payloads, ignore_index=True)["source"])
+        self.assertEqual({"tushare_daily", "tushare_index_daily"}, daily_sources)
         self.assertEqual(
             [
                 "stock_basic",
                 "trade_calendar",
+                "daily_basic",
                 "daily:20260330",
                 "moneyflow:20260330",
+                "daily_basic",
                 "daily:20260331",
                 "moneyflow:20260331",
-                "daily_basic",
                 "benchmark:000300.SH",
             ],
             client.calls,
         )
+
+    def test_history_turnover_is_filled_even_when_price_bars_are_skipped(self):
+        client, store = FakeSyncClient(), FakeSyncStore()
+        store.existing_daily_bars=[{'date':'20260330'},{'date':'20260331'}]
+        days=[]
+        original=client.fetch_daily_basic
+        def fetch(day=None, trade_date=None):
+            days.append(trade_date)
+            return original(trade_date)
+        client.fetch_daily_basic=fetch
+        result=TushareSyncJob(client=client,mongo_store=store).run(TushareSyncRequest(
+            target_date='2026-03-31',start_date='20260330',end_date='20260331',skip_if_exists=True,
+            sync_moneyflow=False,sync_price_limits=False))
+        self.assertEqual(days,['20260330','20260331'])
+        self.assertEqual(result.daily_basic_count,2)
+        self.assertEqual(result.daily_bar_count,0)
+
+    def test_history_turnover_failure_is_reported_without_claiming_coverage(self):
+        client,store=FakeSyncClient(),FakeSyncStore()
+        original=client.fetch_daily_basic
+        def fetch(trade_date):
+            if trade_date=='20260330':raise TimeoutError('provider error')
+            return original(trade_date)
+        client.fetch_daily_basic=fetch
+        result=TushareSyncJob(client=client,mongo_store=store).run(TushareSyncRequest(
+            target_date='2026-03-31',start_date='20260330',end_date='20260331',continue_on_error=True,
+            sync_moneyflow=False,sync_price_limits=False))
+        self.assertEqual(result.daily_basic_count,1)
+        self.assertEqual(result.daily_bar_count,2)
+        self.assertIn('daily_basic:20260330:TimeoutError',result.failed_trade_dates)
 
     def test_latest_only_sync_writes_latest_open_trade_date(self) -> None:
         client = FakeSyncClient()
@@ -237,13 +340,16 @@ class TushareSyncJobTests(unittest.TestCase):
             )
         )
 
-        self.assertEqual(4, result.benchmark_bar_count)
+        self.assertEqual(7, result.benchmark_bar_count)
         self.assertEqual(
             {
                 "benchmark:000001.SH",
                 "benchmark:000300.SH",
                 "benchmark:399001.SZ",
                 "benchmark:399006.SZ",
+                "benchmark:000688.SH",
+                "benchmark:000852.SH",
+                "benchmark:000905.SH",
             },
             {call for call in client.calls if call.startswith("benchmark:")},
         )
